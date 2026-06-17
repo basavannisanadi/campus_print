@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Runtime Data
+server/data/
+server/uploads/
+print-client/temp/
+print-client/printed_output/

@@ -1,0 +1,6 @@
+{
+  "name": "Campus Printing Queue and Management System",
+  "description": "A self-service campus printing system allowing students to upload documents, configure print settings, make digital payments, track print status in real-time, and manage printing queues for shop operators.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
