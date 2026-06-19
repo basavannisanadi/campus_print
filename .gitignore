@@ -12,3 +12,6 @@ server/data/
 server/uploads/
 print-client/temp/
 print-client/printed_output/
+temp/
+logs/
+daemon.lock

@@ -61,6 +61,20 @@ export default function AdminPortal({
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
+  // Shop Profile States
+  const [shopName, setShopName] = useState('');
+  const [shopPhone, setShopPhone] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState(false);
+
+  useEffect(() => {
+    setExpectedReturnTime(propsExpectedReturnTime);
+  }, [propsExpectedReturnTime]);
+
+  useEffect(() => {
+    setAveragePrintSpeed(propsAveragePrintSpeed);
+  }, [propsAveragePrintSpeed]);
+
   const [stats, setStats] = useState<AdminStats>({
     revenue: 0,
     jobs: 0,
@@ -103,11 +117,28 @@ export default function AdminPortal({
     }
   };
 
+  const fetchShopProfile = async () => {
+    try {
+      const res = await fetch('/api/shops');
+      if (res.ok) {
+        const shops = await res.json();
+        const myShop = shops.find((s: any) => s.id === activeShopId);
+        if (myShop) {
+          setShopName(myShop.name || '');
+          setShopPhone(myShop.phone || '');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch shop profile:', err);
+    }
+  };
+
   useEffect(() => {
     if (!isAdminLoggedIn) return;
 
     fetchStats();
     fetchPrinterSettings();
+    fetchShopProfile();
 
     const interval = setInterval(() => {
       fetchStats();
@@ -162,6 +193,34 @@ export default function AdminPortal({
       console.error('Failed to save printer settings:', err);
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingProfile(true);
+    setProfileSuccess(false);
+    try {
+      const token = sessionStorage.getItem('adminToken');
+      const res = await fetch(`/api/shops/${activeShopId}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: shopName,
+          phone: shopPhone
+        })
+      });
+      if (res.ok) {
+        setProfileSuccess(true);
+        setTimeout(() => setProfileSuccess(false), 3000);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -655,6 +714,42 @@ export default function AdminPortal({
               >
                 <Save className="w-4 h-4" />
                 {savingSettings ? 'Saving Settings...' : 'Save Settings'}
+              </button>
+            </form>
+          </div>
+
+          {/* Shop Profile Settings */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+              <User className="w-4.5 h-4.5 text-indigo-500" />
+              <span>Shop Profile Settings</span>
+            </h3>
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              {profileSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl animate-fadeIn">
+                  ✓ Shop profile updated successfully!
+                </div>
+              )}
+              <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Shop Name</label>
+                <input
+                  type="text" required value={shopName} onChange={(e) => setShopName(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Mobile Number</label>
+                <input
+                  type="text" required value={shopPhone} onChange={(e) => setShopPhone(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
+                />
+              </div>
+              <button
+                type="submit" disabled={savingProfile}
+                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none"
+              >
+                <Save className="w-4 h-4" />
+                {savingProfile ? 'Saving...' : 'Save Profile'}
               </button>
             </form>
           </div>

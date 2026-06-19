@@ -197,6 +197,18 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
     const updatedUrls = { ...previewUrls };
 
     for (const file of newFiles) {
+      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+      const allowedExts = ['.pdf','.png','.jpg','.jpeg','.doc','.docx','.ppt','.pptx'];
+      
+      if (!ACCEPTED_TYPES.includes(file.type) && !allowedExts.includes(ext)) {
+        setError(`File "${file.name}" is not a supported format (audio/video blocked).`);
+        continue;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        setError(`File "${file.name}" exceeds the 50MB limit.`);
+        continue;
+      }
+
       if (updatedFiles.some(f => f.name === file.name)) continue;
       
       let pageCount = 1;
@@ -254,7 +266,6 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
     const selected = Array.from(e.target.files || []) as File[];
     if (selected.length > 0) {
       addFiles(selected);
-      setError('');
     }
     e.target.value = '';
   };
@@ -926,11 +937,32 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
                   
                   <div className="relative rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center p-2 min-h-[220px]">
                     {activeFile.type === 'application/pdf' ? (
-                      <iframe
-                        src={`${previewUrls[activeFileName]}#toolbar=0&navpanes=0&scrollbar=0`}
-                        className="w-full h-[280px] rounded-lg border border-slate-200 bg-white"
-                        title={`PDF Preview of ${activeFileName}`}
-                      />
+                      <div className="w-full relative">
+                        {/* Mobile Fallback - Iframe PDFs don't render natively on iOS/mobile browsers */}
+                        <div className="md:hidden w-full h-[280px] rounded-lg border border-slate-200 bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+                          <div className="w-16 h-16 rounded-2xl bg-red-50/80 flex items-center justify-center text-3xl mb-3 shadow-inner animate-pulse">
+                            📄
+                          </div>
+                          <h4 className="text-sm font-bold text-slate-800 truncate max-w-[200px]">{activeFile.name}</h4>
+                          <p className="text-xs text-slate-500 mt-1 font-mono mb-4">PDF Document</p>
+                          <a 
+                            href={previewUrls[activeFileName]} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-sm active:scale-95 transition-all flex items-center gap-2"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                            Open PDF
+                          </a>
+                        </div>
+                        
+                        {/* Desktop Iframe */}
+                        <iframe
+                          src={`${previewUrls[activeFileName]}#toolbar=0&navpanes=0&scrollbar=0`}
+                          className="hidden md:block w-full h-[280px] rounded-lg border border-slate-200 bg-white"
+                          title={`PDF Preview of ${activeFileName}`}
+                        />
+                      </div>
                     ) : activeFile.type.includes('word') || activeFile.type.includes('msword') || activeFile.name.endsWith('.doc') || activeFile.name.endsWith('.docx') || activeFile.type.includes('presentation') || activeFile.type.includes('powerpoint') || activeFile.name.endsWith('.ppt') || activeFile.name.endsWith('.pptx') ? (
                       <div className="w-full h-[280px] rounded-lg border border-slate-200 bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
                         <div className="w-16 h-16 rounded-2xl bg-indigo-50/80 flex items-center justify-center text-3xl mb-3 shadow-inner animate-pulse">
