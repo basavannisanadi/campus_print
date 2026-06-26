@@ -227,8 +227,8 @@ export function readDb(): Db {
     data.shops.forEach((s: any) => {
       const ds = DEFAULT_SHOPS.find(d => d.id === s.id);
       if (ds) {
-        s.adminUsername = ds.adminUsername;
-        s.adminPasswordHash = ds.adminPasswordHash;
+        if (s.adminUsername === undefined) s.adminUsername = ds.adminUsername;
+        if (s.adminPasswordHash === undefined) s.adminPasswordHash = ds.adminPasswordHash;
       }
       if (s.ownerName === undefined) s.ownerName = 'TJohn Staff';
       if (s.phoneNumber === undefined) s.phoneNumber = s.phone || '9876543210';
@@ -274,5 +274,17 @@ export function readDb(): Db {
 
 export function writeDb(db: Db): void {
   ensureDir();
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  const tempPath = DB_PATH + '.tmp';
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(db, null, 2));
+    fs.renameSync(tempPath, DB_PATH);
+  } catch (err: any) {
+    console.error('[DB WRITE ERROR] Atomic write failed, retrying with fallback:', err.message);
+    try {
+      fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+    } catch (fallbackErr: any) {
+      console.error('[DB FATAL ERROR] Fallback write also failed:', fallbackErr.message);
+      throw fallbackErr;
+    }
+  }
 }

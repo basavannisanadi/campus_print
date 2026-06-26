@@ -14,6 +14,7 @@ import {
   Database,
   ShieldAlert
 } from 'lucide-react';
+import { getApiUrl } from '../config';
 
 interface Props {
   navigate: (path: string) => void;
@@ -34,7 +35,7 @@ export default function OwnerDashboard({ navigate }: Props) {
     setLoginError('');
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(getApiUrl('/api/auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -74,7 +75,7 @@ export default function OwnerDashboard({ navigate }: Props) {
   const fetchDashboardData = async () => {
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch('/api/owner/dashboard', {
+      const res = await fetch(getApiUrl('/api/owner/dashboard'), {
         headers: {
           'Authorization': `Bearer ${token}`
         }

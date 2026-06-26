@@ -15,6 +15,7 @@ import {
   MapPin,
   Building
 } from 'lucide-react';
+import { getApiUrl } from '../config';
 
 interface ShopBreakdown {
   id: string;
@@ -59,7 +60,7 @@ export default function CentralAdmin({ navigate }: Props) {
 
   const fetchCentralStats = async () => {
     try {
-      const res = await fetch('/api/central/stats');
+      const res = await fetch(getApiUrl('/api/central/stats'));
       if (res.ok) {
         setStats(await res.json());
       }
@@ -102,7 +103,7 @@ export default function CentralAdmin({ navigate }: Props) {
       return;
     }
     try {
-      const res = await fetch('/api/reset', { method: 'POST' });
+      const res = await fetch(getApiUrl('/api/reset'), { method: 'POST' });
       if (res.ok) {
         fetchCentralStats();
         alert('All shop queues cleared successfully.');

@@ -27,8 +27,30 @@ function formatPrinterId(printerName) {
 // Ensure single instance via lockfile
 const LOCK_FILE = path.join(__dirname, 'daemon.lock');
 if (fs.existsSync(LOCK_FILE)) {
-  console.error("Another instance of the daemon is already running (daemon.lock exists). Exiting.");
-  process.exit(1);
+  let isRunning = false;
+  let existingPid = null;
+  try {
+    const lockContent = fs.readFileSync(LOCK_FILE, 'utf8').trim();
+    existingPid = parseInt(lockContent, 10);
+    if (existingPid && !isNaN(existingPid)) {
+      try {
+        process.kill(existingPid, 0);
+        isRunning = true;
+      } catch (err) {
+        isRunning = err.code === 'EPERM'; // If EPERM, process exists but we lack permissions
+      }
+    }
+  } catch (err) {
+    console.warn(`  [STARTUP WARNING] Failed to read lockfile: ${err.message}`);
+  }
+
+  if (isRunning) {
+    console.error(`Another instance of the daemon (PID ${existingPid}) is already running (daemon.lock exists). Exiting.`);
+    process.exit(1);
+  } else {
+    console.log(`  [STARTUP] Stale lockfile detected (PID ${existingPid} is not running). Removing it...`);
+    try { fs.unlinkSync(LOCK_FILE); } catch {}
+  }
 }
 fs.writeFileSync(LOCK_FILE, process.pid.toString());
 process.on('exit', () => { try { fs.unlinkSync(LOCK_FILE); } catch {} });

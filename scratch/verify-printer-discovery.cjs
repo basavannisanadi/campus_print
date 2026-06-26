@@ -129,7 +129,7 @@ async function runTests() {
       printerName: 'HP LaserJet Pro M102w',
       daemonVersion: '3.0.0',
       printers: startupDiscovered
-    });
+    }, { 'Authorization': `Bearer ${AGENT_TOKEN}` });
     
     // Verify backend updated discovery
     const shopDetailsStartup = await apiGet('/api/shops/tjohn_print');
@@ -148,13 +148,13 @@ async function runTests() {
     // 4. Trigger manual scan request from Admin
     console.log('Step 4: Triggering manual refresh from Admin Portal...');
     // We simulate using a mock admin token or bypass auth since /api/agent/scan-printers doesn't reject if token matches or for simplicity
-    const scanInitRes = await apiPost('/api/agent/scan-printers', { shopId: 'tjohn_print' });
+    const scanInitRes = await apiPost('/api/agent/scan-printers', { shopId: 'tjohn_print' }, { 'Authorization': `Bearer ${VALID_TOKEN}` });
     if (!scanInitRes.success || scanInitRes.message !== 'Scan initiated') {
       throw new Error(`Unexpected scan trigger response: ${JSON.stringify(scanInitRes)}`);
     }
 
     // Verify scan status is now 'scanning'
-    const settingsMid = await apiGet('/api/printer/settings?shopId=tjohn_print');
+    const settingsMid = await apiGet('/api/printer/settings?shopId=tjohn_print', { 'Authorization': `Bearer ${VALID_TOKEN}` });
     console.log('Agent status after manual trigger:', {
       scanRequested: settingsMid.scanRequested,
       scanStatus: settingsMid.scanStatus
@@ -167,7 +167,7 @@ async function runTests() {
     // 5. Test Scan Protection (only one scan at a time)
     console.log('Step 5: Testing scan protection/concurrency lock...');
     try {
-      await apiPost('/api/agent/scan-printers', { shopId: 'tjohn_print' });
+      await apiPost('/api/agent/scan-printers', { shopId: 'tjohn_print' }, { 'Authorization': `Bearer ${VALID_TOKEN}` });
       throw new Error('FAIL: Initiated a scan when another scan was already running!');
     } catch (err) {
       if (err.message.includes('already in progress') || err.message.includes('400')) {
@@ -187,10 +187,10 @@ async function runTests() {
       printerName: 'HP LaserJet Pro M102w',
       daemonVersion: '3.0.0',
       printers: manualDiscovered
-    });
+    }, { 'Authorization': `Bearer ${AGENT_TOKEN}` });
 
     // Verify backend status cleared scanRequested and transitioned scanStatus to completed
-    const settingsFinal = await apiGet('/api/printer/settings?shopId=tjohn_print');
+    const settingsFinal = await apiGet('/api/printer/settings?shopId=tjohn_print', { 'Authorization': `Bearer ${VALID_TOKEN}` });
     console.log('Agent status after heartbeat receipt:', {
       scanRequested: settingsFinal.scanRequested,
       scanStatus: settingsFinal.scanStatus

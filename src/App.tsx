@@ -4,6 +4,7 @@ import { PrintJob } from './types';
 import StudentPortal from './components/StudentPortal';
 import AdminPortal from './components/AdminPortal';
 import OwnerDashboard from './components/OwnerDashboard';
+import { getApiUrl } from './config';
 
 export default function App() {
   const [jobs, setJobs] = useState<PrintJob[]>([]);
@@ -56,7 +57,7 @@ export default function App() {
 
   const fetchJobs = async () => {
     try {
-      const res = await fetch(`/api/jobs?shopId=${selectedShopId}`);
+      const res = await fetch(getApiUrl(`/api/jobs?shopId=${selectedShopId}`));
       if (res.ok) {
         setJobs(await res.json());
         setConnected(true);
@@ -68,7 +69,7 @@ export default function App() {
 
   const fetchShops = async () => {
     try {
-      const res = await fetch('/api/shops');
+      const res = await fetch(getApiUrl('/api/shops'));
       if (res.ok) {
         setShops(await res.json());
       }
@@ -79,7 +80,7 @@ export default function App() {
 
   const fetchPrinterSettings = async () => {
     try {
-      const res = await fetch(`/api/printer/settings?shopId=${selectedShopId}`);
+      const res = await fetch(getApiUrl(`/api/printer/settings?shopId=${selectedShopId}`));
       if (res.ok) {
         const settings = await res.json();
         setPrinterStatus(settings.status);
@@ -127,7 +128,7 @@ export default function App() {
     const connectSSE = () => {
       if (sse) sse.close();
       
-      sse = new EventSource('/api/jobs/stream');
+      sse = new EventSource(getApiUrl('/api/jobs/stream'));
 
       sse.onmessage = (event) => {
         try {

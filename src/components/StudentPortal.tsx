@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 import { PrintJob } from '../types';
+import { getApiUrl } from '../config';
 
 interface Props {
   jobs: PrintJob[];
@@ -410,7 +411,7 @@ export default function StudentPortal({
           }
         });
 
-        xhr.open('POST', '/api/jobs');
+        xhr.open('POST', getApiUrl('/api/jobs'));
         xhr.send(formData);
       });
 

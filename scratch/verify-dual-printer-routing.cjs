@@ -89,7 +89,7 @@ async function test() {
       printerName: 'System Default',
       daemonVersion: '1.0.0-test',
       printers: printersList
-    });
+    }, AGENT_TOKEN);
     console.log('✓ Registered agent and reported discovered printers:', printersList);
 
     // Verify they are saved in db

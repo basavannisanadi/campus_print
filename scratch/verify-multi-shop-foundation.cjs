@@ -75,7 +75,7 @@ async function runTests() {
       printerName: 'Canon-Printer-Device',
       daemonVersion: '1.0.0-test',
       printers: ['Canon iR3225', 'HP LaserJet 400']
-    });
+    }, AGENT_TOKEN);
     console.log('Agent A heartbeat acknowledged. Scan requested:', hbA.settings?.scanRequested);
 
     const hbB = await apiPost('/api/agent/heartbeat', {
@@ -84,7 +84,7 @@ async function runTests() {
       printerName: 'Epson-Printer-Device',
       daemonVersion: '1.0.0-test',
       printers: ['Epson L3150', 'Canon G3010']
-    });
+    }, AGENT_TOKEN);
     console.log('Agent B heartbeat acknowledged. Scan requested:', hbB.settings?.scanRequested);
 
     // Verify discovered printers table in DB

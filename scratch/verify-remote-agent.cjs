@@ -56,7 +56,7 @@ async function test() {
       shopId: 'tjohn_print',
       printerName: 'Canon iR3225 Test (Updated)',
       daemonVersion: '1.0.0-test'
-    });
+    }, { 'Authorization': `Bearer ${AGENT_TOKEN}` });
     console.log('✓ PASS: Heartbeat update successful:', hbRes);
 
     const dbAfterHb = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
@@ -151,14 +151,15 @@ function apiGet(endpoint) {
   });
 }
 
-function apiPost(endpoint, body) {
+function apiPost(endpoint, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     const req = http.request(`${BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload)
+        'Content-Length': Buffer.byteLength(payload),
+        ...headers
       }
     }, (res) => {
       let data = '';

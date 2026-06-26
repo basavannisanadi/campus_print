@@ -20,6 +20,7 @@ import {
   Settings
 } from 'lucide-react';
 import { PrintJob, Shop } from '../types';
+import { getApiUrl } from '../config';
 
 // Converts "14:00" to "2:00 PM"
 const convert24To12 = (time24: string): string => {
@@ -218,7 +219,7 @@ export default function AdminPortal({
     setIsSearchingToken(true);
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch(`/api/jobs/token/${searchTokenQuery.trim()}`, {
+      const res = await fetch(getApiUrl(`/api/jobs/token/${searchTokenQuery.trim()}`), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -240,7 +241,7 @@ export default function AdminPortal({
     setApprovingJobId(jobId);
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch(`/api/jobs/${jobId}/approve`, {
+      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/approve`), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -267,7 +268,7 @@ export default function AdminPortal({
   const fetchStats = async () => {
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch(`/api/admin/stats?shopId=${activeShopId}`, {
+      const res = await fetch(getApiUrl(`/api/admin/stats?shopId=${activeShopId}`), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -286,14 +287,14 @@ export default function AdminPortal({
     const checkInterval = setInterval(async () => {
       attempts++;
       try {
-        const checkRes = await fetch(`/api/printer/settings?shopId=${activeShopId}`, {
+        const checkRes = await fetch(getApiUrl(`/api/printer/settings?shopId=${activeShopId}`), {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (checkRes.ok) {
           const settings = await checkRes.json();
           if (!settings.scanRequested || attempts > 20) {
             clearInterval(checkInterval);
-            const shopRes = await fetch(`/api/shops/${activeShopId}`);
+            const shopRes = await fetch(getApiUrl(`/api/shops/${activeShopId}`));
             if (shopRes.ok) {
               const shopData = await shopRes.json();
               setAvailablePrinters(shopData.printers || []);
@@ -332,7 +333,7 @@ export default function AdminPortal({
   const fetchPrinterSettings = async () => {
     try {
       const token = sessionStorage.getItem('adminToken') || '';
-      const res = await fetch(`/api/printer/settings?shopId=${activeShopId}`, {
+      const res = await fetch(getApiUrl(`/api/printer/settings?shopId=${activeShopId}`), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -361,14 +362,14 @@ export default function AdminPortal({
           setColorStatus(settings.color.status || 'offline');
         }
         
-        const shopRes = await fetch(`/api/shops/${activeShopId}`);
+        const shopRes = await fetch(getApiUrl(`/api/shops/${activeShopId}`));
         if (shopRes.ok) {
           const shopData = await shopRes.json();
           setAvailablePrinters(shopData.printers || []);
           setSelectedPrinter(shopData.activePrinterId || '');
         }
 
-        const mappingRes = await fetch(`/api/printers/mapping?shopId=${activeShopId}`, {
+        const mappingRes = await fetch(getApiUrl(`/api/printers/mapping?shopId=${activeShopId}`), {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (mappingRes.ok) {
@@ -390,7 +391,7 @@ export default function AdminPortal({
 
   const fetchShopProfile = async () => {
     try {
-      const res = await fetch('/api/shops');
+      const res = await fetch(getApiUrl('/api/shops'));
       if (res.ok) {
         const shopsList = await res.json();
         const myShop = shopsList.find((s: any) => s.id === activeShopId);
@@ -414,7 +415,7 @@ export default function AdminPortal({
     setScanSuccessMsg('');
     try {
       const token = sessionStorage.getItem('adminToken') || '';
-      const res = await fetch('/api/agent/scan-printers', {
+      const res = await fetch(getApiUrl('/api/agent/scan-printers'), {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -474,7 +475,7 @@ export default function AdminPortal({
     setLoginError('');
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(getApiUrl('/api/auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -527,7 +528,7 @@ export default function AdminPortal({
       const printerObj = availablePrinters.find(p => p.printerId === bwPrinterId);
       const printerNameVal = printerObj ? printerObj.printerName : '';
       
-      const res = await fetch('/api/printers/bw', {
+      const res = await fetch(getApiUrl('/api/printers/bw'), {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -561,7 +562,7 @@ export default function AdminPortal({
       const printerObj = availablePrinters.find(p => p.printerId === colorPrinterId);
       const printerNameVal = printerObj ? printerObj.printerName : '';
       
-      const res = await fetch('/api/printers/color', {
+      const res = await fetch(getApiUrl('/api/printers/color'), {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -592,7 +593,7 @@ export default function AdminPortal({
     setProfileSuccess(false);
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch(`/api/shops/${activeShopId}/settings`, {
+      const res = await fetch(getApiUrl(`/api/shops/${activeShopId}/settings`), {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -622,7 +623,7 @@ export default function AdminPortal({
     setPricingSuccess(false);
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch(`/api/shops/${activeShopId}/pricing`, {
+      const res = await fetch(getApiUrl(`/api/shops/${activeShopId}/pricing`), {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -649,7 +650,7 @@ export default function AdminPortal({
   const updateJobStatus = async (jobId: string, newStatus: string, extraBody = {}) => {
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch(`/api/jobs/${jobId}/status`, {
+      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/status`), {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -672,7 +673,7 @@ export default function AdminPortal({
     }
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch('/api/reset', {
+      const res = await fetch(getApiUrl('/api/reset'), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

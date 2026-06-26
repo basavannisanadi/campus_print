@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import crypto from 'crypto';
 import multer from 'multer';
@@ -175,6 +178,14 @@ function signShopId(shopId: string): string {
   return `token_${shopId}_${hmac.digest('hex')}`;
 }
 
+function sanitizeShop(shop: any): any {
+  if (!shop || typeof shop !== 'object') return shop;
+  const copy = { ...shop };
+  delete copy.adminUsername;
+  delete copy.adminPasswordHash;
+  return copy;
+}
+
 function verifyShopToken(token: string): string | null {
   if (!token.startsWith('token_')) return null;
   const parts = token.split('_');
@@ -183,9 +194,13 @@ function verifyShopToken(token: string): string | null {
   const shopId = parts.slice(1, -1).join('_');
   
   const expectedHmac = crypto.createHmac('sha256', ADMIN_API_KEY).update(shopId).digest('hex');
-  if (signature === expectedHmac) {
-    return shopId;
-  }
+  try {
+    const signatureBuffer = Buffer.from(signature, 'hex');
+    const expectedBuffer = Buffer.from(expectedHmac, 'hex');
+    if (signatureBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+      return shopId;
+    }
+  } catch {}
   return null;
 }
 
@@ -298,12 +313,24 @@ setInterval(() => {
   }
 }, 10000);
 
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) 
+  : [];
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, same-origin)
     if (!origin) return callback(null, true);
     // Allow localhost and trycloudflare.com domains
     if (origin.includes('localhost') || origin.includes('trycloudflare.com')) {
+      return callback(null, true);
+    }
+    // Allow configured origins
+    if (ALLOWED_ORIGINS.includes('*') || ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
+    }
+    // Allow any vercel deployment
+    if (origin.endsWith('.vercel.app')) {
       return callback(null, true);
     }
     callback(new Error('Not allowed by CORS'));
@@ -339,7 +366,7 @@ app.post('/api/auth/login', (req, res) => {
   const { shopId, username, password } = req.body;
 
   // 1. Owner Login check
-  if (username === 'owner' && password === 'campusprint_admin_123') {
+  if (username === 'owner' && password === ADMIN_API_KEY) {
     return res.json({
       role: 'owner',
       shopId: '',
@@ -541,7 +568,16 @@ function broadcastSse(data: any) {
     sanitizedData = JSON.parse(JSON.stringify(data));
     const sanitizeJob = (j: any) => {
       if (j && typeof j === 'object') {
+        delete j.studentName;
+        delete j.studentEmail;
         delete j.serverFilePath;
+        delete j.tokenId;
+      }
+    };
+    const sanitizeShop = (s: any) => {
+      if (s && typeof s === 'object') {
+        delete s.adminUsername;
+        delete s.adminPasswordHash;
       }
     };
     if (sanitizedData.job) {
@@ -549,6 +585,12 @@ function broadcastSse(data: any) {
     }
     if (Array.isArray(sanitizedData.jobs)) {
       sanitizedData.jobs.forEach(sanitizeJob);
+    }
+    if (sanitizedData.shop) {
+      sanitizeShop(sanitizedData.shop);
+    }
+    if (Array.isArray(sanitizedData.shops)) {
+      sanitizedData.shops.forEach(sanitizeShop);
     }
   }
   const payload = `data: ${JSON.stringify(sanitizedData)}\n\n`;
@@ -762,7 +804,7 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
 }
 
 // GET /api/printer/settings - fetch current printer settings and status
-app.get('/api/printer/settings', (req, res) => {
+app.get('/api/printer/settings', requireAdmin, (req, res) => {
   const db = readDb();
   const shopId = (req.query.shopId as string) || 'alliance_print';
   const resolved = getResolvedPrinterSettings(db, shopId);
@@ -952,7 +994,7 @@ app.get('/api/shops', (req, res) => {
     const printerStatus = isOnline ? 'online' : 'offline';
     
     return {
-      ...shop,
+      ...sanitizeShop(shop),
       printerStatus,
       lastHeartbeat: agent && lastSeenTime > 0 ? agent.lastSeen : shop.lastHeartbeat || '',
       printerName: agent ? agent.printerName : (shop.id === 'alliance_print' ? (db.printerSettings?.selectedPrinter || 'UNKNOWN') : 'UNKNOWN'),
@@ -979,7 +1021,7 @@ app.get('/api/shops/:id', (req, res) => {
   const activePrinter = shopPrinters.find(p => p.printerId === shop.activePrinterId);
 
   res.json({
-    ...shop,
+    ...sanitizeShop(shop),
     printerStatus,
     lastHeartbeat: agent && lastSeenTime > 0 ? agent.lastSeen : shop.lastHeartbeat || '',
     printerName: agent ? agent.printerName : 'UNKNOWN',
@@ -1007,7 +1049,7 @@ app.put('/api/shops/:id/settings', requireAdmin, (req, res) => {
   
   writeDb(db);
   broadcastSse({ type: 'shop_updated', shop });
-  res.json(shop);
+  res.json(sanitizeShop(shop));
 });
 
 // PUT /api/shops/:id/pricing - configure shop pricing
@@ -1024,7 +1066,7 @@ app.put('/api/shops/:id/pricing', requireAdmin, (req, res) => {
   
   writeDb(db);
   broadcastSse({ type: 'shop_updated', shop });
-  res.json(shop);
+  res.json(sanitizeShop(shop));
 });
 
 // PUT /api/shops/:id/maintenance - toggle maintenance mode
@@ -1049,7 +1091,7 @@ app.put('/api/shops/:id/maintenance', requireAdmin, (req, res) => {
   writeDb(db);
   broadcastSse({ type: 'shop_updated', shop });
   
-  res.json(shop);
+  res.json(sanitizeShop(shop));
 });
 
 // PUT /api/shops/:id/select-printer - select active printer
@@ -1174,7 +1216,7 @@ app.put('/api/printers/color', requireAdmin, (req, res) => {
 });
 
 // POST /api/agent/scan-printers - trigger scan for a shop's agent
-app.post('/api/agent/scan-printers', (req, res) => {
+app.post('/api/agent/scan-printers', requireAdmin, (req, res) => {
   const { shopId } = req.body;
   if (!shopId) return res.status(400).json({ error: 'Missing shopId' });
   
@@ -1299,7 +1341,7 @@ app.post('/api/agent/register', (req, res) => {
 });
 
 // POST /api/agent/heartbeat - Update heartbeat for a remote print agent
-app.post('/api/agent/heartbeat', (req, res) => {
+app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
   const { agentId, shopId, printerName, daemonVersion, printers } = req.body;
 
   if (!agentId || !shopId) {
@@ -1489,7 +1531,7 @@ app.post('/api/shops/:id/heartbeat', requireAdmin, (req, res) => {
     lastClientHeartbeat = new Date().toISOString();
     shopLastHeartbeatMemory.set(req.params.id, lastClientHeartbeat);
     responseShop = {
-      ...shop,
+      ...sanitizeShop(shop),
       lastHeartbeat: lastClientHeartbeat
     };
     broadcastSse({ type: 'shop_updated', shop: responseShop });
@@ -1514,7 +1556,7 @@ app.post('/api/shops/:id', requireAdmin, (req, res) => {
   
   writeDb(db);
   broadcastSse({ type: 'shop_updated', shop });
-  res.json(shop);
+  res.json(sanitizeShop(shop));
 });
 
 // GET /api/jobs - list all jobs (most recent first)
@@ -1546,23 +1588,10 @@ app.get('/api/jobs', (req, res) => {
   res.json(safeJobs);
 });
 
-// POST /api/jobs - upload multiple files and create print jobs
 app.post('/api/jobs', uploadLimiter, upload.array('files', 10), async (req, res) => {
   try {
-    const db = readDb();
     const { studentName, studentEmail, configs, scheduledFor, shopId } = req.body;
     const targetShopId = shopId || 'alliance_print';
-
-    const shop = db.shops.find(s => s.id === targetShopId);
-    if (!shop) {
-      const uploadedFiles = req.files as Express.Multer.File[];
-      if (uploadedFiles && uploadedFiles.length > 0) {
-        uploadedFiles.forEach(f => {
-          try { fs.unlinkSync(f.path); } catch {}
-        });
-      }
-      return res.status(404).json({ error: `Shop "${targetShopId}" is not registered on the platform.` });
-    }
 
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
@@ -1576,6 +1605,155 @@ app.post('/api/jobs', uploadLimiter, upload.array('files', 10), async (req, res)
       console.error('Failed to parse configs JSON:', err);
     }
 
+    // Strict page range regex validation (Priority 4)
+    const pageRangeRegex = /^\d+(-\d+)?(,\d+(-\d+)?)*$/;
+    for (let idx = 0; idx < configList.length; idx++) {
+      const conf = configList[idx];
+      if (conf && conf.pageRange && conf.pageRange.trim()) {
+        const trimmedRange = conf.pageRange.trim();
+        if (!pageRangeRegex.test(trimmedRange)) {
+          if (files && files.length > 0) {
+            files.forEach(f => {
+              try { fs.unlinkSync(f.path); } catch {}
+            });
+          }
+          return res.status(400).json({ 
+            error: `Invalid page range format: "${conf.pageRange}". Please use numbers, hyphens, and commas (e.g. '1-3,5').` 
+          });
+        }
+      }
+    }
+
+    let hasBw = false;
+    let hasColor = false;
+    const parsedFiles: {
+      file: Express.Multer.File;
+      pageCount: number;
+      copiesNum: number;
+      printType: 'bw' | 'color';
+      printMode: 'mono' | 'color';
+      sides: 'single' | 'double';
+      pageRange?: string;
+    }[] = [];
+
+    // 1. Process files asynchronously (running PDF loading, signatures validation, extension checks)
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileConfig = configList[i] || {};
+      
+      const ext = path.extname(file.originalname).toLowerCase();
+      const mime = file.mimetype.toLowerCase();
+
+      // 1.1 Extension and MIME type check
+      const allowedExts = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.ppt', '.pptx'];
+      const allowedMimes = [
+        'application/pdf',
+        'image/png',
+        'image/jpeg',
+        'image/jpg',
+        'image/pjpeg',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+      ];
+
+      if (!allowedExts.includes(ext) || !allowedMimes.includes(mime)) {
+        try { fs.unlinkSync(file.path); } catch {}
+        for (let j = i + 1; j < files.length; j++) {
+          try { fs.unlinkSync(files[j].path); } catch {}
+        }
+        return res.status(400).json({ 
+          error: `Invalid file type for "${file.originalname}". Only PDF, images, Word (.doc/.docx), and PowerPoint (.ppt/.pptx) are supported.` 
+        });
+      }
+
+      // 1.2 Magic Bytes Check
+      let isSignatureValid = false;
+      try {
+        const buffer = Buffer.alloc(8);
+        const fd = fs.openSync(file.path, 'r');
+        fs.readSync(fd, buffer, 0, 8, 0);
+        fs.closeSync(fd);
+
+        const hex = buffer.toString('hex').toUpperCase();
+
+        if (ext === '.pdf') {
+          isSignatureValid = hex.startsWith('25504446');
+        } else if (ext === '.png') {
+          isSignatureValid = hex.startsWith('89504E47');
+        } else if (ext === '.jpg' || ext === '.jpeg') {
+          isSignatureValid = hex.startsWith('FFD8FF');
+        } else if (ext === '.docx' || ext === '.pptx') {
+          isSignatureValid = hex.startsWith('504B0304');
+        } else if (ext === '.doc' || ext === '.ppt') {
+          isSignatureValid = hex.startsWith('D0CF11E0');
+        }
+      } catch (err) {
+        console.error('Magic bytes read failed:', err);
+      }
+
+      if (!isSignatureValid) {
+        try { fs.unlinkSync(file.path); } catch {}
+        for (let j = i + 1; j < files.length; j++) {
+          try { fs.unlinkSync(files[j].path); } catch {}
+        }
+        return res.status(400).json({ 
+          error: `Security verification failed: File contents of "${file.originalname}" do not match its extension (${ext}).` 
+        });
+      }
+
+      const copiesNum = Math.max(1, Math.min(10, parseInt(fileConfig.copies, 10) || 1));
+      const printType = fileConfig.printType === 'color' ? 'color' : 'bw';
+      const printMode = printType === 'color' ? 'color' : 'mono';
+      const sides = fileConfig.sides === 'double' ? 'double' : 'single';
+      const pageRange = fileConfig.pageRange || undefined;
+
+      if (printType === 'color') hasColor = true;
+      else hasBw = true;
+
+      let pageCount = 1;
+      if (ext === '.pdf') {
+        try {
+          const fileBuffer = fs.readFileSync(file.path);
+          const pdfDoc = await PDFDocument.load(fileBuffer, { ignoreEncryption: true });
+          pageCount = pdfDoc.getPageCount();
+        } catch (err) {
+          console.error('pdf-lib failed to read page count, falling back to regex:', err);
+          try {
+            const buf = fs.readFileSync(file.path, 'latin1');
+            const match = buf.match(/\/Count\s+(\d+)/g);
+            if (match) {
+              const counts = match.map(m => parseInt(m.replace(/\/Count\s+/, ''), 10)).filter(n => !isNaN(n));
+              if (counts.length > 0) pageCount = Math.max(...counts);
+            }
+          } catch {}
+        }
+      }
+
+      parsedFiles.push({
+        file,
+        pageCount,
+        copiesNum,
+        printType,
+        printMode,
+        sides,
+        pageRange
+      });
+    }
+
+    // 2. Synchronous Database Update Block (Fully atomic)
+    const db = readDb();
+    const shop = db.shops.find(s => s.id === targetShopId);
+    if (!shop) {
+      if (files && files.length > 0) {
+        files.forEach(f => {
+          try { fs.unlinkSync(f.path); } catch {}
+        });
+      }
+      return res.status(404).json({ error: `Shop "${targetShopId}" is not registered on the platform.` });
+    }
+
     const isGlobalMaintenance = !!shop.bwMaintenanceMode && !!shop.colorMaintenanceMode;
     if (isGlobalMaintenance) {
       if (files && files.length > 0) {
@@ -1584,16 +1762,6 @@ app.post('/api/jobs', uploadLimiter, upload.array('files', 10), async (req, res)
         });
       }
       return res.status(503).json({ error: 'This print shop is currently under maintenance.' });
-    }
-
-    // Check printer-specific maintenance modes
-    let hasBw = false;
-    let hasColor = false;
-    for (let idx = 0; idx < files.length; idx++) {
-      const fileConfig = configList[idx] || {};
-      const printType = fileConfig.printType === 'color' ? 'color' : 'bw';
-      if (printType === 'color') hasColor = true;
-      else hasBw = true;
     }
 
     if (hasBw && shop.bwMaintenanceMode) {
@@ -1625,25 +1793,6 @@ app.post('/api/jobs', uploadLimiter, upload.array('files', 10), async (req, res)
       return res.status(503).json({ error: 'The print shop is currently offline. Print submissions are temporarily disabled.' });
     }
 
-    // Strict page range regex validation (Priority 4)
-    const pageRangeRegex = /^\d+(-\d+)?(,\d+(-\d+)?)*$/;
-    for (let idx = 0; idx < configList.length; idx++) {
-      const conf = configList[idx];
-      if (conf && conf.pageRange && conf.pageRange.trim()) {
-        const trimmedRange = conf.pageRange.trim();
-        if (!pageRangeRegex.test(trimmedRange)) {
-          if (files && files.length > 0) {
-            files.forEach(f => {
-              try { fs.unlinkSync(f.path); } catch {}
-            });
-          }
-          return res.status(400).json({ 
-            error: `Invalid page range format: "${conf.pageRange}". Please use numbers, hyphens, and commas (e.g. '1-3,5').` 
-          });
-        }
-      }
-    }
-
     // Auto schedule if the shop is closed
     let finalScheduledFor = scheduledFor || undefined;
     if (shop && !shop.isOpen) {
@@ -1652,100 +1801,8 @@ app.post('/api/jobs', uploadLimiter, upload.array('files', 10), async (req, res)
 
     const createdJobs: DbJob[] = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileConfig = configList[i] || {};
-      
-      const ext = path.extname(file.originalname).toLowerCase();
-      const mime = file.mimetype.toLowerCase();
-
-      // 1. Extension and MIME type check
-      const allowedExts = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.ppt', '.pptx'];
-      const allowedMimes = [
-        'application/pdf',
-        'image/png',
-        'image/jpeg',
-        'image/jpg',
-        'image/pjpeg',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-      ];
-
-      if (!allowedExts.includes(ext) || !allowedMimes.includes(mime)) {
-        try { fs.unlinkSync(file.path); } catch {}
-        // Cleanup all other files uploaded in this batch
-        for (let j = i + 1; j < files.length; j++) {
-          try { fs.unlinkSync(files[j].path); } catch {}
-        }
-        return res.status(400).json({ 
-          error: `Invalid file type for "${file.originalname}". Only PDF, images, Word (.doc/.docx), and PowerPoint (.ppt/.pptx) are supported.` 
-        });
-      }
-
-      // 2. Magic Bytes / Header Signature Check
-      let isSignatureValid = false;
-      try {
-        const buffer = Buffer.alloc(8);
-        const fd = fs.openSync(file.path, 'r');
-        fs.readSync(fd, buffer, 0, 8, 0);
-        fs.closeSync(fd);
-
-        const hex = buffer.toString('hex').toUpperCase();
-
-        if (ext === '.pdf') {
-          isSignatureValid = hex.startsWith('25504446');
-        } else if (ext === '.png') {
-          isSignatureValid = hex.startsWith('89504E47');
-        } else if (ext === '.jpg' || ext === '.jpeg') {
-          isSignatureValid = hex.startsWith('FFD8FF');
-        } else if (ext === '.docx' || ext === '.pptx') {
-          isSignatureValid = hex.startsWith('504B0304'); // ZIP header for OpenXML Word/PPT
-        } else if (ext === '.doc' || ext === '.ppt') {
-          isSignatureValid = hex.startsWith('D0CF11E0'); // CFB header for binary Word/PPT
-        }
-      } catch (err) {
-        console.error('Magic bytes read failed:', err);
-      }
-
-      if (!isSignatureValid) {
-        try { fs.unlinkSync(file.path); } catch {}
-        // Cleanup all remaining files in this batch
-        for (let j = i + 1; j < files.length; j++) {
-          try { fs.unlinkSync(files[j].path); } catch {}
-        }
-        return res.status(400).json({ 
-          error: `Security verification failed: File contents of "${file.originalname}" do not match its extension (${ext}).` 
-        });
-      }
-
-      const copiesNum = Math.max(1, Math.min(10, parseInt(fileConfig.copies, 10) || 1));
-      const printType = fileConfig.printType === 'color' ? 'color' : 'bw';
-      const printMode = printType === 'color' ? 'color' : 'mono';
-      const sides = fileConfig.sides === 'double' ? 'double' : 'single';
-      const pageRange = fileConfig.pageRange || undefined;
-
-      // Robust page count: 1 for images, attempt pdf-lib load for PDFs
-      let pageCount = 1;
-      if (ext === '.pdf') {
-        try {
-          const fileBuffer = fs.readFileSync(file.path);
-          const pdfDoc = await PDFDocument.load(fileBuffer, { ignoreEncryption: true });
-          pageCount = pdfDoc.getPageCount();
-        } catch (err) {
-          console.error('pdf-lib failed to read page count, falling back to regex:', err);
-          try {
-            const buf = fs.readFileSync(file.path, 'latin1');
-            const match = buf.match(/\/Count\s+(\d+)/g);
-            if (match) {
-              const counts = match.map(m => parseInt(m.replace(/\/Count\s+/, ''), 10)).filter(n => !isNaN(n));
-              if (counts.length > 0) pageCount = Math.max(...counts);
-            }
-          } catch {}
-        }
-      }
-
+    for (const parsed of parsedFiles) {
+      const { file, pageCount, copiesNum, printType, printMode, sides, pageRange } = parsed;
       const job: DbJob = {
         id: 'job-' + Date.now() + '-' + Math.round(Math.random() * 1e5),
         token: genToken(),
@@ -2120,7 +2177,13 @@ app.get('/api/central/stats', requireAdmin, (req, res) => {
 // POST /api/reset - clear all jobs
 app.post('/api/reset', requireAdmin, (req, res) => {
   const db = readDb();
-  writeDb({ jobs: [], shops: db.shops });
+  writeDb({
+    jobs: [],
+    shops: db.shops,
+    agents: db.agents || [],
+    printers: db.printers || [],
+    printerSettings: db.printerSettings
+  });
   // Clean uploads
   try {
     const files = fs.readdirSync(UPLOADS_DIR);
