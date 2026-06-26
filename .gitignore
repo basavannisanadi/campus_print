@@ -15,3 +15,11 @@ print-client/printed_output/
 temp/
 logs/
 daemon.lock
+
+# Local Client/Server Files
+print-client/config.json
+*.exe
+*.zip
+
+
+.agents/

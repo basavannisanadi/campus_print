@@ -23,6 +23,12 @@ interface Props {
   printerStatus: 'online' | 'offline';
   expectedReturnTime: string;
   averagePrintSpeed: number;
+  underMaintenance: boolean;
+  shopInfo: any;
+  shops: any[];
+  selectedShopId: string;
+  onSelectShop: (shopId: string) => void;
+  agentOnlineStatus?: 'online' | 'offline';
 }
 
 const ACCEPTED_TYPES = [
@@ -84,15 +90,28 @@ function countPagesFromRange(rangeStr: string, totalPages: number): number {
 
 interface FileConfig {
   copies: number;
-  printMode: 'mono';
+  printMode: 'mono' | 'color';
+  printType: 'bw' | 'color';
   sides: 'single' | 'double';
   pageCount: number;
   choosePagesType: 'all' | 'custom';
   customPages: string;
 }
 
-export default function StudentPortal({ jobs, printerStatus, expectedReturnTime, averagePrintSpeed }: Props) {
+export default function StudentPortal({
+  jobs,
+  printerStatus,
+  expectedReturnTime,
+  averagePrintSpeed,
+  underMaintenance,
+  shopInfo,
+  shops,
+  selectedShopId,
+  onSelectShop,
+  agentOnlineStatus = 'offline'
+}: Props) {
   // Authentication states
+  const isGlobalMaintenance = (!!shopInfo?.bwMaintenanceMode && !!shopInfo?.colorMaintenanceMode) || underMaintenance;
   const [studentName, setStudentName] = useState(() => localStorage.getItem('studentName') || '');
   const [studentEmail, setStudentEmail] = useState(() => localStorage.getItem('studentEmail') || '');
   const [isRemembered, setIsRemembered] = useState(() => !!(localStorage.getItem('studentName') && localStorage.getItem('studentEmail')));
@@ -115,9 +134,25 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
   const [dragOver, setDragOver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [success, setSuccess] = useState<{ jobs: { token: string; fileName: string }[] } | null>(null);
+  const [success, setSuccess] = useState<{ jobs: { token: string; fileName: string; tokenId?: string }[] } | null>(null);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const getFileCost = (fileName: string): number => {
+    const conf = fileConfigs[fileName];
+    if (!conf) return 0;
+    const printedPages = countPagesFromRange(conf.choosePagesType === 'custom' ? conf.customPages : '', conf.pageCount);
+    if (conf.sides === 'double') {
+      return conf.copies * Math.ceil(printedPages / 2) * (shopInfo?.duplexPrice || 3);
+    } else {
+      const rate = conf.printType === 'color' ? (shopInfo?.colorPrice || 5) : (shopInfo?.bwPrice || 2);
+      return conf.copies * printedPages * rate;
+    }
+  };
+
+  const getBatchTotal = (): number => {
+    return files.reduce((sum, file) => sum + getFileCost(file.name), 0);
+  };
 
   // Clean up object URLs on unmount
   const previewUrlsRef = useRef(previewUrls);
@@ -219,7 +254,8 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
       updatedFiles.push(file);
       updatedConfigs[file.name] = {
         copies: 1,
-        printMode: 'mono',
+        printMode: (!!shopInfo?.bwMaintenanceMode && !shopInfo?.colorMaintenanceMode) ? 'color' : 'mono',
+        printType: (!!shopInfo?.bwMaintenanceMode && !shopInfo?.colorMaintenanceMode) ? 'color' : 'bw',
         sides: 'single',
         pageCount,
         choosePagesType: 'all',
@@ -301,6 +337,27 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
     if (!studentEmail.trim()) return setError('Please enter your email.');
     if (files.length === 0) return setError('Please upload at least one file to print.');
 
+    if (isGlobalMaintenance) {
+      return setError('This print shop is currently under maintenance.');
+    }
+
+    let hasBw = false;
+    let hasColor = false;
+    files.forEach(file => {
+      const conf = fileConfigs[file.name] || {};
+      const printType = conf.printType === 'color' ? 'color' : 'bw';
+      if (printType === 'color') hasColor = true;
+      else hasBw = true;
+    });
+
+    if (hasBw && shopInfo.bwMaintenanceMode) {
+      return setError('Black & White printing is temporarily unavailable.');
+    }
+
+    if (hasColor && shopInfo.colorMaintenanceMode) {
+      return setError('Color printing is temporarily unavailable.');
+    }
+
     setSubmitting(true);
     setUploadProgress(0);
 
@@ -311,13 +368,14 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
     
     formData.append('studentName', studentName.trim());
     formData.append('studentEmail', studentEmail.trim());
-    formData.append('shopId', 'alliance_print');
+    formData.append('shopId', selectedShopId);
     
     const configsArray = files.map(file => {
       const conf = fileConfigs[file.name];
       return {
         copies: conf.copies,
-        printMode: 'mono',
+        printType: conf.printType || 'bw',
+        printMode: conf.printType === 'color' ? 'color' : 'mono',
         sides: conf.sides,
         pageRange: conf.choosePagesType === 'custom' ? conf.customPages : ''
       };
@@ -325,7 +383,7 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
     formData.append('configs', JSON.stringify(configsArray));
 
     try {
-      const result = await new Promise<{ token: string; fileName: string }[]>((resolve, reject) => {
+      const result = await new Promise<{ token: string; fileName: string; tokenId?: string }[]>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
 
         xhr.upload.addEventListener('progress', (event) => {
@@ -439,7 +497,7 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
 
   // Student's recent jobs
   const studentRecentJobs = jobs.filter(j => j.studentEmail === studentEmail);
-  const studentActiveJobs = studentRecentJobs.filter(j => j.status === 'queued' || j.status === 'printing');
+  const studentActiveJobs = studentRecentJobs.filter(j => j.status === 'pending_approval' || j.status === 'queued' || j.status === 'printing');
 
   // Currently printing document name
   const globalPrintingJob = activeQueueJobs.find(j => j.status === 'printing');
@@ -645,7 +703,7 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
       <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn font-sans text-left">
         <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 border border-indigo-100 text-indigo-700">
-            📍 Alliance Print Center
+            📍 {shopInfo.name || 'Alliance Print Center'}
           </span>
           <button
             onClick={handleSignOut}
@@ -667,36 +725,31 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
                 </div>
               </div>
               <h2 className="text-2xl font-bold text-slate-900 mb-2">
-                Sent to Print!
+                Upload Successful
               </h2>
               <p className="text-slate-500 mb-6 text-sm">
-                Your files have been queued successfully.
+                Please show your Approval Token to the shop owner after payment.
               </p>
 
               <div className="bg-slate-50 rounded-xl p-5 mb-6 border border-slate-100 text-left max-h-56 overflow-y-auto font-sans">
                 <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 font-mono">
-                  Your Print Tokens
+                  Your Approval Tokens
                 </p>
                 <div className="space-y-2">
                   {success.jobs.map((j, idx) => {
-                    const details = getQueueDetails(jobs.find(x => x.token === j.token)?.id || '');
                     return (
                       <div key={idx} className="flex flex-col bg-white p-3 rounded-lg border border-slate-200 space-y-1">
                         <div className="flex justify-between items-center">
                           <span className="text-xs text-slate-500 font-semibold truncate max-w-[170px]">
                             {j.fileName}
                           </span>
-                          <span className="text-sm font-extrabold text-indigo-600 font-mono">
-                            {j.token}
+                          <span className="text-sm font-extrabold text-orange-600 font-mono">
+                            {j.tokenId || 'N/A'}
                           </span>
                         </div>
-                        {details && (
-                          <div className="text-[10px] text-slate-400 font-mono flex flex-wrap gap-x-2">
-                            <span>Pos: #{details.position}</span>
-                            <span>·</span>
-                            <span>ETA: {details.estimatedCompletion}</span>
-                          </div>
-                        )}
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          Status: Pending Approval
+                        </div>
                       </div>
                     );
                   })}
@@ -736,12 +789,31 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
       {/* Top Info Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 w-fit">
-            📍 Alliance Print Center
-          </span>
+          {shops.length > 1 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider font-mono">Shop:</span>
+              <select
+                value={selectedShopId}
+                onChange={(e) => onSelectShop(e.target.value)}
+                className="py-1.5 px-3 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              >
+                {shops.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 w-fit">
+              📍 {shopInfo.name || 'Alliance Print Center'}
+            </span>
+          )}
           <div className="flex items-center gap-4 text-xs text-slate-400 font-semibold font-mono">
-            <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400" /> Ground Floor, Main Block</span>
-            <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" /> 9876543210</span>
+            <span className="flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-slate-400" /> {shopInfo.address || 'N/A'}
+            </span>
+            <span className="flex items-center gap-1">
+              <Phone className="w-3.5 h-3.5 text-slate-400" /> {shopInfo.phoneNumber || shopInfo.phone || 'N/A'}
+            </span>
           </div>
         </div>
         <button
@@ -752,14 +824,53 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
         </button>
       </div>
 
-      {/* Offline Precaution Warning Card */}
-      {printerStatus === 'offline' && (
+      {/* Agent Offline Precaution Warning Card */}
+      {agentOnlineStatus !== 'online' && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
           <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
           <div>
-            <h4 className="text-sm font-bold">⚠️ Printer is currently unavailable.</h4>
+            <h4 className="text-sm font-bold">⚠️ Printing service is currently offline.</h4>
             <p className="text-xs text-rose-700 mt-1 leading-normal">
-              Expected availability: <strong>{expectedReturnTime}</strong>. Documents can still be uploaded and queued. Printing will automatically begin when the printer becomes available.
+              The print agent is disconnected. You can still upload and queue documents; they will print automatically when the shop agent reconnects.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Maintenance Mode Warning Card */}
+      {isGlobalMaintenance && (
+        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-sm font-bold">⚠️ Shop Offline</h4>
+            <p className="text-xs text-amber-700 mt-1 leading-normal font-medium font-bold">
+              This print shop is currently under maintenance. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* B&W Maintenance Mode Warning Card */}
+      {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.bwMaintenanceMode && (
+        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-sm font-bold">⚠️ B&W Printing Offline</h4>
+            <p className="text-xs text-amber-700 mt-1 leading-normal font-medium">
+              Black & White printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || '06:02 PM'}</strong>.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Color Maintenance Mode Warning Card */}
+      {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.colorMaintenanceMode && (
+        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-sm font-bold">⚠️ Color Printing Offline</h4>
+            <p className="text-xs text-amber-700 mt-1 leading-normal font-medium">
+              Color printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
             </p>
           </div>
         </div>
@@ -802,12 +913,14 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
                   Ingestion File
                 </label>
                 <div
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  onClick={() => !submitting && fileInputRef.current?.click()}
+                  onDragOver={(submitting || isGlobalMaintenance) ? undefined : handleDragOver}
+                  onDragLeave={(submitting || isGlobalMaintenance) ? undefined : handleDragLeave}
+                  onDrop={(submitting || isGlobalMaintenance) ? undefined : handleDrop}
+                  onClick={() => !(submitting || isGlobalMaintenance) && fileInputRef.current?.click()}
                   className={`relative rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-all duration-200 ${
-                    dragOver
+                    (submitting || isGlobalMaintenance)
+                      ? 'border-slate-100 bg-slate-50/50 cursor-not-allowed opacity-60'
+                      : dragOver
                       ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]'
                       : 'border-slate-200 bg-slate-50/30 hover:border-indigo-300 hover:bg-indigo-50/20'
                   }`}
@@ -819,7 +932,7 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
                     accept={ACCEPTED_EXT}
                     onChange={handleFileChange}
                     className="hidden"
-                    disabled={submitting}
+                    disabled={submitting || isGlobalMaintenance}
                   />
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Upload className="w-8 h-8 text-slate-300" />
@@ -877,15 +990,32 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
                           </p>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); removeFile(file.name); }}
-                        className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 border-none bg-transparent cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs font-black text-slate-700 bg-slate-100/80 px-2.5 py-1 rounded-lg border border-slate-200/40">
+                          ₹{getFileCost(file.name)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); removeFile(file.name); }}
+                          className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 border-none bg-transparent cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {files.length > 0 && (
+                <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl text-left flex justify-between items-center animate-fadeIn font-sans">
+                  <div>
+                    <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-widest font-mono">Batch Total Estimate</span>
+                    <p className="text-lg font-black text-slate-800 mt-1">₹{getBatchTotal()}</p>
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-400 font-mono">
+                    {files.length} {files.length === 1 ? 'File' : 'Files'}
+                  </span>
                 </div>
               )}
 
@@ -1157,15 +1287,49 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
                       </>
                     )}
 
-                    {/* Ink Mode locked channel */}
+                    {/* Print Type Selector */}
                     <div className="space-y-1.5">
-                      <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Ink Mode Channel</span>
-                      <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl text-xs text-slate-650 font-bold flex items-center justify-between">
-                        <span className="flex items-center gap-1.5">🖤 Monochrome (Black & White)</span>
-                        <span className="text-[9px] bg-slate-200 border border-slate-300 text-slate-600 px-2 py-0.5 rounded font-extrabold font-mono uppercase tracking-wider">LOCKED</span>
+                      <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Print Type</span>
+                      <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
+                        <button
+                          type="button"
+                          disabled={!!shopInfo.bwMaintenanceMode}
+                          onClick={() => {
+                            if (shopInfo.bwMaintenanceMode) return;
+                            setFileConfigs(prev => ({
+                              ...prev,
+                              [activeFileName]: { ...prev[activeFileName], printType: 'bw' }
+                            }));
+                          }}
+                          className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
+                            activeConf.printType === 'bw'
+                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
+                              : 'bg-transparent text-slate-400 hover:text-slate-600'
+                          } ${shopInfo.bwMaintenanceMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          Black & White
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!shopInfo.colorMaintenanceMode}
+                          onClick={() => {
+                            if (shopInfo.colorMaintenanceMode) return;
+                            setFileConfigs(prev => ({
+                              ...prev,
+                              [activeFileName]: { ...prev[activeFileName], printType: 'color' }
+                            }));
+                          }}
+                          className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
+                            activeConf.printType === 'color'
+                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
+                              : 'bg-transparent text-slate-400 hover:text-slate-600'
+                          } ${shopInfo.colorMaintenanceMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          Color
+                        </button>
                       </div>
                       <p className="text-[9px] text-slate-400 font-semibold leading-normal pl-1">
-                        Color printing is locked down. Only monochrome prints are accepted at this hub.
+                        Select whether you want this document printed in Black & White or in full Color.
                       </p>
                     </div>
                   </div>
@@ -1175,10 +1339,21 @@ export default function StudentPortal({ jobs, printerStatus, expectedReturnTime,
                     <div>
                       <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-widest font-mono">Fare Estimate</span>
                       <p className="text-lg font-black text-slate-800 mt-1">
-                        ₹{activeConf.copies * countPagesFromRange(activeConf.choosePagesType === 'custom' ? activeConf.customPages : '', activeConf.pageCount) * 3}
+                        ₹{activeConf.copies * (
+                          activeConf.sides === 'double'
+                            ? Math.ceil(countPagesFromRange(activeConf.choosePagesType === 'custom' ? activeConf.customPages : '', activeConf.pageCount) / 2) * (shopInfo.duplexPrice || 3)
+                            : countPagesFromRange(activeConf.choosePagesType === 'custom' ? activeConf.customPages : '', activeConf.pageCount) * (activeConf.printType === 'color' ? (shopInfo.colorPrice || 5) : (shopInfo.bwPrice || 2))
+                        )}
                       </p>
                     </div>
-                    <span className="text-[10px] font-semibold text-slate-400 font-mono">₹3/page</span>
+                    <span className="text-[10px] font-semibold text-slate-400 font-mono">
+                      {activeConf.sides === 'double'
+                        ? `₹${shopInfo.duplexPrice || 3}/sheet`
+                        : activeConf.printType === 'color'
+                        ? `₹${shopInfo.colorPrice || 5}/page`
+                        : `₹${shopInfo.bwPrice || 2}/page`
+                      }
+                    </span>
                   </div>
                 </div>
               )}
@@ -1242,51 +1417,65 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
         </div>
 
         {/* Real Queue Visibility details */}
-        {selectedDetails && selectedJob && (
+        {selectedJob && (selectedDetails || selectedJob.status === 'pending_approval') && (
           <div className="p-5 rounded-xl border border-indigo-150 bg-indigo-50/20 space-y-4">
             <div className="flex justify-between items-center pb-2 border-b border-indigo-100/50">
               <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-widest font-mono">
-                🔍 LIVE QUEUE TRACKER
+                {selectedJob.status === 'pending_approval' ? '⏳ APPROVAL TRACKER' : '🔍 LIVE QUEUE TRACKER'}
               </span>
               <span className="text-xs font-mono font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">
                 Token: {selectedJob.token}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
-              <div className="space-y-1">
-                <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Currently Printing</span>
-                <p className="font-bold text-slate-800 truncate" title={selectedDetails.currentlyPrinting}>
-                  {selectedDetails.currentlyPrinting}
+            {selectedJob.status === 'pending_approval' ? (
+              <div className="p-4 bg-amber-50/60 border border-amber-200 text-amber-850 rounded-xl space-y-2 text-xs font-medium">
+                <p className="font-bold text-amber-900">⏳ Awaiting Operator Release</p>
+                <p className="leading-relaxed">
+                  Your document is currently pending shop approval. Please show the following Approval Token to the shop operator to release your print job:
                 </p>
+                <div className="p-2.5 bg-white border border-amber-200 rounded-lg text-center font-mono font-bold text-amber-700 text-sm animate-pulse">
+                  {selectedJob.tokenId || 'N/A'}
+                </div>
               </div>
+            ) : selectedDetails && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+                  <div className="space-y-1">
+                    <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Currently Printing</span>
+                    <p className="font-bold text-slate-800 truncate" title={selectedDetails.currentlyPrinting}>
+                      {selectedDetails.currentlyPrinting}
+                    </p>
+                  </div>
 
-              <div className="space-y-1">
-                <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Queue Position</span>
-                <p className="font-bold text-slate-800">
-                  #{selectedDetails.position} <span className="text-[10px] text-slate-450 font-normal">({selectedDetails.jobsAhead} ahead)</span>
-                </p>
-              </div>
+                  <div className="space-y-1">
+                    <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Queue Position</span>
+                    <p className="font-bold text-slate-800">
+                      #{selectedDetails.position} <span className="text-[10px] text-slate-450 font-normal">({selectedDetails.jobsAhead} ahead)</span>
+                    </p>
+                  </div>
 
-              <div className="space-y-1">
-                <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Estimated Start</span>
-                <p className="font-bold text-indigo-650 font-mono">
-                  {selectedJob.status === 'printing' ? 'Now Printing' : selectedDetails.estimatedStart}
-                </p>
-              </div>
+                  <div className="space-y-1">
+                    <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Estimated Start</span>
+                    <p className="font-bold text-indigo-650 font-mono">
+                      {selectedJob.status === 'printing' ? 'Now Printing' : selectedDetails.estimatedStart}
+                    </p>
+                  </div>
 
-              <div className="space-y-1">
-                <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Estimated Completion</span>
-                <p className="font-bold text-indigo-650 font-mono">
-                  {selectedDetails.estimatedCompletion}
-                </p>
-              </div>
-            </div>
-            
-            <div className="bg-indigo-50 border border-indigo-100/70 p-3 rounded-lg flex items-center justify-between text-xs text-indigo-750 font-semibold font-mono">
-              <span>ESTIMATED WAITING TIME:</span>
-              <span className="text-sm font-black">{selectedDetails.waitingMinutes} MINUTES</span>
-            </div>
+                  <div className="space-y-1">
+                    <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Estimated Completion</span>
+                    <p className="font-bold text-indigo-650 font-mono">
+                      {selectedDetails.estimatedCompletion}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="bg-indigo-50 border border-indigo-100/70 p-3 rounded-lg flex items-center justify-between text-xs text-indigo-750 font-semibold font-mono">
+                  <span>ESTIMATED WAITING TIME:</span>
+                  <span className="text-sm font-black">{selectedDetails.waitingMinutes} MINUTES</span>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -1300,8 +1489,9 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
           ) : (
             <div className="space-y-2.5 max-h-80 overflow-y-auto">
               {recentJobs.map(job => {
-                const isActive = job.status === 'queued' || job.status === 'printing';
+                const isActive = job.status === 'pending_approval' || job.status === 'queued' || job.status === 'printing';
                 const statusLabels: { [key: string]: string } = {
+                  pending_approval: 'Pending Approval',
                   queued: 'In Queue',
                   printing: 'Printing',
                   completed: 'Completed',
@@ -1337,6 +1527,7 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
                       job.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                       job.status === 'printing' ? 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse' :
                       job.status === 'queued' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                      job.status === 'pending_approval' ? 'bg-orange-50 text-orange-700 border-orange-200' :
                       'bg-red-50 text-red-700 border-red-200'
                     }`}>
                       {statusLabels[job.status] || job.status}

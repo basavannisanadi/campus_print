@@ -14,9 +14,51 @@ import {
   Lock,
   User,
   Save,
-  QrCode
+  QrCode,
+  Search,
+  Check,
+  Settings
 } from 'lucide-react';
-import { PrintJob } from '../types';
+import { PrintJob, Shop } from '../types';
+
+// Converts "14:00" to "2:00 PM"
+const convert24To12 = (time24: string): string => {
+  if (!time24) return '';
+  const [hourStr, minStr] = time24.split(':');
+  const hour = parseInt(hourStr, 10);
+  const min = parseInt(minStr, 10);
+  if (isNaN(hour) || isNaN(min)) return '';
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  const minFormatted = min < 10 ? `0${min}` : min;
+  return `${hour12}:${minFormatted} ${ampm}`;
+};
+
+// Converts "2:00 PM" to "14:00"
+const convert12To24 = (time12: string): string => {
+  if (!time12) return '12:00';
+  const match = time12.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+  if (!match) return '12:00'; // fallback
+  let hour = parseInt(match[1], 10);
+  const min = parseInt(match[2], 10);
+  const ampm = match[3].toUpperCase();
+  if (ampm === 'PM' && hour < 12) hour += 12;
+  if (ampm === 'AM' && hour === 12) hour = 0;
+  const hourStr = hour < 10 ? `0${hour}` : hour;
+  const minStr = min < 10 ? `0${min}` : min;
+  return `${hourStr}:${minStr}`;
+};
+
+// Formats relative time for heartbeat
+const formatHeartbeat = (timestamp: string): string => {
+  if (!timestamp) return 'Never';
+  const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
+  if (seconds < 0) return 'Just now';
+  if (seconds < 60) return `${seconds} seconds ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+  return new Date(timestamp).toLocaleString();
+};
 
 interface Props {
   jobs: PrintJob[];
@@ -26,6 +68,17 @@ interface Props {
   expectedReturnTime: string;
   averagePrintSpeed: number;
   onRefreshPrinterSettings: () => void;
+  agentOnlineStatus?: 'online' | 'offline';
+  agentId?: string;
+  agentMachineName?: string;
+  agentPrinterName?: string;
+  agentDaemonVersion?: string;
+  agentLastHeartbeat?: string;
+  scanStatus?: 'idle' | 'scanning' | 'completed' | 'timeout' | 'error';
+  scanStartedAt?: string;
+  shops: Shop[];
+  selectedShopId: string;
+  onSelectShop: (shopId: string) => void;
 }
 
 interface AdminStats {
@@ -42,10 +95,21 @@ export default function AdminPortal({
   printerStatus, 
   expectedReturnTime: propsExpectedReturnTime, 
   averagePrintSpeed: propsAveragePrintSpeed,
-  onRefreshPrinterSettings 
+  onRefreshPrinterSettings,
+  agentOnlineStatus = 'offline',
+  agentId = '',
+  agentMachineName = '',
+  agentPrinterName = '',
+  agentDaemonVersion = '',
+  agentLastHeartbeat = '',
+  scanStatus = 'idle',
+  scanStartedAt = '',
+  shops,
+  selectedShopId,
+  onSelectShop
 }: Props) {
-  const activeShopId = 'alliance_print';
-  const qrUrl = `${window.location.origin}/`;
+  const activeShopId = selectedShopId;
+  const qrUrl = `${window.location.origin}/?shopId=${activeShopId}`;
 
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
     return !!sessionStorage.getItem('adminToken');
@@ -54,18 +118,72 @@ export default function AdminPortal({
   const [adminPassword, setAdminPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
+  const [selectedLoginShopId, setSelectedLoginShopId] = useState(selectedShopId || 'tjohn_print');
+
+
+  useEffect(() => {
+    if (shops.length > 0 && (!selectedLoginShopId || selectedLoginShopId === 'tjohn_print')) {
+      const match = shops.find(s => s.id === selectedShopId);
+      if (match) {
+        setSelectedLoginShopId(match.id);
+      } else {
+        setSelectedLoginShopId(shops[0].id);
+      }
+    }
+  }, [shops, selectedShopId]);
+
   // Simplified Settings States
   const [adminOverrideStatus, setAdminOverrideStatus] = useState<'none' | 'online' | 'offline'>('none');
   const [expectedReturnTime, setExpectedReturnTime] = useState(propsExpectedReturnTime);
   const [averagePrintSpeed, setAveragePrintSpeed] = useState(propsAveragePrintSpeed);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
+  const [underMaintenance, setUnderMaintenance] = useState(false);
+  const [selectedPrinter, setSelectedPrinter] = useState('');
+  const [availablePrinters, setAvailablePrinters] = useState<any[]>([]);
+  const [scanRequested, setScanRequested] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [scanSuccessMsg, setScanSuccessMsg] = useState('');
+
+  // Split printer states
+  const [bwMaintenance, setBwMaintenance] = useState(false);
+  const [bwStatusMode, setBwStatusMode] = useState('none');
+  const [bwExpectedReturnTime, setBwExpectedReturnTime] = useState('06:02 PM');
+  const [bwSuccess, setBwSuccess] = useState(false);
+  const [savingBwSettings, setSavingBwSettings] = useState(false);
+
+  const [colorMaintenance, setColorMaintenance] = useState(false);
+  const [colorStatusMode, setColorStatusMode] = useState('none');
+  const [colorExpectedReturnTime, setColorExpectedReturnTime] = useState('06:02 PM');
+  const [colorSuccess, setColorSuccess] = useState(false);
+  const [savingColorSettings, setSavingColorSettings] = useState(false);
+
+  // Printer Mappings States
+  const [bwPrinterId, setBwPrinterId] = useState('');
+  const [bwPrinterName, setBwPrinterName] = useState('');
+  const [bwStatus, setBwStatus] = useState('offline');
+  const [colorPrinterId, setColorPrinterId] = useState('');
+  const [colorPrinterName, setColorPrinterName] = useState('');
+  const [colorStatus, setColorStatus] = useState('offline');
+  const [savingMapping, setSavingMapping] = useState(false);
+  const [mappingSuccess, setMappingSuccess] = useState(false);
+
 
   // Shop Profile States
   const [shopName, setShopName] = useState('');
   const [shopPhone, setShopPhone] = useState('');
+  const [shopAddress, setShopAddress] = useState('');
+  const [shopOwnerName, setShopOwnerName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState(false);
+
+  // Pricing States
+  const [bwPrice, setBwPrice] = useState<number>(2);
+  const [colorPrice, setColorPrice] = useState<number>(5);
+  const [duplexPrice, setDuplexPrice] = useState<number>(3);
+  const [savingPricing, setSavingPricing] = useState(false);
+  const [pricingSuccess, setPricingSuccess] = useState(false);
 
   useEffect(() => {
     setExpectedReturnTime(propsExpectedReturnTime);
@@ -82,6 +200,68 @@ export default function AdminPortal({
     pending: 0
   });
   const [loadingStats, setLoadingStats] = useState(true);
+
+  // Token Search & Approval States
+  const [searchTokenQuery, setSearchTokenQuery] = useState('');
+  const [searchResultJob, setSearchResultJob] = useState<PrintJob | null>(null);
+  const [searchError, setSearchError] = useState('');
+  const [isSearchingToken, setIsSearchingToken] = useState(false);
+  const [approvingJobId, setApprovingJobId] = useState<string | null>(null);
+
+  const isShopAdmin = sessionStorage.getItem('role') === 'shop_admin';
+
+  const handleSearchToken = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!searchTokenQuery.trim()) return;
+    setSearchError('');
+    setSearchResultJob(null);
+    setIsSearchingToken(true);
+    try {
+      const token = sessionStorage.getItem('adminToken');
+      const res = await fetch(`/api/jobs/token/${searchTokenQuery.trim()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const job = await res.json();
+        setSearchResultJob(job);
+      } else {
+        const errData = await res.json();
+        setSearchError(errData.error || 'Token not found or invalid.');
+      }
+    } catch (err) {
+      setSearchError('Network error during token search.');
+      console.error(err);
+    } finally {
+      setIsSearchingToken(false);
+    }
+  };
+
+  const handleApproveJob = async (jobId: string) => {
+    setApprovingJobId(jobId);
+    try {
+      const token = sessionStorage.getItem('adminToken');
+      const res = await fetch(`/api/jobs/${jobId}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchStats();
+        onRefreshJobs();
+        if (searchResultJob && searchResultJob.id === jobId) {
+          setSearchResultJob(null);
+          setSearchTokenQuery('');
+        }
+      } else {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to approve job.');
+      }
+    } catch (err) {
+      alert('Network error approving job.');
+      console.error(err);
+    } finally {
+      setApprovingJobId(null);
+    }
+  };
 
   // Fetch Stats for the single hub
   const fetchStats = async () => {
@@ -100,10 +280,59 @@ export default function AdminPortal({
     }
   };
 
+  const startPrinterScanPolling = (token: string) => {
+    setScanning(true);
+    let attempts = 0;
+    const checkInterval = setInterval(async () => {
+      attempts++;
+      try {
+        const checkRes = await fetch(`/api/printer/settings?shopId=${activeShopId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (checkRes.ok) {
+          const settings = await checkRes.json();
+          if (!settings.scanRequested || attempts > 20) {
+            clearInterval(checkInterval);
+            const shopRes = await fetch(`/api/shops/${activeShopId}`);
+            if (shopRes.ok) {
+              const shopData = await shopRes.json();
+              setAvailablePrinters(shopData.printers || []);
+              setSelectedPrinter(shopData.activePrinterId || '');
+            }
+            if (settings.bw) {
+              setBwMaintenance(settings.bw.underMaintenance || false);
+              setBwStatusMode(settings.bw.statusMode || 'auto');
+              setBwExpectedReturnTime(settings.bw.expectedReturnTime || '06:02 PM');
+              setBwPrinterId(settings.bw.selectedPrinterId || '');
+              setBwPrinterName(settings.bw.selectedPrinterName || '');
+              setBwStatus(settings.bw.status || 'offline');
+            }
+            if (settings.color) {
+              setColorMaintenance(settings.color.underMaintenance || false);
+              setColorStatusMode(settings.color.statusMode || 'auto');
+              setColorExpectedReturnTime(settings.color.expectedReturnTime || '06:02 PM');
+              setColorPrinterId(settings.color.selectedPrinterId || '');
+              setColorPrinterName(settings.color.selectedPrinterName || '');
+              setColorStatus(settings.color.status || 'offline');
+            }
+            setScanRequested(false);
+            setScanning(false);
+          }
+        } else {
+          clearInterval(checkInterval);
+          setScanning(false);
+        }
+      } catch {
+        clearInterval(checkInterval);
+        setScanning(false);
+      }
+    }, 1500);
+  };
+
   const fetchPrinterSettings = async () => {
     try {
-      const token = sessionStorage.getItem('adminToken');
-      const res = await fetch('/api/printer/settings', {
+      const token = sessionStorage.getItem('adminToken') || '';
+      const res = await fetch(`/api/printer/settings?shopId=${activeShopId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -111,6 +340,48 @@ export default function AdminPortal({
         setAdminOverrideStatus(settings.adminOverrideStatus);
         setExpectedReturnTime(settings.expectedReturnTime);
         setAveragePrintSpeed(settings.averagePrintSpeed);
+        setUnderMaintenance(settings.underMaintenance || false);
+        setScanRequested(settings.scanRequested || false);
+
+        if (settings.bw) {
+          setBwMaintenance(settings.bw.underMaintenance || false);
+          setBwStatusMode(settings.bw.statusMode || 'auto');
+          setBwExpectedReturnTime(settings.bw.expectedReturnTime || '06:02 PM');
+          setBwPrinterId(settings.bw.selectedPrinterId || '');
+          setBwPrinterName(settings.bw.selectedPrinterName || '');
+          setBwStatus(settings.bw.status || 'offline');
+        }
+
+        if (settings.color) {
+          setColorMaintenance(settings.color.underMaintenance || false);
+          setColorStatusMode(settings.color.statusMode || 'auto');
+          setColorExpectedReturnTime(settings.color.expectedReturnTime || '06:02 PM');
+          setColorPrinterId(settings.color.selectedPrinterId || '');
+          setColorPrinterName(settings.color.selectedPrinterName || '');
+          setColorStatus(settings.color.status || 'offline');
+        }
+        
+        const shopRes = await fetch(`/api/shops/${activeShopId}`);
+        if (shopRes.ok) {
+          const shopData = await shopRes.json();
+          setAvailablePrinters(shopData.printers || []);
+          setSelectedPrinter(shopData.activePrinterId || '');
+        }
+
+        const mappingRes = await fetch(`/api/printers/mapping?shopId=${activeShopId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (mappingRes.ok) {
+          const mapping = await mappingRes.json();
+          setBwPrinterId(mapping.bwPrinterId || '');
+          setBwPrinterName(mapping.bwPrinterName || '');
+          setColorPrinterId(mapping.colorPrinterId || '');
+          setColorPrinterName(mapping.colorPrinterName || '');
+        }
+        
+        if (settings.scanRequested && !scanning) {
+          startPrinterScanPolling(token);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch printer settings:', err);
@@ -121,17 +392,66 @@ export default function AdminPortal({
     try {
       const res = await fetch('/api/shops');
       if (res.ok) {
-        const shops = await res.json();
-        const myShop = shops.find((s: any) => s.id === activeShopId);
+        const shopsList = await res.json();
+        const myShop = shopsList.find((s: any) => s.id === activeShopId);
         if (myShop) {
           setShopName(myShop.name || '');
-          setShopPhone(myShop.phone || '');
+          setShopPhone(myShop.phoneNumber || myShop.phone || '');
+          setShopOwnerName(myShop.ownerName || '');
+          setShopAddress(myShop.address || '');
+          setBwPrice(myShop.bwPrice || 2);
+          setColorPrice(myShop.colorPrice || 5);
+          setDuplexPrice(myShop.duplexPrice || 3);
         }
       }
     } catch (err) {
       console.error('Failed to fetch shop profile:', err);
     }
   };
+
+  const handleScanPrinters = async () => {
+    setErrorMsg('');
+    setScanSuccessMsg('');
+    try {
+      const token = sessionStorage.getItem('adminToken') || '';
+      const res = await fetch('/api/agent/scan-printers', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ shopId: activeShopId })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        setErrorMsg(errData.error || 'Failed to trigger scan');
+      } else {
+        onRefreshPrinterSettings();
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Failed to trigger scan');
+    }
+  };
+
+  useEffect(() => {
+    if (scanStatus === 'scanning') {
+      setScanning(true);
+      setErrorMsg('');
+      setScanSuccessMsg('');
+    } else {
+      setScanning(false);
+      if (scanStatus === 'completed') {
+        setScanSuccessMsg('✓ Printer discovery completed.');
+        const timer = setTimeout(() => setScanSuccessMsg(''), 5000);
+        return () => clearTimeout(timer);
+      } else if (scanStatus === 'timeout') {
+        setErrorMsg('Printer discovery timed out.');
+      } else if (scanStatus === 'error') {
+        setErrorMsg('Printer discovery failed.');
+      }
+    }
+  }, [scanStatus]);
 
   useEffect(() => {
     if (!isAdminLoggedIn) return;
@@ -145,54 +465,124 @@ export default function AdminPortal({
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [isAdminLoggedIn]);
+  }, [isAdminLoggedIn, selectedShopId]);
 
-  const handleLogin = (e: React.FormEvent) => {
+
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
-    if (adminUsername === 'admin' && adminPassword.length > 5) {
-      sessionStorage.setItem('adminToken', adminPassword);
-      setIsAdminLoggedIn(true);
-    } else {
-      setLoginError('Invalid administrator credentials.');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          shopId: selectedLoginShopId,
+          username: adminUsername,
+          password: adminPassword
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        sessionStorage.setItem('adminToken', data.token);
+        sessionStorage.setItem('role', data.role);
+        sessionStorage.setItem('shopId', data.shopId);
+        sessionStorage.setItem('username', data.username);
+        
+        if (data.role === 'shop_admin' && data.shopId) {
+          onSelectShop(data.shopId);
+        }
+        
+        setIsAdminLoggedIn(true);
+      } else {
+        const errData = await res.json();
+        setLoginError(errData.error || 'Invalid shop, username, or password.');
+      }
+    } catch {
+      setLoginError('Cannot connect to server. Please try again.');
     }
   };
 
   const handleSignOut = () => {
     sessionStorage.removeItem('adminToken');
+    sessionStorage.removeItem('role');
+    sessionStorage.removeItem('shopId');
+    sessionStorage.removeItem('username');
     setIsAdminLoggedIn(false);
     setAdminUsername('');
     setAdminPassword('');
   };
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
+
+
+  const handleSaveBwSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSavingSettings(true);
-    setSettingsSuccess(false);
+    setSavingBwSettings(true);
+    setBwSuccess(false);
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch('/api/printer/settings', {
-        method: 'POST',
+      const printerObj = availablePrinters.find(p => p.printerId === bwPrinterId);
+      const printerNameVal = printerObj ? printerObj.printerName : '';
+      
+      const res = await fetch('/api/printers/bw', {
+        method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          adminOverrideStatus,
-          expectedReturnTime,
-          averagePrintSpeed
+          shopId: activeShopId,
+          bwPrinterId,
+          bwPrinterName: printerNameVal,
+          bwMaintenanceMode: bwMaintenance
         })
       });
       if (res.ok) {
-        setSettingsSuccess(true);
+        setBwSuccess(true);
         onRefreshPrinterSettings();
-        setTimeout(() => setSettingsSuccess(false), 3000);
+        setTimeout(() => setBwSuccess(false), 3000);
       }
     } catch (err) {
-      console.error('Failed to save printer settings:', err);
+      console.error('Failed to save B&W settings:', err);
     } finally {
-      setSavingSettings(false);
+      setSavingBwSettings(false);
+    }
+  };
+
+  const handleSaveColorSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingColorSettings(true);
+    setColorSuccess(false);
+    try {
+      const token = sessionStorage.getItem('adminToken');
+      const printerObj = availablePrinters.find(p => p.printerId === colorPrinterId);
+      const printerNameVal = printerObj ? printerObj.printerName : '';
+      
+      const res = await fetch('/api/printers/color', {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          shopId: activeShopId,
+          colorPrinterId,
+          colorPrinterName: printerNameVal,
+          colorMaintenanceMode: colorMaintenance
+        })
+      });
+      if (res.ok) {
+        setColorSuccess(true);
+        onRefreshPrinterSettings();
+        setTimeout(() => setColorSuccess(false), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to save Color settings:', err);
+    } finally {
+      setSavingColorSettings(false);
     }
   };
 
@@ -202,15 +592,17 @@ export default function AdminPortal({
     setProfileSuccess(false);
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch(`/api/shops/${activeShopId}`, {
-        method: 'POST',
+      const res = await fetch(`/api/shops/${activeShopId}/settings`, {
+        method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           name: shopName,
-          phone: shopPhone
+          ownerName: shopOwnerName,
+          phoneNumber: shopPhone,
+          address: shopAddress
         })
       });
       if (res.ok) {
@@ -221,6 +613,36 @@ export default function AdminPortal({
       console.error(err);
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleSavePricing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingPricing(true);
+    setPricingSuccess(false);
+    try {
+      const token = sessionStorage.getItem('adminToken');
+      const res = await fetch(`/api/shops/${activeShopId}/pricing`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          bwPrice,
+          colorPrice,
+          duplexPrice
+        })
+      });
+      if (res.ok) {
+        setPricingSuccess(true);
+        onRefreshPrinterSettings();
+        setTimeout(() => setPricingSuccess(false), 3000);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingPricing(false);
     }
   };
 
@@ -338,7 +760,7 @@ export default function AdminPortal({
           <div class="instructions">Scan to Print Instantly</div>
           <div style="font-size:13px; color:#64748b; margin-top:6px; word-break:break-all;">${qrUrl}</div>
           
-          <div class="footer font-mono">Real-Printer Testing Terminal Ready</div>
+          <div class="footer font-mono">Campus Print Hub — Ready</div>
         </div>
         <script>
           window.onload = function() {
@@ -362,7 +784,7 @@ export default function AdminPortal({
               <Printer className="w-6 h-6 text-indigo-400" />
             </div>
             <h2 className="text-xl font-bold">Admin Control Center</h2>
-            <p className="text-xs text-indigo-200/70 mt-1">Authenticate to manage print testing queue</p>
+            <p className="text-xs text-indigo-200/70 mt-1">Authenticate to manage your print hub</p>
           </div>
 
           <form onSubmit={handleLogin} className="p-8 space-y-5 text-left">
@@ -372,6 +794,23 @@ export default function AdminPortal({
                 {loginError}
               </div>
             )}
+
+            <div>
+              <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                Select Shop
+              </label>
+              <select
+                value={selectedLoginShopId}
+                onChange={(e) => setSelectedLoginShopId(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all font-semibold"
+              >
+                {shops.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div>
               <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
@@ -415,14 +854,6 @@ export default function AdminPortal({
               Sign In to Console
             </button>
 
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer bg-white"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Back to Student Portal
-            </button>
           </form>
         </div>
       </div>
@@ -434,22 +865,30 @@ export default function AdminPortal({
       {/* Admin Toolbar Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm text-left">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <span>Administrator Console</span>
-            <span className="text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full">
-              📍 Alliance Print Center
-            </span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">Real-printer testing controls & spooler queue</p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <h2 className="text-xl font-bold text-slate-900">
+              Administrator Console
+            </h2>
+            {sessionStorage.getItem('role') !== 'shop_admin' && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-extrabold text-slate-400 uppercase tracking-widest font-mono">Shop:</span>
+                <select
+                  value={selectedShopId}
+                  onChange={(e) => onSelectShop(e.target.value)}
+                  className="py-1.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  {shops.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">Printer controls & spooler queue for {shopName || 'selected shop'}</p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            onClick={() => navigate('/')}
-            className="py-2 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-white"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Portal
-          </button>
           <button
             onClick={handleResetSystem}
             className="py-2 px-4 rounded-xl bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
@@ -517,9 +956,327 @@ export default function AdminPortal({
         </div>
       </div>
 
+      {/* Agent & Health Monitoring Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Agent Status Card */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between font-sans">
+          <div>
+            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+              <Printer className="w-5 h-5 text-indigo-500" />
+              <span>Agent Status Card</span>
+            </h3>
+            <div className="space-y-3.5 text-sm font-semibold text-slate-600">
+              <div className="flex justify-between items-center">
+                <span>Agent Status:</span>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wider ${
+                  agentOnlineStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {agentOnlineStatus === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                </span>
+              </div>
+
+              {!agentLastHeartbeat ? (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span>Machine:</span>
+                    <span className="text-slate-900 font-bold">Unknown</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Connected Printer:</span>
+                    <span className="text-slate-900 font-bold text-slate-450">No printers discovered</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Configured Printer:</span>
+                    <span className="text-slate-900 font-bold text-slate-450">Not configured</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Heartbeat:</span>
+                    <span className="text-slate-900 font-bold text-slate-450">Never</span>
+                  </div>
+                </>
+              ) : agentOnlineStatus !== 'online' ? (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span>Machine Name:</span>
+                    <span className="text-slate-900 font-bold">{agentMachineName || 'Unknown'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Configured Printer:</span>
+                    <span className="text-slate-900 font-bold">
+                      {[bwPrinterName, colorPrinterName].filter(Boolean).join(' / ') || 'Not configured'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Connected Printer:</span>
+                    <span className="text-slate-900 font-bold text-rose-600">Unknown (Agent Offline)</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Heartbeat:</span>
+                    <span className="text-slate-900 font-bold">
+                      Last seen {formatHeartbeat(agentLastHeartbeat)}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span>Machine Name:</span>
+                    <span className="text-slate-900 font-bold">{agentMachineName || 'Unknown'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Configured Printer:</span>
+                    <span className="text-slate-900 font-bold">
+                      {[bwPrinterName, colorPrinterName].filter(Boolean).join(' / ') || 'Not configured'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Connected Printer:</span>
+                    <span className="text-slate-900 font-bold">
+                      {agentPrinterName || 'System Default'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Heartbeat:</span>
+                    <span className="text-emerald-600 font-bold">Live</span>
+                  </div>
+                </>
+              )}
+
+              <div className="flex justify-between items-center">
+                <span>Daemon Version:</span>
+                <span className="text-slate-500 font-mono text-xs">{agentDaemonVersion || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Jobs Waiting:</span>
+                <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-200 font-bold font-mono">
+                  {jobs.filter(j => j.status === 'queued').length}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 pt-4 border-t border-slate-100">
+            <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 font-mono">
+              Printer Discovery
+            </h4>
+            <button
+              type="button"
+              onClick={handleScanPrinters}
+              disabled={scanning || agentOnlineStatus !== 'online'}
+              className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} />
+              {scanning ? 'Scanning installed printers...' : 'Refresh Installed Printers'}
+            </button>
+            
+            {agentOnlineStatus !== 'online' ? (
+              <p className="text-[10px] text-rose-500 font-bold text-center mt-1.5 leading-tight">
+                ⚠️ Start the Campus Print Agent to discover printers.
+              </p>
+            ) : scanning ? (
+              <p className="text-[10px] text-indigo-600 font-semibold text-center mt-1.5 leading-tight">
+                Scanning installed printers...
+              </p>
+            ) : scanSuccessMsg ? (
+              <p className="text-[10px] text-emerald-600 font-bold text-center mt-1.5 leading-tight">
+                {scanSuccessMsg}
+              </p>
+            ) : errorMsg ? (
+              <p className="text-[10px] text-rose-500 font-bold text-center mt-1.5 leading-tight">
+                ⚠️ {errorMsg}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        {/* System Health Card */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between font-sans">
+          <div>
+            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-indigo-500" />
+              <span>System Health Card</span>
+            </h3>
+            <div className="space-y-4 text-sm font-semibold text-slate-600">
+              <div className="flex justify-between items-center">
+                <span>Backend Status:</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase bg-emerald-50 text-emerald-700 border-emerald-200">
+                  🟢 Backend Online
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Agent Status:</span>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase ${
+                  agentOnlineStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {agentOnlineStatus === 'online' ? '🟢 Agent Online' : '🔴 Agent Offline'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Printer Status:</span>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase ${
+                  printerStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {printerStatus === 'online' ? '🟢 Printer Online' : '🔴 Printer Offline'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Upload Service Status:</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase bg-emerald-50 text-emerald-700 border-emerald-200">
+                  🟢 Upload Service Healthy
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Job Processing Status:</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase bg-emerald-50 text-emerald-700 border-emerald-200">
+                  🟢 Job Processing Healthy
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Left Column: Spooler Table */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left font-sans">
+        {/* Left Column: Pending Approvals & Spooler Table */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Pending Approvals Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-left font-sans space-y-6">
+            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-orange-500 animate-pulse" />
+                <span>Pending Approvals & Release</span>
+              </h3>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-orange-50 text-orange-700 border border-orange-200 uppercase tracking-widest font-mono">
+                {jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId).length} Pending
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left Side: Token Search */}
+              <div className="space-y-4 pr-0 md:pr-4 md:border-r border-slate-100">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-mono">
+                    Token Search
+                  </h4>
+                  <form onSubmit={handleSearchToken} className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Enter Token (e.g. CP-4578)"
+                        value={searchTokenQuery}
+                        onChange={(e) => setSearchTokenQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-bold uppercase"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isSearchingToken}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition-all border-none cursor-pointer flex items-center gap-1.5"
+                    >
+                      Search
+                    </button>
+                  </form>
+                </div>
+
+                {searchError && (
+                  <div className="p-3 bg-red-50 border border-red-155 text-red-600 text-[11px] font-semibold rounded-xl leading-relaxed animate-fadeIn">
+                    ⚠️ {searchError}
+                  </div>
+                )}
+
+                {searchResultJob && (
+                  <div className="p-4 bg-slate-50/55 border border-slate-205 rounded-xl space-y-3 animate-fadeIn text-xs">
+                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-200/60 font-mono">
+                      <span className="font-extrabold text-indigo-600 text-sm">
+                        {searchResultJob.tokenId || 'N/A'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">
+                        {searchResultJob.token}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 font-medium text-slate-600">
+                      <p className="truncate font-bold text-slate-800" title={searchResultJob.fileName}>
+                        📄 {searchResultJob.fileName}
+                      </p>
+                      <p>📄 {searchResultJob.pageCount} Pages ({searchResultJob.sides === 'double' ? 'Duplex' : 'Simplex'})</p>
+                      <p>🎨 Type: {searchResultJob.printMode === 'color' ? 'Color' : 'B&W'}</p>
+                      <p>⏰ Time: {new Date(searchResultJob.createdAt).toLocaleString()}</p>
+                      <p>👤 Student: {searchResultJob.studentName}</p>
+                      <p className="flex items-center gap-1.5">
+                        ⏳ Status: 
+                        <span className="bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-extrabold uppercase text-[9px] tracking-wider font-mono">
+                          Pending Approval
+                        </span>
+                      </p>
+                    </div>
+
+                    {isShopAdmin ? (
+                      <button
+                        onClick={() => handleApproveJob(searchResultJob.id)}
+                        disabled={approvingJobId === searchResultJob.id}
+                        className="w-full mt-2 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 border-none cursor-pointer transition-all"
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                        {approvingJobId === searchResultJob.id ? 'Releasing...' : 'Release To Queue'}
+                      </button>
+                    ) : (
+                      <div className="text-[10px] text-rose-500 font-semibold text-center mt-2 p-1.5 bg-rose-50 border border-rose-100 rounded-lg">
+                        🔒 Only Shop Admin may approve.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Side: Pending Approval Queue */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">
+                  Pending Approval Queue
+                </h4>
+                {jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId).length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 text-xs">
+                    No jobs currently pending approval.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId).map(job => (
+                      <div key={job.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs transition-all hover:border-slate-350">
+                        <div className="min-w-0 flex-1 pr-3 text-left">
+                          <p className="font-mono font-extrabold text-orange-600 text-sm">
+                            {job.tokenId || 'N/A'}
+                          </p>
+                          <p className="font-bold text-slate-800 truncate leading-tight mt-0.5" title={job.fileName}>
+                            {job.fileName}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            {job.pageCount} pgs · {job.printMode === 'color' ? 'Color' : 'B&W'} · {job.studentName}
+                          </p>
+                        </div>
+                        {isShopAdmin ? (
+                          <button
+                            onClick={() => handleApproveJob(job.id)}
+                            disabled={approvingJobId === job.id}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[10px] rounded-lg shadow-sm border-none cursor-pointer flex items-center gap-1 transition-all"
+                          >
+                            <Play className="w-3 h-3" />
+                            Approve
+                          </button>
+                        ) : (
+                          <span className="text-[9px] text-slate-400 bg-slate-100 border border-slate-200 px-2 py-1 rounded">
+                            Awaiting
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Left Column: Spooler Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left font-sans">
           <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <h3 className="text-base font-bold text-slate-800">Operational Log & Control</h3>
             <button 
@@ -551,12 +1308,18 @@ export default function AdminPortal({
                   </tr>
                 ) : (
                   jobs.map(job => {
-                    const estimatedCost = job.copies * job.pageCount * 3;
+                    const shop = shops.find(s => s.id === selectedShopId);
+                    const bw = shop ? shop.bwPrice : 2;
+                    const color = shop ? shop.colorPrice : 5;
+                    const rate = job.printMode === 'color' ? color : bw;
+                    const billedPgs = job.sides === 'double' ? Math.ceil(job.pageCount / 2) : job.pageCount;
+                    const estimatedCost = job.chargedAmount !== undefined ? job.chargedAmount : (job.copies * billedPgs * rate);
                     
                     let statusBg = 'bg-slate-50 text-slate-600 border-slate-200';
                     if (job.status === 'completed') statusBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
                     else if (job.status === 'printing') statusBg = 'bg-indigo-50 text-indigo-700 border-indigo-200';
                     else if (job.status === 'queued') statusBg = 'bg-amber-50 text-amber-700 border-amber-200';
+                    else if (job.status === 'pending_approval') statusBg = 'bg-orange-50 text-orange-700 border-orange-200';
                     else if (['failed', 'printer_offline', 'paper_empty'].includes(job.status)) {
                       statusBg = 'bg-red-50 text-red-700 border-red-200';
                     }
@@ -606,6 +1369,17 @@ export default function AdminPortal({
 
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            {job.status === 'pending_approval' && isShopAdmin && (
+                              <button
+                                onClick={() => handleApproveJob(job.id)}
+                                disabled={approvingJobId === job.id}
+                                className="p-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px] border-none"
+                              >
+                                <Play className="w-3.5 h-3.5" />
+                                Approve Job
+                              </button>
+                            )}
+
                             {(isFailedState || job.status === 'paused') && (
                               <button
                                 onClick={() => updateJobStatus(job.id, 'queued', { progressPercent: 0, reason: '' })}
@@ -644,78 +1418,243 @@ export default function AdminPortal({
             </table>
           </div>
         </div>
+      </div>
 
-        {/* Right Column: Settings Form */}
+      {/* Right Column: Settings Form */}
         <div className="space-y-6 text-left font-sans">
+
+
+          {/* Black & White Operations */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
-              <Save className="w-4.5 h-4.5 text-indigo-500" />
-              <span>Printer Operations Console</span>
+              <Printer className="w-4.5 h-4.5 text-indigo-500" />
+              <span>BLACK & WHITE OPERATIONS</span>
             </h3>
-
-            <form onSubmit={handleSaveSettings} className="space-y-4">
-              {settingsSuccess && (
+            <form onSubmit={handleSaveBwSettings} className="space-y-4">
+              {bwSuccess && (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl animate-fadeIn">
-                  ✓ Printer settings saved and updated!
+                  ✓ Black & White settings saved!
                 </div>
               )}
 
-              {/* Status Select Fader */}
               <div>
                 <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
-                  Printer Status Mode
+                  Current Printer
                 </label>
                 <select
-                  value={adminOverrideStatus}
-                  onChange={(e: any) => setAdminOverrideStatus(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
+                  value={bwPrinterId}
+                  onChange={(e: any) => setBwPrinterId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={availablePrinters.length === 0}
+                  required
                 >
-                  <option value="none">Auto Detect (Client Heartbeat)</option>
-                  <option value="online">Force Live (Override Online)</option>
-                  <option value="offline">Force Offline (Override Offline)</option>
+                  {availablePrinters.length === 0 ? (
+                    <option value="">Start the Campus Print Agent to discover printers.</option>
+                  ) : (
+                    <>
+                      <option value="" disabled>Select B&W Printer</option>
+                      {availablePrinters.map(printer => (
+                        <option key={printer.printerId} value={printer.printerId}>{printer.printerName}</option>
+                      ))}
+                    </>
+                  )}
                 </select>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Active Status: <span className="font-bold">{printerStatus === 'online' ? '🟢 LIVE' : '🔴 OFFLINE'}</span>
-                </p>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
-                  Expected Return Time
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={expectedReturnTime}
-                  onChange={(e) => setExpectedReturnTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
-                  placeholder="e.g. 2:00 PM"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
-                  Average Print Speed (Sec/Page)
-                </label>
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  value={averagePrintSpeed}
-                  onChange={(e) => setAveragePrintSpeed(parseInt(e.target.value, 10) || 5)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-mono font-semibold"
-                />
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+                <div className="text-left">
+                  <label className="block text-xs font-bold text-slate-800">
+                    Maintenance
+                  </label>
+                  <span className="text-[10px] text-slate-400 block leading-tight mt-0.5 max-w-[160px]">
+                    Disables Black & White print submissions immediately.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBwMaintenance(!bwMaintenance)}
+                  className={`w-12 h-6.5 rounded-full p-1 transition-all duration-200 focus:outline-none cursor-pointer border-none flex items-center ${
+                    bwMaintenance ? 'bg-rose-500 justify-end' : 'bg-slate-300 justify-start'
+                  }`}
+                >
+                  <span className="w-4.5 h-4.5 rounded-full bg-white shadow-sm block" />
+                </button>
               </div>
 
               <button
                 type="submit"
-                disabled={savingSettings}
+                disabled={savingBwSettings}
                 className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none"
               >
                 <Save className="w-4 h-4" />
-                {savingSettings ? 'Saving Settings...' : 'Save Settings'}
+                {savingBwSettings ? 'Saving B&W Settings...' : 'Save Settings'}
               </button>
             </form>
+          </div>
+
+          {/* Color Operations */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+              <Printer className="w-4.5 h-4.5 text-violet-500" />
+              <span>COLOR OPERATIONS</span>
+            </h3>
+            <form onSubmit={handleSaveColorSettings} className="space-y-4">
+              {colorSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl animate-fadeIn">
+                  ✓ Color settings saved!
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                  Current Printer
+                </label>
+                <select
+                  value={colorPrinterId}
+                  onChange={(e: any) => setColorPrinterId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={availablePrinters.length === 0}
+                  required
+                >
+                  {availablePrinters.length === 0 ? (
+                    <option value="">Start the Campus Print Agent to discover printers.</option>
+                  ) : (
+                    <>
+                      <option value="" disabled>Select Color Printer</option>
+                      {availablePrinters.map(printer => (
+                        <option key={printer.printerId} value={printer.printerId}>{printer.printerName}</option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
+
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+                <div className="text-left">
+                  <label className="block text-xs font-bold text-slate-800">
+                    Maintenance
+                  </label>
+                  <span className="text-[10px] text-slate-400 block leading-tight mt-0.5 max-w-[160px]">
+                    Disables Color print submissions immediately.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setColorMaintenance(!colorMaintenance)}
+                  className={`w-12 h-6.5 rounded-full p-1 transition-all duration-200 focus:outline-none cursor-pointer border-none flex items-center ${
+                    colorMaintenance ? 'bg-rose-500 justify-end' : 'bg-slate-300 justify-start'
+                  }`}
+                >
+                  <span className="w-4.5 h-4.5 rounded-full bg-white shadow-sm block" />
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingColorSettings}
+                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none"
+              >
+                <Save className="w-4 h-4" />
+                {savingColorSettings ? 'Saving Color Settings...' : 'Save Settings'}
+              </button>
+            </form>
+          </div>
+
+          {/* Printer Service Health Info Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4 font-mono">
+              Printer Service Health
+            </h3>
+            <div className="space-y-4 text-xs font-semibold text-slate-600">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-700 uppercase tracking-wider">B&W</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                    bwStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}>
+                    {bwStatus === 'online' ? '🟢 Ready' : '🔴 Offline'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Printer:</span>
+                  <span className="text-slate-900 font-bold">{bwPrinterName || 'Not configured'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Maintenance:</span>
+                  <span className={`font-bold ${bwMaintenance ? 'text-rose-600' : 'text-slate-500'}`}>
+                    {bwMaintenance ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-700 uppercase tracking-wider">Color</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                    colorStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}>
+                    {colorStatus === 'online' ? '🟢 Ready' : '🔴 Offline'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Printer:</span>
+                  <span className="text-slate-900 font-bold">{colorPrinterName || 'Not configured'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Maintenance:</span>
+                  <span className={`font-bold ${colorMaintenance ? 'text-rose-600' : 'text-slate-500'}`}>
+                    {colorMaintenance ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Remote Agent Telemetry (Requirement 6) */}
+            <div className="border-t border-slate-100 pt-5 mt-5">
+              <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 font-mono">
+                Remote Daemon Telemetry
+              </h4>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/60 text-xs space-y-1.5 font-semibold text-slate-600">
+                <div className="flex justify-between items-center">
+                  <span>Agent Status:</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                    agentOnlineStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}>
+                    {agentOnlineStatus === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                  </span>
+                </div>
+                {agentId && (
+                  <div className="flex justify-between">
+                    <span>Agent ID:</span>
+                    <span className="text-slate-900 font-bold">{agentId}</span>
+                  </div>
+                )}
+                {agentMachineName && (
+                  <div className="flex justify-between">
+                    <span>Machine Name:</span>
+                    <span className="text-slate-900 font-bold">{agentMachineName}</span>
+                  </div>
+                )}
+                {agentPrinterName && (
+                  <div className="flex justify-between">
+                    <span>Printer Name:</span>
+                    <span className="text-slate-900 font-bold">{agentPrinterName}</span>
+                  </div>
+                )}
+                {agentDaemonVersion && (
+                  <div className="flex justify-between">
+                    <span>Daemon Version:</span>
+                    <span className="text-slate-500 font-mono text-[10px]">{agentDaemonVersion}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Last Heartbeat:</span>
+                  <span className="text-slate-900">
+                    {agentLastHeartbeat ? new Date(agentLastHeartbeat).toLocaleTimeString() : 'Never'}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Shop Profile Settings */}
@@ -738,9 +1677,23 @@ export default function AdminPortal({
                 />
               </div>
               <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Owner Name</label>
+                <input
+                  type="text" required value={shopOwnerName} onChange={(e) => setShopOwnerName(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
+                />
+              </div>
+              <div>
                 <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Mobile Number</label>
                 <input
                   type="text" required value={shopPhone} onChange={(e) => setShopPhone(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Shop Address</label>
+                <input
+                  type="text" required value={shopAddress} onChange={(e) => setShopAddress(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
                 />
               </div>
@@ -750,6 +1703,49 @@ export default function AdminPortal({
               >
                 <Save className="w-4 h-4" />
                 {savingProfile ? 'Saving...' : 'Save Profile'}
+              </button>
+            </form>
+          </div>
+
+          {/* Shop Pricing Settings */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+              <TrendingUp className="w-4.5 h-4.5 text-indigo-500" />
+              <span>Shop Pricing Settings</span>
+            </h3>
+            <form onSubmit={handleSavePricing} className="space-y-4">
+              {pricingSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl animate-fadeIn">
+                  ✓ Pricing updated successfully!
+                </div>
+              )}
+              <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">B&W Price (₹ / page)</label>
+                <input
+                  type="number" required min={0} value={bwPrice} onChange={(e) => setBwPrice(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Color Price (₹ / page)</label>
+                <input
+                  type="number" required min={0} value={colorPrice} onChange={(e) => setColorPrice(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Duplex Price (₹ / sheet)</label>
+                <input
+                  type="number" required min={0} value={duplexPrice} onChange={(e) => setDuplexPrice(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold"
+                />
+              </div>
+              <button
+                type="submit" disabled={savingPricing}
+                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none"
+              >
+                <Save className="w-4 h-4" />
+                {savingPricing ? 'Saving...' : 'Save Pricing'}
               </button>
             </form>
           </div>

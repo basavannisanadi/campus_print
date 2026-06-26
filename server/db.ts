@@ -8,6 +8,31 @@ const __dirname = path.dirname(__filename);
 const DB_PATH = path.resolve(__dirname, './data/db.json');
 const DATA_DIR = path.dirname(DB_PATH);
 
+export interface TimelineEntry {
+  stage: string;
+  at: string;
+  printerId: string;
+  printerName: string;
+  daemonInstance?: string;
+  printType?: 'bw' | 'color';
+  selectedPrinter?: string;
+}
+
+export interface FailureSnapshot {
+  printerReported?: string;
+  physicalObservation?: string;
+  paperOutput?: boolean;
+  operatorNotes?: string;
+  recordedAt?: string;
+}
+
+export interface JobMetrics {
+  claimToDownloadMs?: number;
+  downloadToSpoolMs?: number;
+  spoolToCompleteMs?: number;
+  totalProcessingMs?: number;
+}
+
 export interface DbJob {
   id: string;
   token: string;
@@ -16,9 +41,11 @@ export interface DbJob {
   pageCount: number;
   copies: number;
   printMode: 'mono' | 'color';
+  printType?: 'bw' | 'color';
   sides: 'single' | 'double';
   pageRange?: string;
-  status: 'queued' | 'printing' | 'completed' | 'failed' | 'paused' | 'printer_offline' | 'paper_empty';
+  status: 'pending_approval' | 'queued' | 'printing' | 'completed' | 'failed' | 'paused' | 'printer_offline' | 'paper_empty';
+  chargedAmount: number;
   studentName: string;
   studentEmail: string;
   createdAt: string;
@@ -27,16 +54,40 @@ export interface DbJob {
   reason?: string;
   scheduledFor?: string;
   shopId: string;
+  tokenId?: string;
+  timeline?: TimelineEntry[];
+  failureSnapshot?: FailureSnapshot;
+  metrics?: JobMetrics;
 }
 
 export interface Shop {
   id: string;
   name: string;
-  phone: string;
+  ownerName: string;
+  phoneNumber: string;
   address: string;
-  isOpen: boolean;
-  openingTime: string;
-  closingTime: string;
+  maintenanceMode: boolean;
+  bwPrice: number;
+  colorPrice: number;
+  duplexPrice: number;
+  activePrinterId?: string;
+  bwPrinterId?: string;
+  bwPrinterName?: string;
+  colorPrinterId?: string;
+  colorPrinterName?: string;
+  bwMaintenanceMode?: boolean;
+  colorMaintenanceMode?: boolean;
+  bwStatusMode?: 'auto' | 'online' | 'offline';
+  colorStatusMode?: 'auto' | 'online' | 'offline';
+  bwExpectedReturnTime?: string;
+  colorExpectedReturnTime?: string;
+  adminUsername?: string;
+  adminPasswordHash?: string;
+  // Legacy fields
+  phone?: string;
+  isOpen?: boolean;
+  openingTime?: string;
+  closingTime?: string;
   printerStatus?: 'online' | 'offline';
   lastHeartbeat?: string;
 }
@@ -47,25 +98,98 @@ export interface PrinterSettings {
   averagePrintSpeed: number; // in seconds per page
   lastHeartbeat?: string;
   adminOverrideStatus: 'none' | 'online' | 'offline';
+  availablePrinters?: string[];
+  selectedPrinter?: string;
+  underMaintenance?: boolean;
+  scanRequested?: boolean;
+}
+
+export interface Agent {
+  agentId: string;
+  shopId: string;
+  machineName: string;
+  printerName: string;
+  daemonVersion: string;
+  onlineStatus: 'online' | 'offline';
+  lastSeen: string;
+  scanRequested?: boolean;
+  scanStatus?: 'idle' | 'scanning' | 'completed' | 'timeout' | 'error';
+  scanStartedAt?: string;
+}
+
+export interface Printer {
+  printerId: string;
+  shopId: string;
+  printerName: string;
+  status: 'online' | 'offline';
+  discoveredAt: string;
 }
 
 interface Db {
   jobs: DbJob[];
   shops: Shop[];
   printerSettings?: PrinterSettings;
+  agents?: Agent[];
+  printers?: Printer[];
 }
 
 const DEFAULT_SHOPS: Shop[] = [
   {
-    id: 'alliance_print',
-    name: 'Alliance University Print Center',
+    id: 'tjohn_print',
+    name: 'TJohn Print Center',
+    ownerName: 'TJohn Staff',
+    phoneNumber: '9876543210',
     phone: '9876543210',
-    address: 'Alliance University Main Block, Ground Floor',
+    address: 'TJohn Block, Ground Floor',
+    maintenanceMode: false,
+    bwPrice: 2,
+    colorPrice: 5,
+    duplexPrice: 3,
     isOpen: true,
     openingTime: '08:00 AM',
     closingTime: '08:00 PM',
     printerStatus: 'offline',
-    lastHeartbeat: ''
+    lastHeartbeat: '',
+    adminUsername: 'tjohn_admin',
+    adminPasswordHash: 'b20d2fac31472dc217d425b68ede40c3a17e337b899ae72879b3cc49bf36cb00' // SHA-256 hash of 'tjohn_password123'
+  },
+  {
+    id: 'alliance_print',
+    name: 'Alliance Print Center',
+    ownerName: 'Alliance Staff',
+    phoneNumber: '9876543211',
+    phone: '9876543211',
+    address: 'Alliance Main Block',
+    maintenanceMode: false,
+    bwPrice: 2,
+    colorPrice: 5,
+    duplexPrice: 3,
+    isOpen: true,
+    openingTime: '08:00 AM',
+    closingTime: '08:00 PM',
+    printerStatus: 'offline',
+    lastHeartbeat: '',
+    adminUsername: 'alliance_admin',
+    adminPasswordHash: 'b20d2fac31472dc217d425b68ede40c3a17e337b899ae72879b3cc49bf36cb00'
+  },
+  {
+    id: 'science_print',
+    name: 'Science Print Center',
+    ownerName: 'Science Staff',
+    phoneNumber: '9876543212',
+    phone: '9876543212',
+    address: 'Science Department',
+    maintenanceMode: false,
+    bwPrice: 3,
+    colorPrice: 5,
+    duplexPrice: 3,
+    isOpen: true,
+    openingTime: '08:00 AM',
+    closingTime: '08:00 PM',
+    printerStatus: 'offline',
+    lastHeartbeat: '',
+    adminUsername: 'science_admin',
+    adminPasswordHash: 'b20d2fac31472dc217d425b68ede40c3a17e337b899ae72879b3cc49bf36cb00'
   }
 ];
 
@@ -82,26 +206,69 @@ function ensureDir() {
 
 export function readDb(): Db {
   ensureDir();
-  if (!fs.existsSync(DB_PATH)) return { jobs: [], shops: DEFAULT_SHOPS, printerSettings: DEFAULT_PRINTER_SETTINGS };
+  if (!fs.existsSync(DB_PATH)) return { jobs: [], shops: DEFAULT_SHOPS, printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [] };
   try {
     const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
-    if (!data.shops || data.shops.length === 0) {
-      data.shops = DEFAULT_SHOPS;
+    if (!data.shops) {
+      data.shops = [];
     }
-    // Force cleanup: keep only default shops
-    data.shops = data.shops.filter((s: any) => DEFAULT_SHOPS.some(ds => ds.id === s.id));
-    if (data.shops.length === 0) {
-      data.shops = DEFAULT_SHOPS;
-    }
+    
+
+    
+    // Ensure default shops are present in the array
+    DEFAULT_SHOPS.forEach(defaultShop => {
+      const exists = data.shops.some((s: any) => s.id === defaultShop.id);
+      if (!exists) {
+        data.shops.push(defaultShop);
+      }
+    });
+
+    // Ensure all shops have password hashes and settings initialized
+    data.shops.forEach((s: any) => {
+      const ds = DEFAULT_SHOPS.find(d => d.id === s.id);
+      if (ds) {
+        s.adminUsername = ds.adminUsername;
+        s.adminPasswordHash = ds.adminPasswordHash;
+      }
+      if (s.ownerName === undefined) s.ownerName = 'TJohn Staff';
+      if (s.phoneNumber === undefined) s.phoneNumber = s.phone || '9876543210';
+      if (s.maintenanceMode === undefined) s.maintenanceMode = false;
+      if (s.bwPrice === undefined) s.bwPrice = 2;
+      if (s.colorPrice === undefined) s.colorPrice = 5;
+      if (s.duplexPrice === undefined) s.duplexPrice = 3;
+    });
+
     if (!data.jobs) {
       data.jobs = [];
     }
+    data.jobs.forEach((job: any) => {
+      if (!job.printType) {
+        job.printType = 'bw';
+      }
+      if (job.chargedAmount === undefined) {
+        const shop = data.shops.find((s: any) => s.id === job.shopId) || data.shops[0];
+        const printedPages = job.pageCount || 1;
+        if (job.sides === 'double') {
+          job.chargedAmount = (job.copies || 1) * Math.ceil(printedPages / 2) * (shop.duplexPrice || 3);
+        } else {
+          const isColor = job.printType === 'color' || job.printMode === 'color';
+          const rate = isColor ? (shop.colorPrice || 5) : (shop.bwPrice || 2);
+          job.chargedAmount = (job.copies || 1) * printedPages * rate;
+        }
+      }
+    });
     if (!data.printerSettings) {
       data.printerSettings = DEFAULT_PRINTER_SETTINGS;
     }
+    if (!data.agents) {
+      data.agents = [];
+    }
+    if (!data.printers) {
+      data.printers = [];
+    }
     return data;
   } catch {
-    return { jobs: [], shops: DEFAULT_SHOPS, printerSettings: DEFAULT_PRINTER_SETTINGS };
+    return { jobs: [], shops: DEFAULT_SHOPS, printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [] };
   }
 }
 

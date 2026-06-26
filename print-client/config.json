@@ -1,7 +1,0 @@
-{
-  "serverUrl": "http://localhost:3001",
-  "pollIntervalMs": 3000,
-  "mockPrinter": false,
-  "printerName": "HP119692 (HP Smart Tank 660-670 series)",
-  "shopId": "alliance_print"
-}

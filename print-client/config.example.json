@@ -1,0 +1,11 @@
+{
+  "serverUrl": "https://YOUR_RENDER_BACKEND_URL",
+  "pollIntervalMs": 3000,
+  "mockPrinter": false,
+  "printerName": "",
+  "shopId": "tjohn_print",
+  "agentId": "AGENT-001",
+  "machineName": "SHOP-PC-01",
+  "daemonVersion": "1.0.0",
+  "agentToken": "YOUR_AGENT_TOKEN"
+}
