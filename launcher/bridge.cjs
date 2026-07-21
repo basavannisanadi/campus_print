@@ -177,15 +177,15 @@ function handleStart() {
     }
   }
 
-  // 4. Launch client.cjs in a visible terminal window using 'start'
-  log(`Spawning print-client daemon (client.cjs) with visible window from ${clientPath}...`);
+  // 4. Launch client.cjs in a visible console window (no args, client reads configs directly)
+  log(`Spawning print-client daemon (client.cjs) in a visible window from ${clientPath}...`);
   const command = `start "Campus Print Agent" "${process.execPath}" "${clientPath}"`;
   originalExec(command, {
     cwd: targetDir,
     windowsHide: false
   });
 
-  log("Print Agent spawned. Exiting bridge.");
+  log("Print Agent spawned in visible window. Exiting bridge.");
   process.exit(0);
 }
 

@@ -138,8 +138,52 @@ export default function AdminPortal({
   const [launcherBusy, setLauncherBusy] = useState<boolean>(false);
   const [launcherError, setLauncherError] = useState<string>('');
   const [localConnectionError, setLocalConnectionError] = useState<string>('');
-  const [showOnlineConfirm, setShowOnlineConfirm] = useState(false);
-  const [showOfflineConfirm, setShowOfflineConfirm] = useState(false);
+  const [showOnlineConfirm, setShowOnlineConfirm] = useState<boolean>(false);
+  const [showOfflineConfirm, setShowOfflineConfirm] = useState<boolean>(false);
+
+  const executeGoOffline = async () => {
+    setShowOfflineConfirm(false);
+    setLauncherBusy(true);
+    setLauncherError('');
+    setLocalConnectionError('');
+    const token = sessionStorage.getItem('adminToken') || '';
+
+    try {
+      const res = await fetch(getApiUrl('/api/shop/go-offline'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ shopId: activeShopId })
+      });
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        setOperationalState('offline');
+        setAgentOnlineStatusState('offline');
+        setConnectionError(null);
+        
+        const protocolUrl = 'campusprint://stop';
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = protocolUrl;
+        document.body.appendChild(iframe);
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 1000);
+      } else {
+        setLauncherError(data.error || 'Failed to request transition offline.');
+      }
+    } catch (err) {
+      console.error(err);
+      setLauncherError('Connection failed while requesting transition offline.');
+    } finally {
+      setLauncherBusy(false);
+    }
+  };
 
   const executeGoOnline = async () => {
     setShowOnlineConfirm(false);
@@ -147,10 +191,9 @@ export default function AdminPortal({
     setLauncherError('');
     setLocalConnectionError('');
     const token = sessionStorage.getItem('adminToken') || '';
-    const targetEndpoint = '/api/shop/go-online';
 
     try {
-      const res = await fetch(getApiUrl(targetEndpoint), {
+      const res = await fetch(getApiUrl('/api/shop/go-online'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -202,63 +245,18 @@ export default function AdminPortal({
         }, 1000);
       } else {
         setLauncherError(data.error || 'Failed to request transition online.');
-        setLauncherBusy(false);
       }
     } catch (err) {
       console.error(err);
       setLauncherError('Connection failed while requesting transition online.');
-      setLauncherBusy(false);
-    }
-  };
-
-  const executeGoOffline = async () => {
-    setShowOfflineConfirm(false);
-    setLauncherBusy(true);
-    setLauncherError('');
-    setLocalConnectionError('');
-    const token = sessionStorage.getItem('adminToken') || '';
-    const targetEndpoint = '/api/shop/go-offline';
-
-    try {
-      const res = await fetch(getApiUrl(targetEndpoint), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ shopId: activeShopId })
-      });
-      const data = await res.json();
-      
-      if (res.ok && data.success) {
-        setOperationalState('offline');
-        setAgentOnlineStatusState('offline');
-        setConnectionError(null);
-        
-        const protocolUrl = 'campusprint://stop';
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = protocolUrl;
-        document.body.appendChild(iframe);
-        setTimeout(() => {
-          if (document.body.contains(iframe)) {
-            document.body.removeChild(iframe);
-          }
-        }, 1000);
-        setLauncherBusy(false);
-      } else {
-        setLauncherError(data.error || 'Failed to request transition offline.');
-        setLauncherBusy(false);
-      }
-    } catch (err) {
-      console.error(err);
-      setLauncherError('Connection failed while requesting transition offline.');
+    } finally {
       setLauncherBusy(false);
     }
   };
 
   const handleToggleOnlineStatus = () => {
-    if (operationalState === 'online') {
+    const currentOnline = operationalState === 'online';
+    if (currentOnline) {
       setShowOfflineConfirm(true);
     } else {
       setShowOnlineConfirm(true);
@@ -2338,62 +2336,63 @@ export default function AdminPortal({
           </div>
         </div>
       </div>
-    </div>
-      
+
+      {/* Two-Step Confirmation Modal: Go Online */}
       {showOnlineConfirm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 space-y-6 text-center transform scale-100 transition-all duration-300">
             <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl shadow-inner">
               🟢
             </div>
             <div className="space-y-2">
-              <h3 className="text-lg font-bold text-slate-800">Go Online?</h3>
-              <p className="text-xs text-slate-500 leading-relaxed px-2">
-                This will start the local Print Agent process on this computer and notify the server that the shop is ready to receive new print files from students.
+              <h3 className="text-lg font-bold text-slate-800">Confirm Going Online</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This will automatically start the Campus Print Agent process on this machine, verify system connectivity, and allow students to upload and queue print jobs.
               </p>
             </div>
-            <div className="flex gap-3 justify-center pt-2">
+            <div className="flex gap-3 justify-center">
               <button
                 onClick={() => setShowOnlineConfirm(false)}
-                className="py-2.5 px-5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all cursor-pointer shadow-sm"
+                className="py-2.5 px-5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all cursor-pointer shadow-xs"
               >
                 Cancel
               </button>
               <button
                 onClick={executeGoOnline}
-                className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-emerald-200"
+                className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold transition-all cursor-pointer shadow-md shadow-emerald-200"
               >
-                Confirm Go Online
+                Yes, Go Online
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Two-Step Confirmation Modal: Go Offline */}
       {showOfflineConfirm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 space-y-6 text-center transform scale-100 transition-all duration-300">
             <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto text-xl shadow-inner">
               ⚠️
             </div>
             <div className="space-y-2">
-              <h3 className="text-lg font-bold text-slate-800">Go Offline?</h3>
-              <p className="text-xs text-slate-500 leading-relaxed px-2">
-                This will immediately terminate the Print Agent process, stop all heartbeats, and stop accepting new print jobs from students. No new jobs can be uploaded.
+              <h3 className="text-lg font-bold text-slate-800">Confirm Going Offline</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This will terminate the active Print Agent daemon process and disconnect the shop. Students will be immediately prevented from submitting new print jobs.
               </p>
             </div>
-            <div className="flex gap-3 justify-center pt-2">
+            <div className="flex gap-3 justify-center">
               <button
                 onClick={() => setShowOfflineConfirm(false)}
-                className="py-2.5 px-5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all cursor-pointer shadow-sm"
+                className="py-2.5 px-5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all cursor-pointer shadow-xs"
               >
                 Cancel
               </button>
               <button
                 onClick={executeGoOffline}
-                className="py-2.5 px-6 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-rose-200"
+                className="py-2.5 px-6 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold transition-all cursor-pointer shadow-md shadow-rose-200"
               >
-                Confirm Go Offline
+                Yes, Disconnect Shop
               </button>
             </div>
           </div>

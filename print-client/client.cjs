@@ -810,17 +810,21 @@ function connectSSE() {
       return;
     }
 
-    // Set read timeout: if no data is received for 45 seconds (we expect keep-alives every 15s), reconnect!
-    res.setTimeout(45000, () => {
-      logToFile('  [SSE] Read timeout (45s of inactivity). Reconnecting...');
-      res.destroy();
-      setTimeout(connectSSE, 5000);
-    });
+    // Set 45s inactivity timeout on socket (server sends keep-alive every 15s)
+    if (res.socket) {
+      res.socket.setTimeout(45000);
+      res.socket.on('timeout', () => {
+        logToFile('[SSE] Socket timeout (45s inactivity). Reconnecting...');
+        try { res.destroy(); } catch {}
+        setTimeout(connectSSE, 3000);
+      });
+    }
 
     res.on('data', (chunk) => {
-      // Reset the timeout timer upon receiving any data
-      res.setTimeout(45000);
-      
+      // Reset socket timeout timer on receiving any chunk (including keep-alives)
+      if (res.socket) {
+        res.socket.setTimeout(45000);
+      }
       const text = chunk.toString();
       const lines = text.split('\n');
       for (const line of lines) {
@@ -849,7 +853,8 @@ function connectSSE() {
     });
   });
 
-  sseRequest.on('error', () => {
+  sseRequest.on('error', (err) => {
+    logToFile(`[SSE Stream Error] ${err ? err.message : 'Unknown'}`);
     setTimeout(connectSSE, 10000);
   });
 }
