@@ -177,17 +177,15 @@ function handleStart() {
     }
   }
 
-  // 4. Launch client.cjs detached (no args, client reads configs directly)
-  log(`Spawning print-client daemon (client.cjs) from ${clientPath}...`);
-  const child = spawn(process.execPath, [clientPath], {
+  // 4. Launch client.cjs in a visible terminal window using 'start'
+  log(`Spawning print-client daemon (client.cjs) with visible window from ${clientPath}...`);
+  const command = `start "Campus Print Agent" "${process.execPath}" "${clientPath}"`;
+  originalExec(command, {
     cwd: targetDir,
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true
+    windowsHide: false
   });
 
-  child.unref();
-  log("Print Agent spawned (Detached). Exiting bridge.");
+  log("Print Agent spawned. Exiting bridge.");
   process.exit(0);
 }
 

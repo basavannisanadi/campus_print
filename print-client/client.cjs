@@ -810,7 +810,17 @@ function connectSSE() {
       return;
     }
 
+    // Set read timeout: if no data is received for 45 seconds (we expect keep-alives every 15s), reconnect!
+    res.setTimeout(45000, () => {
+      logToFile('  [SSE] Read timeout (45s of inactivity). Reconnecting...');
+      res.destroy();
+      setTimeout(connectSSE, 5000);
+    });
+
     res.on('data', (chunk) => {
+      // Reset the timeout timer upon receiving any data
+      res.setTimeout(45000);
+      
       const text = chunk.toString();
       const lines = text.split('\n');
       for (const line of lines) {
