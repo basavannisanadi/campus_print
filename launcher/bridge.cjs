@@ -126,6 +126,17 @@ function handleStart() {
     process.exit(1);
   }
 
+  // Clear any existing shutdown signal before starting the daemon
+  const signalPath = path.join(targetDir, 'shutdown.signal');
+  if (fs.existsSync(signalPath)) {
+    try {
+      fs.unlinkSync(signalPath);
+      log("Cleared existing shutdown signal file before startup.");
+    } catch (e) {
+      log(`Failed to clear shutdown signal: ${e.message}`);
+    }
+  }
+
   // 2. Validate parameters & write configuration atomically
   if (serverUrl && shopId) {
     try {
