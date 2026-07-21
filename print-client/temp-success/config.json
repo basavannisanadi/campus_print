@@ -1,0 +1,13 @@
+{
+  "serverUrl": "http://127.0.0.1:63545",
+  "pollIntervalMs": 10000,
+  "mockPrinter": true,
+  "printerName": "",
+  "shopId": "alliance_print",
+  "agentId": "CP-TEST-REG-SUCCESS",
+  "machineName": "VICTUS",
+  "daemonVersion": "1.0.0",
+  "protocolVersion": "1.0.0",
+  "version": "1.0.0",
+  "token": "mock_valid_token"
+}

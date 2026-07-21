@@ -261,39 +261,26 @@ export default function OwnerDashboard({ navigate }: Props) {
             </div>
 
             {/* Health Indicators */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                <span>Agent Status:</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                  shop.agentOnlineStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {shop.agentOnlineStatus === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE'}
+            <div className="space-y-2 text-xs font-semibold text-slate-600">
+              <div className="flex justify-between items-center">
+                <span>Current State:</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase bg-indigo-50 text-indigo-700 border-indigo-200 tracking-wider">
+                  {shop.systemHealth?.currentState || 'UNKNOWN'}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                <span>B&W Service:</span>
+              <div className="flex justify-between items-center">
+                <span>System Status:</span>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                  shop.bwMaintenanceMode ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  shop.systemHealth?.systemReady ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
                 }`}>
-                  {shop.bwMaintenanceMode ? '🔧 MAINTENANCE' : '🟢 READY'}
+                  {shop.systemHealth?.systemReady ? '🟢 READY' : '🔴 NOT READY'}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                <span>Color Service:</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                  shop.colorMaintenanceMode ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                }`}>
-                  {shop.colorMaintenanceMode ? '🔧 MAINTENANCE' : '🟢 READY'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                <span>Shop Status:</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                  (shop.bwMaintenanceMode && shop.colorMaintenanceMode) ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                }`}>
-                  {(shop.bwMaintenanceMode && shop.colorMaintenanceMode) ? '🔴 MAINTENANCE' : '🟢 OPERATIONAL'}
-                </span>
-              </div>
+              {shop.systemHealth?.blockers && shop.systemHealth.blockers.length > 0 && (
+                <div className="text-[10px] text-rose-600 bg-rose-50/50 border border-rose-100 rounded-lg p-2 font-mono leading-tight mt-1 max-h-20 overflow-y-auto">
+                  {shop.systemHealth.blockers.join(', ')}
+                </div>
+              )}
             </div>
 
             {/* Connected Details */}

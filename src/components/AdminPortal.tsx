@@ -14,10 +14,13 @@ import {
   Lock,
   User,
   Save,
+  Download,
   QrCode,
   Search,
   Check,
-  Settings
+  Settings,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { PrintJob, Shop } from '../types';
 import { getApiUrl } from '../config';
@@ -80,6 +83,13 @@ interface Props {
   shops: Shop[];
   selectedShopId: string;
   onSelectShop: (shopId: string) => void;
+  systemHealth?: any;
+}
+
+interface DailyRevenueEntry {
+  date: string;
+  label: string;
+  revenue: number;
 }
 
 interface AdminStats {
@@ -87,6 +97,7 @@ interface AdminStats {
   jobs: number;
   failed: number;
   pending: number;
+  dailyRevenue?: DailyRevenueEntry[];
 }
 
 export default function AdminPortal({ 
@@ -107,7 +118,8 @@ export default function AdminPortal({
   scanStartedAt = '',
   shops,
   selectedShopId,
-  onSelectShop
+  onSelectShop,
+  systemHealth
 }: Props) {
   const activeShopId = selectedShopId;
   const qrUrl = `${window.location.origin}/?shopId=${activeShopId}`;
@@ -120,6 +132,193 @@ export default function AdminPortal({
   const [loginError, setLoginError] = useState('');
 
   const [selectedLoginShopId, setSelectedLoginShopId] = useState(selectedShopId || 'tjohn_print');
+
+  // On-Demand Agent Architecture States
+  const [operationalState, setOperationalState] = useState<'online' | 'offline' | 'connecting'>('offline');
+  const [launcherBusy, setLauncherBusy] = useState<boolean>(false);
+  const [launcherError, setLauncherError] = useState<string>('');
+  const [localConnectionError, setLocalConnectionError] = useState<string>('');
+
+  const handleToggleOnlineStatus = async () => {
+    setLauncherBusy(true);
+    setLauncherError('');
+    setLocalConnectionError('');
+    const token = sessionStorage.getItem('adminToken') || '';
+    const currentOnline = operationalState === 'online';
+    const targetEndpoint = currentOnline ? '/api/shop/go-offline' : '/api/shop/go-online';
+
+    try {
+      const res = await fetch(getApiUrl(targetEndpoint), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ shopId: activeShopId })
+      });
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        if (currentOnline) {
+          // Going offline
+          setOperationalState('offline');
+          setAgentOnlineStatusState('offline');
+          setConnectionError(null);
+          
+          const protocolUrl = 'campusprint://stop';
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.src = protocolUrl;
+          document.body.appendChild(iframe);
+          setTimeout(() => {
+            if (document.body.contains(iframe)) {
+              document.body.removeChild(iframe);
+            }
+          }, 1000);
+        } else {
+          // Going online (transition to connecting)
+          setOperationalState('connecting');
+          setConnectionError(null);
+
+          const origin = window.location.origin;
+          const protocolUrl = `campusprint://start?serverUrl=${encodeURIComponent(origin)}&shopId=${activeShopId}&token=${encodeURIComponent(token)}`;
+          
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.src = protocolUrl;
+          document.body.appendChild(iframe);
+          setTimeout(() => {
+            if (document.body.contains(iframe)) {
+              document.body.removeChild(iframe);
+            }
+          }, 1000);
+
+          // Local 20-second timer to poll agent heartbeat registration
+          const startTime = Date.now();
+          const checkTimer = setInterval(async () => {
+            try {
+              const checkRes = await fetch(getApiUrl(`/api/printer/settings?shopId=${activeShopId}`), {
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              if (checkRes.ok) {
+                const settings = await checkRes.json();
+                if (settings.agentOnlineStatus === 'online') {
+                  clearInterval(checkTimer);
+                  setOperationalState('online');
+                  setAgentOnlineStatusState('online');
+                } else if (Date.now() - startTime >= 20000) {
+                  clearInterval(checkTimer);
+                  setOperationalState('offline');
+                  setLocalConnectionError('Desktop Agent Not Responding. Please ensure the Campus Print Agent is installed and try again.');
+                }
+              }
+            } catch (e) {
+              // Ignore network glitches inside polling loop
+            }
+          }, 1000);
+        }
+      } else {
+        setLauncherError(data.error || 'Failed to update shop status.');
+      }
+    } catch (err) {
+      setLauncherError('Failed to communicate with shop status API.');
+    } finally {
+      setLauncherBusy(false);
+    }
+  };
+
+  const [agentInstalled, setAgentInstalled] = useState<boolean>(false);
+  const [verifyingInstall, setVerifyingInstall] = useState<boolean>(false);
+  const [agentVersionState, setAgentVersionState] = useState<string>('1.0.0');
+  const [latestAgentVersion, setLatestAgentVersion] = useState<string>('1.0.0');
+  const [startupProgress, setStartupProgress] = useState<any[]>([]);
+  const [connectionError, setConnectionError] = useState<any | null>(null);
+  const [agentOnlineStatusState, setAgentOnlineStatusState] = useState<string>(agentOnlineStatus);
+
+  useEffect(() => {
+    setAgentOnlineStatusState(agentOnlineStatus);
+  }, [agentOnlineStatus]);
+
+  const [waitingForCheckin, setWaitingForCheckin] = useState<boolean>(false);
+  const [activeStartupId, setActiveStartupId] = useState<string>('');
+  const [activePrinterName, setActivePrinterName] = useState<string>('');
+  const [printersCount, setPrintersCount] = useState<number>(0);
+  const [agentUptime, setAgentUptime] = useState<number>(0);
+  const [agentWindowsVersion, setAgentWindowsVersion] = useState<string>('');
+  const [lastHeartbeatTime, setLastHeartbeatTime] = useState<string>('');
+  const [currentJobToken, setCurrentJobToken] = useState<string>('');
+
+  const handleCancelStartup = async () => {
+    setLauncherBusy(true);
+    setLauncherError('');
+    setLocalConnectionError('');
+    const token = sessionStorage.getItem('adminToken') || '';
+
+    try {
+      const res = await fetch(getApiUrl('/api/shop/go-offline'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ shopId: activeShopId })
+      });
+      if (res.ok) {
+        setOperationalState('offline');
+        setAgentOnlineStatusState('offline');
+        setConnectionError(null);
+        
+        const protocolUrl = 'campusprint://stop';
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = protocolUrl;
+        document.body.appendChild(iframe);
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 1000);
+      } else {
+        setLauncherError('Failed to cancel startup.');
+      }
+    } catch (err) {
+      setLauncherError('Failed to communicate with cancel API.');
+    } finally {
+      setLauncherBusy(false);
+    }
+  };
+
+  const handleResetAgentStatus = async () => {
+    if (!window.confirm("Are you sure you want to reset the agent status? This will show the setup onboarding card again.")) {
+      return;
+    }
+    setLauncherBusy(true);
+    setLauncherError('');
+    try {
+      const token = sessionStorage.getItem('adminToken') || '';
+      const res = await fetch(getApiUrl('/api/printer/settings'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          shopId: activeShopId,
+          agentInstalled: false
+        })
+      });
+      if (res.ok) {
+        setAgentInstalled(false);
+      } else {
+        const data = await res.json();
+        setLauncherError(data.error || 'Failed to reset agent status.');
+      }
+    } catch (err) {
+      setLauncherError('Failed to communicate with reset API.');
+    } finally {
+      setLauncherBusy(false);
+    }
+  };
 
 
   useEffect(() => {
@@ -201,6 +400,7 @@ export default function AdminPortal({
     pending: 0
   });
   const [loadingStats, setLoadingStats] = useState(true);
+  const [showRevenueSummary, setShowRevenueSummary] = useState(false);
 
   // Token Search & Approval States
   const [searchTokenQuery, setSearchTokenQuery] = useState('');
@@ -238,6 +438,10 @@ export default function AdminPortal({
   };
 
   const handleApproveJob = async (jobId: string) => {
+    if (systemHealth && !systemHealth.systemReady) {
+      alert(`Cannot approve job. System is not ready: ${systemHealth.blockers.join(', ')}`);
+      return;
+    }
     setApprovingJobId(jobId);
     try {
       const token = sessionStorage.getItem('adminToken');
@@ -333,59 +537,78 @@ export default function AdminPortal({
   const fetchPrinterSettings = async () => {
     try {
       const token = sessionStorage.getItem('adminToken') || '';
-      const res = await fetch(getApiUrl(`/api/printer/settings?shopId=${activeShopId}`), {
+      
+      const shopRes = await fetch(getApiUrl(`/api/shops/${activeShopId}`));
+      if (shopRes.ok) {
+        const shopData = await shopRes.json();
+        setAvailablePrinters(shopData.printers || []);
+        setSelectedPrinter(shopData.activePrinterId || '');
+      }
+
+      const mappingRes = await fetch(getApiUrl(`/api/printers/mapping?shopId=${activeShopId}`), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) {
-        const settings = await res.json();
-        setAdminOverrideStatus(settings.adminOverrideStatus);
-        setExpectedReturnTime(settings.expectedReturnTime);
-        setAveragePrintSpeed(settings.averagePrintSpeed);
-        setUnderMaintenance(settings.underMaintenance || false);
-        setScanRequested(settings.scanRequested || false);
+      if (mappingRes.ok) {
+        const mapping = await mappingRes.json();
+        setBwPrinterId(mapping.bwPrinterId || '');
+        setBwPrinterName(mapping.bwPrinterName || '');
+        setColorPrinterId(mapping.colorPrinterId || '');
+        setColorPrinterName(mapping.colorPrinterName || '');
+      }
 
+      // Also retrieve live status settings to sync B&W/Color status cards
+      const settingsRes = await fetch(getApiUrl(`/api/printer/settings?shopId=${activeShopId}`), {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
         if (settings.bw) {
           setBwMaintenance(settings.bw.underMaintenance || false);
           setBwStatusMode(settings.bw.statusMode || 'auto');
           setBwExpectedReturnTime(settings.bw.expectedReturnTime || '06:02 PM');
-          setBwPrinterId(settings.bw.selectedPrinterId || '');
-          setBwPrinterName(settings.bw.selectedPrinterName || '');
           setBwStatus(settings.bw.status || 'offline');
         }
-
         if (settings.color) {
           setColorMaintenance(settings.color.underMaintenance || false);
           setColorStatusMode(settings.color.statusMode || 'auto');
           setColorExpectedReturnTime(settings.color.expectedReturnTime || '06:02 PM');
-          setColorPrinterId(settings.color.selectedPrinterId || '');
-          setColorPrinterName(settings.color.selectedPrinterName || '');
           setColorStatus(settings.color.status || 'offline');
         }
-        
-        const shopRes = await fetch(getApiUrl(`/api/shops/${activeShopId}`));
-        if (shopRes.ok) {
-          const shopData = await shopRes.json();
-          setAvailablePrinters(shopData.printers || []);
-          setSelectedPrinter(shopData.activePrinterId || '');
+        if (settings.operationalState) {
+          setOperationalState(settings.operationalState);
         }
-
-        const mappingRes = await fetch(getApiUrl(`/api/printers/mapping?shopId=${activeShopId}`), {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (mappingRes.ok) {
-          const mapping = await mappingRes.json();
-          setBwPrinterId(mapping.bwPrinterId || '');
-          setBwPrinterName(mapping.bwPrinterName || '');
-          setColorPrinterId(mapping.colorPrinterId || '');
-          setColorPrinterName(mapping.colorPrinterName || '');
+        if (settings.agentInstalled !== undefined) {
+          setAgentInstalled(settings.agentInstalled);
         }
-        
-        if (settings.scanRequested && !scanning) {
-          startPrinterScanPolling(token);
+        if (settings.agentDaemonVersion) {
+          setAgentVersionState(settings.agentDaemonVersion);
         }
+        if (settings.latestAgentVersion) {
+          setLatestAgentVersion(settings.latestAgentVersion);
+        }
+        if (settings.agentOnlineStatus) {
+          setAgentOnlineStatusState(settings.agentOnlineStatus);
+        }
+        if (settings.startupProgress) {
+          setStartupProgress(settings.startupProgress);
+          const hasStarted = settings.startupProgress.some((s: any) => s.status !== 'waiting');
+          if (hasStarted) {
+            setWaitingForCheckin(false);
+            setActiveStartupId('');
+          }
+        }
+        if (settings.connectionError !== undefined) {
+          setConnectionError(settings.connectionError);
+        }
+        setActivePrinterName(settings.selectedPrinter || '');
+        setPrintersCount(settings.printersCount || 0);
+        setAgentUptime(settings.uptime || 0);
+        setAgentWindowsVersion(settings.windowsVersion || '');
+        setLastHeartbeatTime(settings.lastHeartbeatTime || '');
+        setCurrentJobToken(settings.currentJobToken || '');
       }
     } catch (err) {
-      console.error('Failed to fetch printer settings:', err);
+      console.error('Failed to fetch printer configurations:', err);
     }
   };
 
@@ -463,6 +686,7 @@ export default function AdminPortal({
 
     const interval = setInterval(() => {
       fetchStats();
+      fetchPrinterSettings();
     }, 3000);
 
     return () => clearInterval(interval);
@@ -667,6 +891,10 @@ export default function AdminPortal({
     }
   };
 
+  const handleRejectJob = async (jobId: string) => {
+    await updateJobStatus(jobId, 'failed', { reason: 'Rejected by Administrator' });
+  };
+
   const handleResetSystem = async () => {
     if (!window.confirm('WARNING: This will clear all print history and delete upload files. Proceed?')) {
       return;
@@ -752,7 +980,7 @@ export default function AdminPortal({
       <body>
         <div class="card">
           <div class="title">Campus Print Hub</div>
-          <div class="subtitle">📍 Alliance Print Center</div>
+          <div class="subtitle">📍 ${shopName || 'Campus Print Hub'}</div>
           
           <div class="qr-container">
             <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&color=4f46e5&data=${encodeURIComponent(qrUrl)}" width="200" height="200" alt="QR Code" />
@@ -861,6 +1089,12 @@ export default function AdminPortal({
     );
   }
 
+
+
+  const isOnline = agentOnlineStatusState === 'online';
+  const isConnecting = !isOnline && operationalState === 'connecting';
+  const isOffline = !isOnline && !isConnecting;
+
   return (
     <div className="space-y-8 animate-fadeIn font-sans text-slate-700 text-left">
       {/* Admin Toolbar Header */}
@@ -890,19 +1124,159 @@ export default function AdminPortal({
           <p className="text-xs text-slate-400 mt-0.5">Printer controls & spooler queue for {shopName || 'selected shop'}</p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Rapido/Porter style operational toggle (only shown when agent is installed) */}
+          {/* Rapido/Porter style operational toggle */}
           <button
-            onClick={handleResetSystem}
-            className="py-2 px-4 rounded-xl bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            onClick={isConnecting ? handleCancelStartup : handleToggleOnlineStatus}
+            disabled={launcherBusy}
+            className={`py-2.5 px-4 rounded-xl font-bold text-xs transition-all cursor-pointer border-none flex items-center gap-2 shadow-sm ${
+              isOnline
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/20'
+                : isConnecting
+                ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-md shadow-amber-950/20 animate-pulse'
+                : 'bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-950/20 animate-pulse'
+            }`}
           >
-            <Trash2 className="w-4 h-4" />
-            Reset Hub
+            <span className={`w-2 h-2 rounded-full bg-white ${isOnline || isConnecting ? 'animate-ping' : ''}`} />
+            {isOnline 
+              ? '🟢 SHOP ONLINE (GO OFFLINE)' 
+              : isConnecting 
+              ? '⚡ CONNECTING (CANCEL)' 
+              : '🔴 SHOP OFFLINE (GO ONLINE)'
+            }
           </button>
+
           <button
             onClick={handleSignOut}
             className="py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer border-none"
           >
             Sign Out
           </button>
+        </div>
+      </div>
+
+      {launcherError && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-4 text-xs font-bold flex items-center gap-2">
+          <span>⚠️</span>
+          <span>{launcherError}</span>
+        </div>
+      )}
+
+      {/* 4-State Connection Dashboard Area */}
+      <div className="space-y-6">
+        {/* Main Connection Status Card */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm font-sans">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 text-left">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  isOnline
+                    ? 'bg-emerald-500 animate-pulse'
+                    : isConnecting
+                    ? 'bg-amber-500 animate-pulse'
+                    : 'bg-slate-400'
+                }`} />
+                <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 font-mono">
+                  System Status: {
+                    isOnline
+                      ? 'ONLINE'
+                      : isConnecting
+                      ? 'CONNECTING'
+                      : 'OFFLINE'
+                  }
+                </h4>
+              </div>
+              <h3 className="text-base font-bold text-slate-800">
+                Campus Print Agent Control
+              </h3>
+              <p className="text-slate-500 text-xs font-medium">
+                {isOffline && '🔴 Shop is offline. Start the desktop agent to connect the hardware queue.'}
+                {isConnecting && '⚡ Launching desktop agent... Awaiting secure heartbeat registration.'}
+                {isOnline && '🟢 Shop is online. Telemetry link active. Ready to accept cloud print requests.'}
+              </p>
+              <div className="mt-4 flex items-center">
+                <a
+                  href={getApiUrl('/download/agent')}
+                  download="CampusPrintInstaller.exe"
+                  className="py-1.5 px-3 rounded-lg border border-blue-200 bg-transparent hover:bg-blue-50 hover:border-blue-300 text-blue-600 text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer no-underline active:bg-blue-100"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Campus Print Agent
+                </a>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {/* Action Buttons */}
+              {isConnecting ? (
+                <button
+                  onClick={handleCancelStartup}
+                  disabled={launcherBusy}
+                  className="py-2.5 px-5 rounded-xl font-extrabold text-xs transition-all cursor-pointer border-none shadow-sm bg-rose-600 hover:bg-rose-500 text-white"
+                >
+                  Cancel Connecting
+                </button>
+              ) : (
+                <button
+                  onClick={handleToggleOnlineStatus}
+                  disabled={launcherBusy}
+                  className={`py-2.5 px-5 rounded-xl font-extrabold text-xs transition-all cursor-pointer border-none shadow-sm ${
+                    isOnline
+                      ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
+                  }`}
+                >
+                  {isOnline ? '🔴 GO OFFLINE' : '🟢 GO ONLINE'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Local Connection Error Display (State 3 Connecting Timeout) */}
+          {localConnectionError && (
+            <div className="mt-4 bg-rose-50 border border-rose-200 rounded-xl p-4 text-left space-y-2">
+              <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">
+                <span>⚠️ Connection Timeout</span>
+              </div>
+              <p className="text-xs text-rose-700/90 leading-relaxed font-medium">
+                {localConnectionError}
+              </p>
+            </div>
+          )}
+
+          {/* Active Device Configuration (Only when ONLINE and heartbeat is active) */}
+          {isOnline && (
+            <div className="mt-6 border-t border-slate-100 pt-6 text-left space-y-4">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Active Device Configuration</h4>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 text-xs text-left">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Printer Status</p>
+                  <p className="font-extrabold text-slate-800 mt-0.5 truncate">
+                    {bwStatus === 'online' ? (activePrinterName || 'System Default') : (bwStatus === 'unknown' ? 'Printer Status Unknown' : 'Printer Offline')}
+                  </p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Total Printers</p>
+                  <p className="font-extrabold text-slate-800 mt-0.5">
+                    {printersCount || 0} discovered
+                  </p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Uptime</p>
+                  <p className="font-extrabold text-slate-800 mt-0.5">
+                    {agentUptime ? `${Math.floor(agentUptime / 60)}m ${agentUptime % 60}s` : '0s'}
+                  </p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Telemetry link</p>
+                  <p className="font-extrabold text-slate-800 mt-0.5 truncate">
+                    {formatHeartbeat(lastHeartbeatTime)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -957,6 +1331,131 @@ export default function AdminPortal({
         </div>
       </div>
 
+      {/* 7-Day Revenue Summary (collapsible) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm font-sans overflow-hidden">
+        <button
+          onClick={() => setShowRevenueSummary(!showRevenueSummary)}
+          className="w-full flex items-center justify-between p-5 bg-transparent border-none cursor-pointer text-left"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 flex-shrink-0">
+              <TrendingUp className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 m-0">Revenue Summary</h3>
+              <p className="text-[11px] text-slate-400 font-semibold m-0 mt-0.5">Last 7 Days</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {!showRevenueSummary && stats.dailyRevenue && (
+              <span className="text-xs font-bold text-slate-400">
+                7-day total: ₹{stats.dailyRevenue.reduce((s, d) => s + d.revenue, 0).toLocaleString('en-IN')}
+              </span>
+            )}
+            {showRevenueSummary ? (
+              <ChevronUp className="w-4.5 h-4.5 text-slate-400" />
+            ) : (
+              <ChevronDown className="w-4.5 h-4.5 text-slate-400" />
+            )}
+          </div>
+        </button>
+
+        {showRevenueSummary && stats.dailyRevenue && (
+          <div className="px-5 pb-5 border-t border-slate-100">
+            {/* SVG Bar Chart */}
+            <div className="mt-4 mb-5">
+              <svg
+                viewBox="0 0 700 120"
+                className="w-full"
+                style={{ maxHeight: '120px' }}
+              >
+                {(() => {
+                  const data = stats.dailyRevenue;
+                  const maxRev = Math.max(...data.map(d => d.revenue), 1);
+                  const barWidth = 60;
+                  const gap = 40;
+                  const chartHeight = 90;
+                  return data.map((day, i) => {
+                    const barHeight = Math.max((day.revenue / maxRev) * chartHeight, 2);
+                    const x = i * (barWidth + gap) + 20;
+                    const y = chartHeight - barHeight + 5;
+                    return (
+                      <g key={day.date}>
+                        <rect
+                          x={x}
+                          y={y}
+                          width={barWidth}
+                          height={barHeight}
+                          rx={6}
+                          fill={i === 0 ? '#f59e0b' : '#e2e8f0'}
+                          opacity={i === 0 ? 1 : 0.7}
+                        />
+                        {day.revenue > 0 && (
+                          <text
+                            x={x + barWidth / 2}
+                            y={y - 4}
+                            textAnchor="middle"
+                            className="text-[10px] font-bold"
+                            fill="#64748b"
+                          >
+                            ₹{day.revenue.toLocaleString('en-IN')}
+                          </text>
+                        )}
+                        <text
+                          x={x + barWidth / 2}
+                          y={chartHeight + 18}
+                          textAnchor="middle"
+                          className="text-[9px] font-semibold"
+                          fill="#94a3b8"
+                        >
+                          {day.label.length > 3 ? day.label.slice(0, 3) : day.label}
+                        </text>
+                      </g>
+                    );
+                  });
+                })()}
+              </svg>
+            </div>
+
+            {/* Day-by-day list */}
+            <div className="space-y-1.5">
+              {stats.dailyRevenue.map((day, i) => (
+                <div
+                  key={day.date}
+                  className={`flex items-center justify-between py-2 px-3 rounded-lg text-sm ${
+                    i === 0
+                      ? 'bg-amber-50 border border-amber-100'
+                      : 'bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`font-bold ${
+                      i === 0 ? 'text-amber-700' : 'text-slate-600'
+                    }`}>
+                      {day.label}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">{day.date}</span>
+                  </div>
+                  <span className={`font-black tabular-nums ${
+                    i === 0 ? 'text-amber-700' : day.revenue > 0 ? 'text-slate-700' : 'text-slate-300'
+                  }`}>
+                    ₹{day.revenue.toLocaleString('en-IN')}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* 7-day total */}
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-200 px-3">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">7-Day Total</span>
+              <span className="text-lg font-black text-slate-800">
+                ₹{stats.dailyRevenue.reduce((s, d) => s + d.revenue, 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Agent & Health Monitoring Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Agent Status Card */}
@@ -970,12 +1469,12 @@ export default function AdminPortal({
               <div className="flex justify-between items-center">
                 <span>Agent Status:</span>
                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wider ${
-                  agentOnlineStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                  isOnline ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
                 }`}>
-                  {agentOnlineStatus === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                  {isOnline ? '🟢 ONLINE' : '🔴 OFFLINE'}
                 </span>
               </div>
-
+ 
               {!agentLastHeartbeat ? (
                 <>
                   <div className="flex justify-between items-center">
@@ -995,12 +1494,8 @@ export default function AdminPortal({
                     <span className="text-slate-900 font-bold text-slate-450">Never</span>
                   </div>
                 </>
-              ) : agentOnlineStatus !== 'online' ? (
+              ) : !isOnline ? (
                 <>
-                  <div className="flex justify-between items-center">
-                    <span>Machine Name:</span>
-                    <span className="text-slate-900 font-bold">{agentMachineName || 'Unknown'}</span>
-                  </div>
                   <div className="flex justify-between items-center">
                     <span>Configured Printer:</span>
                     <span className="text-slate-900 font-bold">
@@ -1020,10 +1515,6 @@ export default function AdminPortal({
                 </>
               ) : (
                 <>
-                  <div className="flex justify-between items-center">
-                    <span>Machine Name:</span>
-                    <span className="text-slate-900 font-bold">{agentMachineName || 'Unknown'}</span>
-                  </div>
                   <div className="flex justify-between items-center">
                     <span>Configured Printer:</span>
                     <span className="text-slate-900 font-bold">
@@ -1063,14 +1554,14 @@ export default function AdminPortal({
             <button
               type="button"
               onClick={handleScanPrinters}
-              disabled={scanning || agentOnlineStatus !== 'online'}
+              disabled={scanning || agentOnlineStatusState !== 'online'}
               className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} />
               {scanning ? 'Scanning installed printers...' : 'Refresh Installed Printers'}
             </button>
             
-            {agentOnlineStatus !== 'online' ? (
+            {agentOnlineStatusState !== 'online' ? (
               <p className="text-[10px] text-rose-500 font-bold text-center mt-1.5 leading-tight">
                 ⚠️ Start the Campus Print Agent to discover printers.
               </p>
@@ -1097,39 +1588,61 @@ export default function AdminPortal({
               <CheckCircle className="w-5 h-5 text-indigo-500" />
               <span>System Health Card</span>
             </h3>
-            <div className="space-y-4 text-sm font-semibold text-slate-600">
+            <div className="space-y-3.5 text-xs font-semibold text-slate-600">
               <div className="flex justify-between items-center">
-                <span>Backend Status:</span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase bg-emerald-50 text-emerald-700 border-emerald-200">
-                  🟢 Backend Online
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Agent Status:</span>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase ${
-                  agentOnlineStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                <span>1. Agent Connected:</span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                  systemHealth?.agentConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
                 }`}>
-                  {agentOnlineStatus === 'online' ? '🟢 Agent Online' : '🔴 Agent Offline'}
+                  {systemHealth?.agentConnected ? '🟢 CONNECTED' : '🔴 OFFLINE'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span>Printer Status:</span>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase ${
-                  printerStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                <span>2. Printers Discovered:</span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                  systemHealth?.printersDiscovered ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
                 }`}>
-                  {printerStatus === 'online' ? '🟢 Printer Online' : '🔴 Printer Offline'}
+                  {systemHealth?.printersDiscovered ? '🟢 DISCOVERED' : '🔴 NO DEVICES'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span>Upload Service Status:</span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase bg-emerald-50 text-emerald-700 border-emerald-200">
-                  🟢 Upload Service Healthy
+                <span>3. B&W Printer Selected:</span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                  systemHealth?.bwPrinterSelected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {systemHealth?.bwPrinterSelected ? '🟢 SELECTED' : '🔴 MISSING'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span>Job Processing Status:</span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase bg-emerald-50 text-emerald-700 border-emerald-200">
-                  🟢 Job Processing Healthy
+                <span>4. Color Printer Selected:</span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                  systemHealth?.colorPrinterSelected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {systemHealth?.colorPrinterSelected ? '🟢 SELECTED' : '🔴 MISSING'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>5. System Ready:</span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                  systemHealth?.systemReady ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {systemHealth?.systemReady ? '🟢 READY' : '🔴 NOT READY'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>6. Uploads Enabled:</span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                  systemHealth?.uploadsEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {systemHealth?.uploadsEnabled ? '🟢 ENABLED' : '🔴 DISABLED'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>7. Approvals Enabled:</span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                  systemHealth?.approvalsEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {systemHealth?.approvalsEnabled ? '🟢 ENABLED' : '🔴 DISABLED'}
                 </span>
               </div>
             </div>
@@ -1360,7 +1873,7 @@ export default function AdminPortal({
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${statusBg}`}>
                               {job.status.replace('_', ' ')}
                             </span>
-                            {job.reason && (
+                            {job.reason && job.reason !== 'Rejected by Administrator' && (
                               <p className="text-[10px] text-red-500 max-w-[150px] leading-tight" title={job.reason}>
                                 Reason: {job.reason}
                               </p>
@@ -1381,10 +1894,21 @@ export default function AdminPortal({
                               </button>
                             )}
 
+                            {['pending_approval', 'queued', 'paused'].includes(job.status) && (
+                              <button
+                                onClick={() => handleRejectJob(job.id)}
+                                className="p-1.5 rounded bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px]"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Reject
+                              </button>
+                            )}
+
                             {(isFailedState || job.status === 'paused') && (
                               <button
                                 onClick={() => updateJobStatus(job.id, 'queued', { progressPercent: 0, reason: '' })}
-                                className="p-1.5 rounded bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px]"
+                                disabled={job.printMode === 'color' ? colorStatus !== 'online' : bwStatus !== 'online'}
+                                className="p-1.5 rounded bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <Play className="w-3.5 h-3.5" />
                                 Retry
@@ -1446,15 +1970,15 @@ export default function AdminPortal({
                   value={bwPrinterId}
                   onChange={(e: any) => setBwPrinterId(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                  disabled={availablePrinters.length === 0}
+                  disabled={availablePrinters.filter(p => p.status === 'online').length === 0}
                   required
                 >
-                  {availablePrinters.length === 0 ? (
+                  {availablePrinters.filter(p => p.status === 'online').length === 0 ? (
                     <option value="">Start the Campus Print Agent to discover printers.</option>
                   ) : (
                     <>
                       <option value="" disabled>Select B&W Printer</option>
-                      {availablePrinters.map(printer => (
+                      {availablePrinters.filter(p => p.status === 'online').map(printer => (
                         <option key={printer.printerId} value={printer.printerId}>{printer.printerName}</option>
                       ))}
                     </>
@@ -1514,15 +2038,15 @@ export default function AdminPortal({
                   value={colorPrinterId}
                   onChange={(e: any) => setColorPrinterId(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                  disabled={availablePrinters.length === 0}
+                  disabled={availablePrinters.filter(p => p.status === 'online').length === 0}
                   required
                 >
-                  {availablePrinters.length === 0 ? (
+                  {availablePrinters.filter(p => p.status === 'online').length === 0 ? (
                     <option value="">Start the Campus Print Agent to discover printers.</option>
                   ) : (
                     <>
                       <option value="" disabled>Select Color Printer</option>
-                      {availablePrinters.map(printer => (
+                      {availablePrinters.filter(p => p.status === 'online').map(printer => (
                         <option key={printer.printerId} value={printer.printerId}>{printer.printerName}</option>
                       ))}
                     </>
@@ -1578,7 +2102,9 @@ export default function AdminPortal({
                 </div>
                 <div className="flex justify-between">
                   <span>Printer:</span>
-                  <span className="text-slate-900 font-bold">{bwPrinterName || 'Not configured'}</span>
+                  <span className="text-slate-900 font-bold">
+                    {bwStatus === 'online' ? (bwPrinterName || 'Not configured') : 'None (Offline)'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Maintenance:</span>
@@ -1599,7 +2125,9 @@ export default function AdminPortal({
                 </div>
                 <div className="flex justify-between">
                   <span>Printer:</span>
-                  <span className="text-slate-900 font-bold">{colorPrinterName || 'Not configured'}</span>
+                  <span className="text-slate-900 font-bold">
+                    {colorStatus === 'online' ? (colorPrinterName || 'Not configured') : 'None (Offline)'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Maintenance:</span>
@@ -1619,21 +2147,15 @@ export default function AdminPortal({
                 <div className="flex justify-between items-center">
                   <span>Agent Status:</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                    agentOnlineStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    agentOnlineStatusState === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
                   }`}>
-                    {agentOnlineStatus === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                    {agentOnlineStatusState === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE'}
                   </span>
                 </div>
                 {agentId && (
                   <div className="flex justify-between">
                     <span>Agent ID:</span>
                     <span className="text-slate-900 font-bold">{agentId}</span>
-                  </div>
-                )}
-                {agentMachineName && (
-                  <div className="flex justify-between">
-                    <span>Machine Name:</span>
-                    <span className="text-slate-900 font-bold">{agentMachineName}</span>
                   </div>
                 )}
                 {agentPrinterName && (

@@ -30,6 +30,7 @@ interface Props {
   selectedShopId: string;
   onSelectShop: (shopId: string) => void;
   agentOnlineStatus?: 'online' | 'offline';
+  systemHealth?: any;
 }
 
 const ACCEPTED_TYPES = [
@@ -109,10 +110,12 @@ export default function StudentPortal({
   shops,
   selectedShopId,
   onSelectShop,
-  agentOnlineStatus = 'offline'
+  agentOnlineStatus = 'offline',
+  systemHealth
 }: Props) {
   // Authentication states
   const isGlobalMaintenance = (!!shopInfo?.bwMaintenanceMode && !!shopInfo?.colorMaintenanceMode) || underMaintenance;
+  const isUploadDisabled = isGlobalMaintenance || (systemHealth && !systemHealth.systemReady);
   const [studentName, setStudentName] = useState(() => localStorage.getItem('studentName') || '');
   const [studentEmail, setStudentEmail] = useState(() => localStorage.getItem('studentEmail') || '');
   const [isRemembered, setIsRemembered] = useState(() => !!(localStorage.getItem('studentName') && localStorage.getItem('studentEmail')));
@@ -338,7 +341,10 @@ export default function StudentPortal({
     if (!studentEmail.trim()) return setError('Please enter your email.');
     if (files.length === 0) return setError('Please upload at least one file to print.');
 
-    if (isGlobalMaintenance) {
+    if (isUploadDisabled) {
+      if (systemHealth && !systemHealth.systemReady) {
+        return setError(`Printing service is currently unavailable. Blockers: ${systemHealth.blockers.join(', ')}`);
+      }
       return setError('This print shop is currently under maintenance.');
     }
 
@@ -704,7 +710,7 @@ export default function StudentPortal({
       <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn font-sans text-left">
         <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 border border-indigo-100 text-indigo-700">
-            📍 {shopInfo.name || 'Alliance Print Center'}
+            📍 {shopInfo?.name || 'Campus Print Hub'}
           </span>
           <button
             onClick={handleSignOut}
@@ -805,7 +811,7 @@ export default function StudentPortal({
             </div>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 w-fit">
-              📍 {shopInfo.name || 'Alliance Print Center'}
+              📍 {shopInfo?.name || 'Campus Print Hub'}
             </span>
           )}
           <div className="flex items-center gap-4 text-xs text-slate-400 font-semibold font-mono">
@@ -825,14 +831,14 @@ export default function StudentPortal({
         </button>
       </div>
 
-      {/* Agent Offline Precaution Warning Card */}
-      {agentOnlineStatus !== 'online' && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
+      {/* System Health State Machine & Blockers Checklist */}
+      {systemHealth && !systemHealth.systemReady && (
+        <div className="p-5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
           <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
           <div>
-            <h4 className="text-sm font-bold">⚠️ Printing service is currently offline.</h4>
-            <p className="text-xs text-rose-700 mt-1 leading-normal">
-              The print agent is disconnected. You can still upload and queue documents; they will print automatically when the shop agent reconnects.
+            <h4 className="text-sm font-bold">Printing service is currently unavailable.</h4>
+            <p className="text-xs text-rose-700 mt-1 leading-normal font-semibold">
+              Please try again later or contact the print administrator.
             </p>
           </div>
         </div>
@@ -914,12 +920,12 @@ export default function StudentPortal({
                   Ingestion File
                 </label>
                 <div
-                  onDragOver={(submitting || isGlobalMaintenance) ? undefined : handleDragOver}
-                  onDragLeave={(submitting || isGlobalMaintenance) ? undefined : handleDragLeave}
-                  onDrop={(submitting || isGlobalMaintenance) ? undefined : handleDrop}
-                  onClick={() => !(submitting || isGlobalMaintenance) && fileInputRef.current?.click()}
+                  onDragOver={(submitting || isUploadDisabled) ? undefined : handleDragOver}
+                  onDragLeave={(submitting || isUploadDisabled) ? undefined : handleDragLeave}
+                  onDrop={(submitting || isUploadDisabled) ? undefined : handleDrop}
+                  onClick={() => !(submitting || isUploadDisabled) && fileInputRef.current?.click()}
                   className={`relative rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-all duration-200 ${
-                    (submitting || isGlobalMaintenance)
+                    (submitting || isUploadDisabled)
                       ? 'border-slate-100 bg-slate-50/50 cursor-not-allowed opacity-60'
                       : dragOver
                       ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]'
@@ -933,7 +939,7 @@ export default function StudentPortal({
                     accept={ACCEPTED_EXT}
                     onChange={handleFileChange}
                     className="hidden"
-                    disabled={submitting || isGlobalMaintenance}
+                    disabled={submitting || isUploadDisabled}
                   />
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Upload className="w-8 h-8 text-slate-300" />
@@ -1022,7 +1028,7 @@ export default function StudentPortal({
 
               <button
                 type="submit"
-                disabled={files.length === 0 || submitting}
+                disabled={files.length === 0 || submitting || isUploadDisabled}
                 className="w-full py-3.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs transition-all shadow-lg shadow-indigo-500/25 cursor-pointer flex items-center justify-center gap-2 border-none"
               >
                 {submitting ? (
@@ -1033,7 +1039,7 @@ export default function StudentPortal({
                 ) : (
                   <div className="flex items-center gap-2">
                     <Printer className="w-4 h-4" />
-                    {printerStatus === 'offline' ? 'Queue for Later' : 'Send Queue to Print'} ({files.length} {files.length === 1 ? 'file' : 'files'})
+                    {systemHealth && !systemHealth.systemReady ? 'System Not Ready' : (printerStatus === 'offline' ? 'Queue for Later' : 'Send Queue to Print')} ({files.length} {files.length === 1 ? 'file' : 'files'})
                   </div>
                 )}
               </button>

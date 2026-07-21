@@ -2,8 +2,52 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
-const { exec, spawn } = require('child_process');
+const cp = require('child_process');
 const os = require('os');
+
+const logFile = path.join(__dirname, 'logs', 'client.log');
+if (!fs.existsSync(path.dirname(logFile))) {
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+}
+function logToFile(msg) {
+  const line = `[Client] [${new Date().toISOString()}] ${msg}\n`;
+  try { fs.appendFileSync(logFile, line); } catch(e) {}
+}
+
+logToFile('Started');
+
+// Overwrite child_process.exec to force windowsHide: true on Windows systems (eliminates all flashing CMD windows)
+const originalExec = cp.exec;
+cp.exec = function (cmd, options, callback) {
+  if (typeof options === 'function') {
+    callback = options;
+    options = {};
+  }
+  options = options || {};
+  if (options.windowsHide === undefined) {
+    options.windowsHide = true;
+  }
+  return originalExec(cmd, options, callback);
+};
+
+// Overwrite child_process.spawn to force windowsHide: true on Windows systems (eliminates all flashing CMD windows)
+const originalSpawn = cp.spawn;
+cp.spawn = function (command, args, options) {
+  let finalArgs = args;
+  let finalOptions = options;
+  if (args && !Array.isArray(args)) {
+    finalOptions = args;
+    finalArgs = [];
+  }
+  finalOptions = finalOptions || {};
+  if (finalOptions.windowsHide === undefined) {
+    finalOptions.windowsHide = true;
+  }
+  return originalSpawn(command, finalArgs, finalOptions);
+};
+
+const exec = cp.exec;
+const spawn = cp.spawn;
 
 function getHttpClient(url) {
   return url.protocol === 'https:' ? https : http;
@@ -37,7 +81,7 @@ if (fs.existsSync(LOCK_FILE)) {
         process.kill(existingPid, 0);
         isRunning = true;
       } catch (err) {
-        isRunning = err.code === 'EPERM'; // If EPERM, process exists but we lack permissions
+        isRunning = err.code === 'EPERM';
       }
     }
   } catch (err) {
@@ -54,74 +98,68 @@ if (fs.existsSync(LOCK_FILE)) {
 }
 fs.writeFileSync(LOCK_FILE, process.pid.toString());
 process.on('exit', () => { try { fs.unlinkSync(LOCK_FILE); } catch {} });
-process.on('SIGINT', () => process.exit());
-process.on('SIGTERM', () => process.exit());
-process.on('uncaughtException', (err) => { console.error(err); process.exit(1); });
+process.on('SIGINT', () => gracefulShutdown());
+process.on('SIGTERM', () => gracefulShutdown());
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err);
+  process.exit(1);
+});
 
 // --- CONFIG ---
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 let config = {
-  serverUrl: 'https://campus-print-backend.onrender.com',
-  pollIntervalMs: 10000, // safety polling fallback (10s)
-  mockPrinter: true,     // Set false when real printer is connected
-  printerName: '',       // Leave empty for default printer
-  shopId: 'alliance_print', // shop to poll for print jobs
+  serverUrl: 'http://localhost:3001',
+  pollIntervalMs: 10000,
+  mockPrinter: false,
+  printerName: '',
+  shopId: 'tjohn_print',
   agentId: 'AGENT-001',
   machineName: os.hostname() || 'SHOP-PC-01',
   daemonVersion: '1.0.0',
-  agentToken: 'campusprint_agent_token_123'
+  protocolVersion: '1.0.0'
 };
 
 if (fs.existsSync(CONFIG_PATH)) {
   try { config = { ...config, ...JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')) }; } catch {}
 }
 
-// Local cache for printer mappings (Correction #1)
+// Parse command-line args override
+let argServerUrl = '';
+let argShopId = '';
+
+process.argv.forEach(val => {
+  if (val.startsWith('--server-url=')) {
+    argServerUrl = val.substring(13);
+  } else if (val.startsWith('--shop-id=')) {
+    argShopId = val.substring(10);
+  }
+});
+
+if (argServerUrl) config.serverUrl = argServerUrl;
+if (argShopId) config.shopId = argShopId;
+
+// Runtime state variables
 let cachedPrinterMapping = {
   bwPrinterId: '',
   bwPrinterName: '',
   colorPrinterId: '',
   colorPrinterName: ''
 };
-
 let currentJobPrintType = '';
 let currentJobSelectedPrinter = '';
+let lastPrintTime = '';
+let resolvedPrinterName = '';
+let activeJobToken = null;
 
-async function refreshPrinterMapping() {
-  try {
-    const mapping = await apiGet(`/api/printers/mapping?shopId=${config.shopId || 'alliance_print'}`);
-    if (mapping) {
-      cachedPrinterMapping = {
-        bwPrinterId: mapping.bwPrinterId || '',
-        bwPrinterName: mapping.bwPrinterName || '',
-        colorPrinterId: mapping.colorPrinterId || '',
-        colorPrinterName: mapping.colorPrinterName || ''
-      };
-      console.log('  [AGENT] Locally cached printer mappings updated successfully.');
-    }
-  } catch (err) {
-    console.error('  [AGENT] Failed to refresh printer mapping:', err.message);
-  }
-}
+let busy = false;
+let isQueuePaused = false;
+let recoveryActive = false;
+let heartbeatTimer = null;
+let pollTimer = null;
+let isShuttingDown = false;
+let isRegistered = false;
 
-async function resolvePrinterForJob(job) {
-  const printType = job.printType || 'bw';
-  const printerName = printType === 'color' ? cachedPrinterMapping.colorPrinterName : cachedPrinterMapping.bwPrinterName;
-  if (printerName) {
-    console.log(`  [ROUTING] Routing printJob ${job.token} to mapped ${printType.toUpperCase()} printer: "${printerName}"`);
-    return printerName;
-  }
-
-  if (config.mockPrinter) {
-    return 'MockPrinter';
-  }
-  
-  // Fallback to legacy active printer
-  console.log(`  [ROUTING] Mapped ${printType.toUpperCase()} printer not configured. Falling back to active printer.`);
-  return resolveActivePrinter();
-}
-
-// Ensure temp directories
+// Ensure directories
 const TEMP_DIR = path.join(__dirname, 'temp');
 const OUTPUT_DIR = path.join(__dirname, 'printed_output');
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -129,7 +167,9 @@ if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
 // HTTP helpers
 function getAuthHeader() {
-  return `Bearer ${config.agentToken || config.apiKey || 'campusprint_agent_token_123'}`;
+  const tokenForLog = config.token || '';
+  logToFile(`[DIAGNOSTIC] getAuthHeader() config.token: "${tokenForLog.substring(0, 20)}"`);
+  return `Bearer ${config.token || ''}`;
 }
 
 function apiGet(endpoint) {
@@ -138,7 +178,8 @@ function apiGet(endpoint) {
     const client = getHttpClient(url);
     client.get(url, { 
       timeout: 10000, 
-      headers: { 'Authorization': getAuthHeader() } 
+      headers: { 'Authorization': getAuthHeader() },
+      agent: false
     }, (res) => {
       let data = '';
       res.on('data', c => data += c);
@@ -154,7 +195,6 @@ function apiGet(endpoint) {
 function apiPost(endpoint, body) {
   return new Promise((resolve, reject) => {
     const url = new URL(endpoint, config.serverUrl);
-    // Append routing telemetry if posting to timeline (Correction #3)
     if (endpoint && endpoint.includes('/timeline') && body && typeof body === 'object') {
       if (body.printType === undefined && currentJobPrintType) {
         body.printType = currentJobPrintType;
@@ -173,15 +213,27 @@ function apiPost(endpoint, body) {
         'Authorization': getAuthHeader()
       },
       timeout: 10000,
+      agent: false
     }, (res) => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
+        if (res.statusCode >= 400) {
+          logToFile(`HTTP POST ${endpoint} Failed: HTTP ${res.statusCode} - ${data}`);
+          return reject(new Error(`HTTP ${res.statusCode}`));
+        }
         try { resolve(JSON.parse(data)); } catch { resolve(data); }
       });
     });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+    req.on('error', (err) => {
+      logToFile(`Network error on POST ${endpoint}: ${err.message}`);
+      reject(err);
+    });
+    req.on('timeout', () => { 
+      logToFile(`Timeout on POST ${endpoint}`);
+      req.destroy(); 
+      reject(new Error('Timeout')); 
+    });
     req.write(payload);
     req.end();
   });
@@ -193,7 +245,8 @@ function downloadFile(filePath, dest) {
     const client = getHttpClient(url);
     client.get(url, { 
       timeout: 30000,
-      headers: { 'Authorization': getAuthHeader() }
+      headers: { 'Authorization': getAuthHeader() },
+      agent: false
     }, (res) => {
       if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)); }
       const ws = fs.createWriteStream(dest);
@@ -202,13 +255,6 @@ function downloadFile(filePath, dest) {
       ws.on('error', reject);
     }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Download timeout')); });
   });
-}
-
-function progressBar(current, total) {
-  const w = 30;
-  const pct = Math.round((current / total) * 100);
-  const filled = Math.round((current / total) * w);
-  return `[${'='.repeat(filled)}>${' '.repeat(w - filled)}] ${pct}%`;
 }
 
 function convertToPdf(localPath) {
@@ -237,7 +283,7 @@ function convertToPdf(localPath) {
       cmd = `powershell -Command "$ppt = New-Object -ComObject PowerPoint.Application; try { $pres = $ppt.Presentations.Open('${escapedPptPath}', [Microsoft.Office.Core.MsoTriState]::msoFalse, [Microsoft.Office.Core.MsoTriState]::msoFalse, [Microsoft.Office.Core.MsoTriState]::msoFalse); $pres.SaveAs('${escapedPdfPath}', 32); $pres.Close(); } finally { $ppt.Quit(); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ppt) | Out-Null; }"`;
     }
 
-    exec(cmd, (err, stdout, stderr) => {
+    exec(cmd, (err) => {
       if (err) {
         console.error(`  [CONVERT] Conversion failed: ${err.message}`);
         return resolve(localPath);
@@ -254,9 +300,7 @@ function convertToPdf(localPath) {
 // Download SumatraPDF if missing
 async function ensureSumatraPDF() {
   const sumatraPath = path.join(__dirname, 'SumatraPDF.exe');
-  if (fs.existsSync(sumatraPath)) {
-    return;
-  }
+  if (fs.existsSync(sumatraPath)) return;
   
   const namedPath = path.join(__dirname, 'SumatraPDF-3.6.1-64.exe');
   if (fs.existsSync(namedPath)) {
@@ -265,7 +309,6 @@ async function ensureSumatraPDF() {
   }
   
   console.log('  [SETUP] SumatraPDF.exe is missing. Downloading portable version...');
-  
   const zipPath = path.join(__dirname, 'sumatra.zip');
   const url = 'https://www.sumatrapdfreader.org/dl/rel/3.6.1/SumatraPDF-3.6.1-64.zip';
   
@@ -281,15 +324,12 @@ async function ensureSumatraPDF() {
     if (fs.existsSync(namedPath)) {
       fs.renameSync(namedPath, sumatraPath);
     }
-    
     console.log('  [SETUP] SumatraPDF.exe downloaded and extracted successfully.');
   } catch (err) {
     console.error('  [SETUP] Failed to download SumatraPDF automatically:', err.message);
-    console.log('  [SETUP] Fallback printing methods (PowerShell Start-Process) will be used.');
   }
 }
 
-// Show native Windows desktop notification safely via spawn (mitigates command injection)
 function showNotification(title, message) {
   const psScript = `& {
     param($msg, $title)
@@ -304,9 +344,7 @@ function showNotification(title, message) {
   }`;
   try {
     const ps = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript, message || '', title || '']);
-    ps.on('error', (err) => {
-      console.error('  [NOTIFICATION ERROR]', err.message);
-    });
+    ps.on('error', (err) => console.error('  [NOTIFICATION ERROR]', err.message));
   } catch (err) {
     console.error('  [NOTIFICATION ERROR]', err.message);
   }
@@ -331,13 +369,16 @@ function getDefaultPrinter() {
 
 function getInstalledPrinters() {
   return new Promise((resolve) => {
-    const cmd = `powershell -Command "Get-Printer | Select-Object -ExpandProperty Name"`;
-    exec(cmd, (err, stdout) => {
+    const cmd = "powershell -Command \"Get-Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name\"";
+    exec(cmd, { timeout: 10000 }, (err, stdout) => {
       if (err || !stdout.trim()) {
-        const fallbackCmd = `powershell -Command "Get-CimInstance -ClassName Win32_Printer | Select-Object -ExpandProperty Name"`;
-        exec(fallbackCmd, (fallbackErr, fallbackStdout) => {
-          if (fallbackErr) resolve([]);
-          else {
+        logToFile(`[WARN] Primary printer query failed or timed out: ${err ? err.message : 'Empty stdout'}`);
+        const fallbackCmd = "powershell -Command \"Get-CimInstance -ClassName Win32_Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name\"";
+        exec(fallbackCmd, { timeout: 10000 }, (fallbackErr, fallbackStdout) => {
+          if (fallbackErr || !fallbackStdout.trim()) {
+            logToFile(`[WARN] Fallback printer query failed or timed out: ${fallbackErr ? fallbackErr.message : 'Empty stdout'}`);
+            resolve([]);
+          } else {
             const printers = fallbackStdout.split(/\r?\n/).map(p => p.trim()).filter(Boolean);
             resolve(printers);
           }
@@ -354,11 +395,9 @@ function getPrinterStatus(printerName) {
   return new Promise((resolve) => {
     if (!printerName) return resolve(null);
     const escapedPrinter = printerName.replace(/'/g, "''");
-    // Query Win32_Printer via Get-CimInstance for accurate live hardware connectivity detection
     const cmd = `powershell -Command "Get-CimInstance -ClassName Win32_Printer | Where-Object Name -eq '${escapedPrinter}' | Select-Object PrinterStatus, WorkOffline, DetectedErrorState, ExtendedPrinterStatus | ConvertTo-Json"`;
     exec(cmd, (err, stdout) => {
       if (err || !stdout.trim()) {
-        // Fallback to classic Get-Printer if CIM is unavailable
         const fallbackCmd = `powershell -Command "Get-Printer -Name '${escapedPrinter}' | Select-Object PrinterStatus, WorkOffline | ConvertTo-Json"`;
         exec(fallbackCmd, (fallbackErr, fallbackStdout) => {
           if (fallbackErr || !fallbackStdout.trim()) {
@@ -381,50 +420,53 @@ function getPrinterStatus(printerName) {
   });
 }
 
-function resolveActivePrinter() {
-  return new Promise(async (resolve) => {
-    if (config.mockPrinter) {
-      return resolve('MockPrinter');
-    }
-    try {
-      const settings = await apiGet('/api/printer/settings');
-      if (settings && settings.selectedPrinter) {
-        return resolve(settings.selectedPrinter);
-      }
-    } catch (err) {
-      // Silently fall back
-    }
-    if (config.printerName) {
-      return resolve(config.printerName);
-    }
-    const defaultPrinter = await getDefaultPrinter();
-    resolve(defaultPrinter || '');
-  });
-}
-
 function getSpoolerJobs(printerName) {
   return new Promise((resolve) => {
     if (!printerName) return resolve([]);
     const escapedPrinter = printerName.replace(/'/g, "''");
     const cmd = `powershell -Command "Get-PrintJob -PrinterName '${escapedPrinter}' | Select-Object Id, DocumentName, JobStatus, PagesPrinted, TotalPages | ConvertTo-Json"`;
     exec(cmd, (err, stdout) => {
-      if (err || !stdout.trim()) {
-        return resolve([]);
-      }
+      if (err || !stdout.trim()) return resolve([]);
       try {
         const parsed = JSON.parse(stdout);
-        if (Array.isArray(parsed)) {
-          resolve(parsed);
-        } else if (parsed && typeof parsed === 'object') {
-          resolve([parsed]);
-        } else {
-          resolve([]);
-        }
+        if (Array.isArray(parsed)) resolve(parsed);
+        else if (parsed && typeof parsed === 'object') resolve([parsed]);
+        else resolve([]);
       } catch {
         resolve([]);
       }
     });
   });
+}
+
+async function refreshPrinterMapping() {
+  try {
+    const mapping = await apiGet(`/api/printers/mapping?shopId=${config.shopId || 'tjohn_print'}`);
+    if (mapping) {
+      cachedPrinterMapping = {
+        bwPrinterId: mapping.bwPrinterId || '',
+        bwPrinterName: mapping.bwPrinterName || '',
+        colorPrinterId: mapping.colorPrinterId || '',
+        colorPrinterName: mapping.colorPrinterName || ''
+      };
+      console.log('  [AGENT] Locally cached printer mappings updated successfully.');
+    }
+  } catch (err) {
+    console.error('  [AGENT] Failed to refresh printer mapping:', err.message);
+  }
+}
+
+async function resolvePrinterForJob(job) {
+  const printType = job.printType || 'bw';
+  const printerName = printType === 'color' ? cachedPrinterMapping.colorPrinterName : cachedPrinterMapping.bwPrinterName;
+  if (printerName) {
+    return printerName;
+  }
+  if (config.mockPrinter) {
+    return 'MockPrinter';
+  }
+  const defaultPrinter = await getDefaultPrinter();
+  return defaultPrinter || '';
 }
 
 async function monitorPrintJob(printerName, localPath, totalPages, job, initialSpoolerJob, daemonInstance) {
@@ -449,11 +491,9 @@ async function monitorPrintJob(printerName, localPath, totalPages, job, initialS
   }
   
   if (!spoolerJob) {
-    console.log('  [MONITOR] Job not found in spooler, assuming processed or printed instantly.');
+    console.log('  [MONITOR] Job not found in spooler, assuming processed instantly.');
     return;
   }
-  
-  console.log(`  [MONITOR] Found spooler Job ID: ${spoolerJob.Id}. Status: ${spoolerJob.JobStatus}`);
   
   let lastProgress = 0;
   let stuckCount = 0;
@@ -470,12 +510,12 @@ async function monitorPrintJob(printerName, localPath, totalPages, job, initialS
                         printerStatus.PrinterStatus === 'Offline';
       if (isOffline) {
         if (!isQueuePaused) {
-          console.log('  [MONITOR] Printer Offline. Pausing until resolved...');
+          console.log('  [MONITOR] Printer Offline. Pausing queue...');
           isQueuePaused = true;
           showNotification('Campus Print Hub', 'Printer Offline. Waiting...');
           startRecoveryLoop();
         }
-        continue; // Wait patiently
+        continue;
       }
     }
     
@@ -483,7 +523,6 @@ async function monitorPrintJob(printerName, localPath, totalPages, job, initialS
     const activeJob = jobs.find(j => j.Id === spoolerJob.Id);
     
     if (!activeJob) {
-      // Telemetry: spooler_job_removed
       try {
         const printerId = formatPrinterId(printerName);
         await apiPost(`/api/jobs/${job.id}/timeline`, {
@@ -493,25 +532,22 @@ async function monitorPrintJob(printerName, localPath, totalPages, job, initialS
           daemonInstance
         });
       } catch (e) {
-        console.error('  [Telemetry Error] Failed to record spooler_job_removed stage:', e.message);
+        console.error('  [Telemetry Error] Failed to record spooler_job_removed:', e.message);
       }
-      console.log('  [MONITOR] Job completed and left the print spooler queue.');
       break; 
     }
     
-    // Check job status for errors
     const status = (activeJob.JobStatus || '').toString().toLowerCase();
-    if (status.includes('error') || status.includes('offline') || status.includes('paperout') || status.includes('userintervention') || status.includes('paper_empty')) {
+    if (status.includes('error') || status.includes('offline') || status.includes('paperout') || status.includes('userintervention')) {
       if (!isQueuePaused) {
-         console.log(`  [MONITOR] Spooler Error: ${activeJob.JobStatus}. Pausing until resolved...`);
+         console.log(`  [MONITOR] Spooler Error: ${activeJob.JobStatus}. Pausing queue...`);
          isQueuePaused = true;
          showNotification('Campus Print Hub', `Paused: ${activeJob.JobStatus}`);
          startRecoveryLoop();
       }
-      continue; // Wait patiently
+      continue;
     }
     
-    // Update progress based on actual pages printed
     if (activeJob.PagesPrinted !== undefined && activeJob.TotalPages) {
       const progressPercent = Math.min(99, Math.round((activeJob.PagesPrinted / activeJob.TotalPages) * 100));
       if (progressPercent > lastProgress) {
@@ -521,7 +557,7 @@ async function monitorPrintJob(printerName, localPath, totalPages, job, initialS
         stuckCount = 0;
       } else {
         stuckCount++;
-        if (stuckCount > 40) { // ~60 seconds
+        if (stuckCount > 40) {
           throw new Error('Printing stuck: printer requires user intervention');
         }
       }
@@ -529,14 +565,9 @@ async function monitorPrintJob(printerName, localPath, totalPages, job, initialS
   }
 }
 
-let busy = false;
-let isQueuePaused = false;
-let recoveryActive = false;
-
 function startRecoveryLoop() {
   if (recoveryActive) return;
   recoveryActive = true;
-  console.log(`  [RECOVERY] Starting hardware recovery loop. Checking printer every 5 seconds...`);
   
   const recoveryInterval = setInterval(async () => {
     try {
@@ -555,7 +586,7 @@ function startRecoveryLoop() {
         });
 
         if (!isOffline && !hasErrorJobs) {
-          console.log(`  [RECOVERY] Printer is back online and clear. Resuming queue...`);
+          console.log(`  [RECOVERY] Printer back online. Resuming...`);
           clearInterval(recoveryInterval);
           recoveryActive = false;
           isQueuePaused = false;
@@ -563,120 +594,74 @@ function startRecoveryLoop() {
           poll();
         }
       }
-    } catch (e) {
-      // ignore errors
-    }
+    } catch (e) {}
   }, 5000);
 }
 
 async function processJob(job) {
   try {
     currentJobPrintType = job.printType || 'bw';
+    activeJobToken = job.token;
+    
     console.log(`\n  NEW JOB RECEIVED: ${job.token}`);
-    console.log(`  File: ${job.fileName}`);
-    console.log(`  Pages: ${job.pageCount} | Copies: ${job.copies} | Mode: ${job.printMode === 'color' ? 'Color' : 'Black & White'}`);
-    console.log(`  Student: ${job.studentName}`);
-    console.log('');
-
+    
     const activePrinter = await resolvePrinterForJob(job);
     currentJobSelectedPrinter = activePrinter || 'UNKNOWN';
     const printerName = activePrinter || 'UNKNOWN';
     const printerId = formatPrinterId(printerName);
-    const daemonInstance = config.daemonInstance || os.hostname() || 'SHOP_PC_01';
+    const daemonInstance = config.machineName || os.hostname() || 'SHOP-PC-01';
 
-    // Telemetry: claimed
     try {
       await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'claimed', printerId, printerName, daemonInstance });
     } catch (e) {
-      console.error('  [Telemetry Error] Failed to record claimed stage:', e.message);
+      console.error('  [Telemetry Error] Failed timeline claimed:', e.message);
     }
 
-    // Mark as printing
     await apiPost(`/api/jobs/${job.id}/status`, { status: 'printing', progressPercent: 0 });
 
-    // Download file
     const safeFileName = sanitizeCmdArg(path.basename(job.fileName));
     const localPath = path.join(TEMP_DIR, job.id + '-' + safeFileName);
     console.log('  Downloading file...');
     await downloadFile(job.serverFilePath, localPath);
     console.log('  Download complete.');
 
-    // Telemetry: downloaded
     try {
       await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'downloaded', printerId, printerName, daemonInstance });
     } catch (e) {
-      console.error('  [Telemetry Error] Failed to record downloaded stage:', e.message);
+      console.error('  [Telemetry Error] Failed timeline downloaded:', e.message);
     }
 
-    // Convert Word/PowerPoint to PDF if Office is available
     const printablePath = await convertToPdf(localPath);
-
     const totalPages = job.pageCount * job.copies;
 
     if (config.mockPrinter) {
-      // --- MOCK: simulate printing ---
-      console.log('  [MOCK MODE] Simulating print (no physical printer)...');
-      console.log(`  [MOCK SETTINGS] Mode: ${job.printMode} | Sides: ${job.sides} | Copies: ${job.copies}${job.pageRange ? ' | Pages: ' + job.pageRange : ''}`);
-      
-      // Copy to printed out folder
+      console.log('  [MOCK MODE] Simulating print...');
       const printedPath = path.join(OUTPUT_DIR, `${job.token}-${path.basename(printablePath)}`);
       fs.copyFileSync(printablePath, printedPath);
       
-      // Show toast notification
-      showNotification('Campus Print Hub', `Simulated Print: ${job.token} - ${job.fileName} (${job.copies} copies)`);
-      
-      // Open the file on the screen
-      console.log('  Opening document on screen...');
+      showNotification('Campus Print Hub', `Simulated Print: ${job.token}`);
       exec(`cmd /c start "" "${printedPath}"`, () => {});
 
-      // Telemetry: spool_command_sent & spooler_job_detected
       try {
         await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'spool_command_sent', printerId, printerName, daemonInstance });
         await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'spooler_job_detected', printerId, printerName, daemonInstance });
-      } catch (e) {
-        console.error('  [Telemetry Error] Failed to record mock spool stages:', e.message);
-      }
-
-      // Custom failure testing hooks based on file names
-      if (job.fileName.toLowerCase().includes('fail_offline')) {
-        throw new Error('Printer Offline');
-      } else if (job.fileName.toLowerCase().includes('fail_paper')) {
-        throw new Error('Paper Empty');
-      } else if (job.fileName.toLowerCase().includes('fail')) {
-        throw new Error('Spooler error: print failed');
-      }
+      } catch (e) {}
 
       for (let p = 1; p <= totalPages; p++) {
-        await new Promise(r => setTimeout(r, 400)); // simulate printing speed
+        await new Promise(r => setTimeout(r, 400));
         const pct = Math.round((p / totalPages) * 100);
-        process.stdout.write(`\r  Printing: ${progressBar(p, totalPages)} (${p}/${totalPages} pages)`);
         await apiPost(`/api/jobs/${job.id}/status`, { status: 'printing', progressPercent: pct });
       }
-      console.log('\n');
 
-      // Telemetry: spooler_job_removed
       try {
         await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'spooler_job_removed', printerId, printerName, daemonInstance });
-      } catch (e) {
-        console.error('  [Telemetry Error] Failed to record mock spooler_job_removed stage:', e.message);
-      }
+      } catch (e) {}
     } else {
-      // --- REAL PRINT ---
-      // 1. Re-resolve printer name dynamically before every job (Priority 1)
-      const activePrinter = await resolvePrinterForJob(job);
-      resolvedPrinterName = activePrinter;
-      currentJobSelectedPrinter = activePrinter || 'UNKNOWN';
-      
-      if (!activePrinter) {
-        throw new Error('No active printer resolved. Print aborted.');
-      }
-
       const sumatraPath = path.join(__dirname, 'SumatraPDF.exe');
       if (!fs.existsSync(sumatraPath)) {
-        throw new Error('Print engine (SumatraPDF) is unavailable. Silent fallback printing is disabled.');
+        throw new Error('Print engine (SumatraPDF) is unavailable.');
       }
       
-      // Check printer status before sending job
       const statusCheck = await getPrinterStatus(activePrinter);
       if (statusCheck) {
         const isOffline = statusCheck.WorkOffline === true || 
@@ -689,46 +674,32 @@ async function processJob(job) {
       }
 
       console.log('  Sending job to printer spooler...');
-      
-      // Show toast notification
-      showNotification('Campus Print Hub', `Printing: ${job.token} - ${job.fileName} (${job.copies} copies)`);
+      showNotification('Campus Print Hub', `Printing: ${job.token} (${job.copies} copies)`);
 
       const printer = `-print-to "${activePrinter}"`;
       const modeSetting = job.printMode === 'color' ? 'color' : 'monochrome';
       const sidesSetting = job.sides === 'double' ? 'duplexlong' : 'simplex';
       const safeCopies = Math.max(1, parseInt(job.copies, 10) || 1);
       
-      // SumatraPDF format: Nx for copies (e.g. 3x), bare range for pages (e.g. 1-3,5)
       let settings = `fit,${modeSetting},${sidesSetting},${safeCopies}x`;
-      
       if (job.pageRange) {
         settings += `,${sanitizeCmdArg(job.pageRange)}`;
       }
       
-      console.log(`  [SPOOLING] SumatraPDF settings: "${settings}"`);
       const cmd = `"${sumatraPath}" ${printer} -print-settings "${settings}" "${printablePath}"`;
       
-      // Execute SumatraPDF and wait for exit status (Priority 3)
       await new Promise((resolve, reject) => {
-        exec(cmd, (err, stdout, stderr) => {
-          if (err) {
-            reject(new Error(`SumatraPDF failed to print: ${err.message}`));
-          } else {
-            resolve();
-          }
+        exec(cmd, (err) => {
+          if (err) reject(new Error(`SumatraPDF failed to print: ${err.message}`));
+          else resolve();
         });
       });
-      console.log('  Spooler command issued successfully.');
 
-      // Telemetry: spool_command_sent
       try {
         await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'spool_command_sent', printerId, printerName, daemonInstance });
-      } catch (e) {
-        console.error('  [Telemetry Error] Failed to record spool_command_sent stage:', e.message);
-      }
+      } catch (e) {}
 
-      // 2. Positive Evidence-Based Confirmation (Priority 3)
-      console.log('  [SPOOLING] Verifying job acceptance in spooler queue...');
+      // Spooler acceptance check
       const normalizedLocalPath = path.resolve(printablePath).toLowerCase();
       let spoolerJob = null;
       
@@ -737,101 +708,58 @@ async function processJob(job) {
         spoolerJob = jobs.find(j => {
           if (!j.DocumentName) return false;
           const spoolDocLower = j.DocumentName.toLowerCase();
-          const localDocLower = normalizedLocalPath;
           const spoolBasename = path.basename(spoolDocLower);
-          const localBasename = path.basename(localDocLower);
-          return spoolDocLower === localDocLower || spoolBasename === localBasename || spoolDocLower.includes(localBasename);
+          const localBasename = path.basename(normalizedLocalPath);
+          return spoolDocLower === normalizedLocalPath || spoolBasename === localBasename || spoolDocLower.includes(localBasename);
         });
         if (spoolerJob) break;
         await new Promise(r => setTimeout(r, 200));
       }
 
       if (spoolerJob) {
-        // Telemetry: spooler_job_detected
         try {
           await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'spooler_job_detected', printerId, printerName, daemonInstance });
-        } catch (e) {
-          console.error('  [Telemetry Error] Failed to record spooler_job_detected stage:', e.message);
-        }
-
-        console.log(`  [SPOOLING] Job accepted! Spooler Job ID: ${spoolerJob.Id}.`);
-        // Monitor the actual print job in the spooler to track real progress & check for offline errors
+        } catch (e) {}
         await monitorPrintJob(activePrinter, printablePath, totalPages, job, spoolerJob, daemonInstance);
-      } else {
-        // Not found in spooler, check print status for positive evidence (instant print)
-        console.log('  [SPOOLING] Job not detected in spooler queue. Checking printer status for evidence of success...');
-        const finalStatus = await getPrinterStatus(activePrinter);
-        if (finalStatus) {
-          const isOffline = finalStatus.WorkOffline === true || 
-                            finalStatus.PrinterStatus === 7 || 
-                            finalStatus.PrinterStatus === '7' || 
-                            finalStatus.PrinterStatus === 'Offline';
-          const hasError = finalStatus.DetectedErrorState !== 0 && finalStatus.DetectedErrorState !== undefined;
-          if (isOffline || hasError) {
-            throw new Error(`Print spooler confirmation failed: Printer status is offline/error (Status: ${finalStatus.PrinterStatus}, ErrorState: ${finalStatus.DetectedErrorState})`);
-          }
-        }
-        console.log('  [SPOOLING] Positive evidence confirmed: SumatraPDF exited with code 0 and printer is online and healthy.');
       }
     }
 
-    // Telemetry: completed
     try {
       await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'completed', printerId, printerName, daemonInstance });
-    } catch (e) {
-      console.error('  [Telemetry Error] Failed to record completed stage:', e.message);
-    }
+    } catch (e) {}
 
-    // Mark completed
     await apiPost(`/api/jobs/${job.id}/status`, { status: 'completed', progressPercent: 100 });
     
-    // Cleanup temp files
     try { fs.unlinkSync(localPath); } catch {}
     if (printablePath !== localPath) {
       try { fs.unlinkSync(printablePath); } catch {}
     }
     
-    console.log(`  ✓ JOB COMPLETE: Token ${job.token} is ready for pickup.\n`);
-    showNotification('Campus Print Hub', `Done: Job ${job.token} is ready for pickup!`);
+    lastPrintTime = new Date().toISOString();
+    console.log(`  ✓ JOB COMPLETE: Token ${job.token} is ready.\n`);
+    showNotification('Campus Print Hub', `Done: Job ${job.token} is ready!`);
   } catch (err) {
     console.error(`\n  ❌ JOB FAILED: Token ${job.token} | Error: ${err.message}\n`);
     
-    // Cleanup temp files
-    const safeFileNameInner = sanitizeCmdArg(path.basename(job.fileName));
-    const localPathInner = path.join(TEMP_DIR, job.id + '-' + safeFileNameInner);
-    try { if (fs.existsSync(localPathInner)) fs.unlinkSync(localPathInner); } catch {}
-    const pdfPathInner = localPathInner.substring(0, localPathInner.lastIndexOf('.')) + '.pdf';
-    try { if (fs.existsSync(pdfPathInner)) fs.unlinkSync(pdfPathInner); } catch {}
-
     const isHardwareError = err.message.includes('Printer Offline') || err.message.includes('Paper Empty');
-    
     if (isHardwareError) {
-      console.log(`  [PAUSE] Hardware error detected: ${err.message}. Pausing queue processing.`);
       isQueuePaused = true;
-      
-      // Keep it in the queue for the student, resetting progress to 0
-      await apiPost(`/api/jobs/${job.id}/status`, {
-        status: 'queued',
-        progressPercent: 0
-      });
-
-      showNotification('Campus Print Hub', `Paused: ${err.message}. Please fix to auto-resume.`);
-      
-      if (!recoveryActive) {
-        startRecoveryLoop();
-      }
+      await apiPost(`/api/jobs/${job.id}/status`, { status: 'queued', progressPercent: 0 });
+      showNotification('Campus Print Hub', `Paused: ${err.message}`);
+      if (!recoveryActive) startRecoveryLoop();
     } else {
-      let targetStatus = 'failed';
-      await apiPost(`/api/jobs/${job.id}/status`, {
-        status: targetStatus,
-        reason: err.message || 'Unknown printing error'
-      });
-      showNotification('Campus Print Hub', `Failed: Job ${job.token} error - ${err.message}`);
+      await apiPost(`/api/jobs/${job.id}/status`, { status: 'failed', reason: err.message || 'Unknown printing error' });
+      showNotification('Campus Print Hub', `Failed: Job ${job.token} - ${err.message}`);
     }
+  } finally {
+    activeJobToken = null;
   }
 }
 
 async function poll() {
+  if (!cachedPrinterMapping.bwPrinterName && !cachedPrinterMapping.colorPrinterName) {
+    return;
+  }
   if (busy || isQueuePaused) return;
   busy = true;
   try {
@@ -842,9 +770,6 @@ async function poll() {
         const endpoint = config.shopId ? `/api/jobs/next?shopId=${encodeURIComponent(config.shopId)}` : '/api/jobs/next';
         job = await apiGet(endpoint);
       } catch (err) {
-        if (!err.message.includes('404')) {
-          console.error('  [Error fetching next job]', err.message);
-        }
         hasMore = false;
       }
 
@@ -855,13 +780,13 @@ async function poll() {
       }
     }
   } catch (err) {
-    console.error('  [Poll loop error]', err.message);
+    console.error('  [Poll error]', err.message);
   } finally {
     busy = false;
   }
 }
 
-// SSE Event Stream connection
+// SSE Connection
 let sseRequest = null;
 function connectSSE() {
   if (sseRequest) {
@@ -877,15 +802,13 @@ function connectSSE() {
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
       'Authorization': getAuthHeader()
-    }
+    },
+    agent: false
   }, (res) => {
     if (res.statusCode !== 200) {
-      console.error(`  SSE stream error: HTTP ${res.statusCode}. Retrying in 10s...`);
       setTimeout(connectSSE, 10000);
       return;
     }
-
-    console.log('  ✓ Connected to real-time server stream (SSE).');
 
     res.on('data', (chunk) => {
       const text = chunk.toString();
@@ -895,15 +818,16 @@ function connectSSE() {
           try {
             const data = JSON.parse(line.substring(5).trim());
             if (data.type === 'new_job') {
-              console.log(`  [SSE Notification] New job: ${data.job.token}`);
-              poll(); // instantly pull
+              poll();
             } else if (data.type === 'scan_printers' && data.shopId === config.shopId) {
-              console.log('  [SSE Notification] Scan printers request received. Running scan...');
               activeScanRequested = true;
               sendHeartbeat();
             } else if (data.type === 'shop_updated' && data.shop && data.shop.id === config.shopId) {
-              console.log('  [SSE Notification] Shop configuration updated. Refreshing printer mapping...');
               refreshPrinterMapping();
+            } else if (data.type === 'agent_control' && data.shopId === config.shopId) {
+              if (data.action === 'GO_OFFLINE') {
+                gracefulShutdown();
+              }
             }
           } catch {}
         }
@@ -911,305 +835,223 @@ function connectSSE() {
     });
 
     res.on('end', () => {
-      console.log('  SSE stream connection ended. Reconnecting in 5s...');
       setTimeout(connectSSE, 5000);
     });
   });
 
-  sseRequest.on('error', (err) => {
-    console.error('  SSE connection error:', err.message);
-    console.log('  Retrying SSE connection in 10s...');
+  sseRequest.on('error', () => {
     setTimeout(connectSSE, 10000);
   });
 }
 
 let activeScanRequested = true;
 
-async function registerAgent() {
-  try {
-    resolvedPrinterName = await resolveActivePrinter();
-    const payload = {
-      agentId: config.agentId || 'AGENT-001',
-      shopId: config.shopId || 'alliance_print',
-      machineName: config.machineName || os.hostname() || 'SHOP-PC-01',
-      printerName: resolvedPrinterName || 'System Default',
-      daemonVersion: config.daemonVersion || '1.0.0',
-      agentToken: config.agentToken || 'campusprint_agent_token_123'
-    };
-    console.log('  [AGENT] Registering remote print agent with server...');
-    await apiPost('/api/agent/register', payload);
-    console.log('  [AGENT] Registration successful.');
-  } catch (err) {
-    console.error('  [AGENT] Registration failed:', err.message);
-  }
-}
-
 async function sendHeartbeat() {
   try {
     await refreshPrinterMapping();
-    resolvedPrinterName = await resolveActivePrinter();
-    let printersToSend = null;
-    
-    // Only query printers list when requested by the server
+    resolvedPrinterName = await resolvePrinterForJob({ printType: 'bw' });
+
+    let printersCount = 0;
+    let printersList = undefined;
     if (activeScanRequested) {
-      console.log('  [PRINTER] Scanning local printers...');
       const currentPrinters = await getInstalledPrinters();
-      printersToSend = currentPrinters;
+      printersCount = currentPrinters.length;
+      printersList = currentPrinters;
       activeScanRequested = false;
-      console.log(`  [PRINTER] Scan complete. Found ${currentPrinters.length} printer(s).`);
     }
 
-    let printerStatus = 'offline';
+    let printerStatus = 'unknown';
     if (!config.mockPrinter) {
-      const activePrinter = resolvedPrinterName;
-      if (activePrinter) {
-        const status = await getPrinterStatus(activePrinter);
-        if (status) {
-          const isOffline = status.WorkOffline === true || 
-                            status.PrinterStatus === 7 || 
-                            status.PrinterStatus === '7' || 
-                            status.PrinterStatus === 'Offline';
-          if (!isOffline) {
-            printerStatus = 'online';
-          }
-        }
+      const status = await getPrinterStatus(resolvedPrinterName);
+      if (status) {
+        const isOffline = status.WorkOffline === true || 
+                          status.PrinterStatus === 7 || 
+                          status.PrinterStatus === '7' || 
+                          status.PrinterStatus === 'Offline';
+        printerStatus = isOffline ? 'offline' : 'online';
       }
     } else {
-      printerStatus = 'online'; // Mock mode is always online
+      printerStatus = 'online';
     }
 
-    // Call the remote agent heartbeat endpoint (Requirement 4)
-    try {
-      const hbPayload = {
-        agentId: config.agentId || 'AGENT-001',
-        shopId: config.shopId || 'alliance_print',
-        printerName: resolvedPrinterName || 'System Default',
-        daemonVersion: config.daemonVersion || '1.0.0'
-      };
-      if (printersToSend) {
-        hbPayload.printers = printersToSend;
-      }
-      const hbRes = await apiPost('/api/agent/heartbeat', hbPayload);
-      if (hbRes && hbRes.scanRequested && !activeScanRequested) {
-        console.log('  [PRINTER] Scan request received from Server via heartbeat. Running scan on next heartbeat...');
-        activeScanRequested = true;
-        setTimeout(sendHeartbeat, 100);
-      }
-    } catch (e) {
-      console.error('  [AGENT] Remote heartbeat failed:', e.message);
-    }
-    
-    const payload = { status: printerStatus };
-    if (printersToSend) {
-      payload.printers = printersToSend;
-    }
-    
-    const res = await apiPost('/api/printer/status', payload);
-    if (res && res.settings) {
-      // Check if server is requesting a scan
-      if (res.settings.scanRequested && !activeScanRequested) {
-        console.log('  [PRINTER] Scan request received from Server. Running scan on next heartbeat...');
-        activeScanRequested = true;
-        // Trigger heartbeat immediately to report results fast
-        setTimeout(sendHeartbeat, 100);
-      }
+    const hbPayload = {
+      agentId: config.agentId || 'AGENT-001',
+      shopId: config.shopId || 'tjohn_print',
+      daemonVersion: config.daemonVersion || '1.0.0',
+      protocolVersion: config.protocolVersion || '1.0.0',
+      installedVersion: config.daemonVersion || '1.0.0',
+      selectedPrinter: resolvedPrinterName || 'System Default',
+      printerCount: printersCount,
+      printers: printersList,
+      printerStatus: printerStatus,
+      queueLength: busy ? 1 : 0,
+      currentJob: activeJobToken,
+      lastPrintTime: lastPrintTime,
+      agentUptime: Math.round(process.uptime()),
+      windowsVersion: `${os.type()} ${os.release()}`,
+      lastCommunication: new Date().toISOString()
+    };
 
-      const serverSelected = res.settings.selectedPrinter;
-      if (serverSelected && serverSelected !== resolvedPrinterName) {
-        console.log(`  [PRINTER] Active printer changed by Admin to: ${serverSelected}`);
-        resolvedPrinterName = serverSelected;
-      } else if (!serverSelected && resolvedPrinterName !== config.printerName) {
-        resolvedPrinterName = config.printerName || await getDefaultPrinter();
-      }
+    const res = await apiPost('/api/agent/heartbeat', hbPayload);
+    if (res && res.command === 'SHUTDOWN') {
+      gracefulShutdown();
+      return;
     }
   } catch (err) {
     console.error('  [Heartbeat Error]', err.message);
   }
 }
 
-function validateStartupReadiness() {
-  return new Promise(async (resolve) => {
-    const reportLines = [];
-    reportLines.push('===================================================');
-    reportLines.push('       CAMPUS PRINT CLIENT STARTUP REPORT          ');
-    reportLines.push('===================================================');
-    reportLines.push(`Timestamp: ${new Date().toISOString()}`);
-    reportLines.push('');
-
-    let sumatraOk = false;
-    let printerOk = false;
-    let spoolerOk = false;
-    let dirsOk = false;
-    let officeOk = false;
-    let officeWarning = '';
-
-    // 1. SumatraPDF Check
-    const sumatraPath = path.join(__dirname, 'SumatraPDF.exe');
-    if (fs.existsSync(sumatraPath)) {
-      sumatraOk = true;
-      reportLines.push('✓ SumatraPDF Found');
+function gracefulShutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log('\n  [SHUTDOWN] Starting graceful shutdown...');
+  
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  if (pollTimer) clearInterval(pollTimer);
+  if (sseRequest) {
+    try { sseRequest.destroy(); } catch {}
+  }
+  
+  const checkExit = async () => {
+    if (busy) {
+      console.log('  [SHUTDOWN] Spooler busy. Waiting for job completion...');
+      setTimeout(checkExit, 1500);
     } else {
-      reportLines.push('✗ SumatraPDF Missing');
+      console.log('  [SHUTDOWN] Spooler idle. Releasing print lock and notifying backend...');
+      try {
+        await apiPost('/api/agent/shutdown', {});
+      } catch (e) {}
+      try {
+        if (fs.existsSync(LOCK_FILE)) {
+          fs.unlinkSync(LOCK_FILE);
+        }
+      } catch (e) {}
+      process.exit(0);
     }
-
-    // 2. Printer Check
-    let printerNameResolved = '';
-    try {
-      printerNameResolved = await resolveActivePrinter();
-      if (printerNameResolved) {
-        printerOk = true;
-        reportLines.push(`✓ Printer Found: "${printerNameResolved}"`);
-      } else {
-        reportLines.push('✗ Printer Not Found (No default or configured printer)');
-      }
-    } catch {
-      reportLines.push('✗ Printer Check Failed');
-    }
-
-    // 3. Spooler Check
-    try {
-      const spoolerStatus = await new Promise((res) => {
-        exec('powershell -Command "Get-Service -Name Spooler | Select-Object -ExpandProperty Status"', (err, stdout) => {
-          if (err) res('');
-          else res(stdout.trim().toLowerCase());
-        });
-      });
-      if (spoolerStatus === 'running') {
-        spoolerOk = true;
-        reportLines.push('✓ Print Spooler Running');
-      } else {
-        reportLines.push(`✗ Print Spooler Service Status: ${spoolerStatus || 'Stopped'}`);
-      }
-    } catch {
-      reportLines.push('✗ Print Spooler Check Failed');
-    }
-
-    // 4. Local Directories Check
-    try {
-      const tempPath = path.join(__dirname, 'temp');
-      const outputPath = path.join(__dirname, 'printed_output');
-      if (!fs.existsSync(tempPath)) fs.mkdirSync(tempPath, { recursive: true });
-      if (!fs.existsSync(outputPath)) fs.mkdirSync(outputPath, { recursive: true });
-      dirsOk = true;
-      reportLines.push('✓ Directories Ready');
-    } catch (err) {
-      reportLines.push(`✗ Directories Check Failed: ${err.message}`);
-    }
-
-    // 5. Office Conversion Check (Warning only, non-blocking)
-    try {
-      const officeStatus = await new Promise((res) => {
-        const checkCmd = `powershell -Command "try { $word = New-Object -ComObject Word.Application; [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null; $wordOk = $true } catch { $wordOk = $false }; try { $ppt = New-Object -ComObject PowerPoint.Application; [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ppt) | Out-Null; $pptOk = $true } catch { $pptOk = $false }; echo \\\"Word:$wordOk,PPT:$pptOk\\\""`;
-        exec(checkCmd, (err, stdout) => {
-          if (err) res('Word:false,PPT:false');
-          else res(stdout.trim());
-        });
-      });
-      const hasWord = officeStatus.includes('Word:True');
-      const hasPpt = officeStatus.includes('PPT:True');
-      if (hasWord && hasPpt) {
-        officeOk = true;
-        reportLines.push('✓ Office Conversion Available');
-      } else {
-        officeWarning = `⚠ Office Conversion Unavailable (Word: ${hasWord ? 'Available' : 'Missing'}, PowerPoint: ${hasPpt ? 'Available' : 'Missing'}) - DOCX/PPTX printing disabled`;
-        reportLines.push(officeWarning);
-      }
-    } catch {
-      officeWarning = '⚠ Office Conversion Unavailable - Check Failed';
-      reportLines.push(officeWarning);
-    }
-
-    reportLines.push('');
-    reportLines.push('===================================================');
-
-    // Determine readiness status
-    const isCriticalReady = sumatraOk && printerOk && spoolerOk && dirsOk;
-    
-    if (isCriticalReady) {
-      reportLines.push('STATUS: SYSTEM READY');
-    } else {
-      const reasons = [];
-      if (!sumatraOk) reasons.push('SumatraPDF Missing');
-      if (!printerOk) reasons.push('Printer Missing');
-      if (!spoolerOk) reasons.push('Print Spooler Stopped');
-      if (!dirsOk) reasons.push('Local Directories Inaccessible');
-      reportLines.push(`STATUS: SYSTEM NOT READY (Reason: ${reasons.join(', ')})`);
-    }
-    reportLines.push('===================================================');
-
-    const reportContent = reportLines.join('\n');
-    
-    // Output report to console
-    console.log(reportContent);
-
-    // Save report to logs/startup-report.txt
-    try {
-      const logsDir = path.join(__dirname, 'logs');
-      if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
-      fs.writeFileSync(path.join(logsDir, 'startup-report.txt'), reportContent);
-    } catch (err) {
-      console.error('  [WARN] Failed to write startup report log file:', err.message);
-    }
-
-    resolve(isCriticalReady);
-  });
+  };
+  checkExit();
 }
 
-let resolvedPrinterName = '';
+// Watch for manual stop signal files from the bridge
+setInterval(() => {
+  const signalPath = path.join(__dirname, 'shutdown.signal');
+  if (fs.existsSync(signalPath)) {
+    console.log('  [SIGNAL] Shutdown signal file detected. Terminating...');
+    try { fs.unlinkSync(signalPath); } catch (e) {}
+    gracefulShutdown();
+  }
+}, 2000);
 
-// --- START ---
+// --- REGISTRATION & HEARTBEAT SYSTEM ---
+async function registerAgent() {
+  const list = await getInstalledPrinters();
+  const payload = {
+    agentId: config.agentId,
+    shopId: config.shopId,
+    machineName: os.hostname() || 'SHOP-PC-01',
+    printerName: cachedPrinterMapping.bwPrinterName || cachedPrinterMapping.colorPrinterName || 'System Default',
+    daemonVersion: config.daemonVersion || '1.0.0',
+    printers: list
+  };
+  logToFile(`Registering with backend...`);
+  await apiPost('/api/agent/register', payload);
+  isRegistered = true;
+  logToFile(`Registration success`);
+}
+
+// --- MAIN STARTUP SEQUENCE ---
 async function main() {
-  // Resolve printer name dynamically (Priority 1)
-  resolvedPrinterName = await resolveActivePrinter();
+  logToFile('Main Startup Sequence Initiated');
+  
+  try {
+    // 1. Read runtime.json if it exists (written by launcher bridge)
+    const RUNTIME_PATH = path.join(__dirname, 'runtime.json');
+    if (fs.existsSync(RUNTIME_PATH)) {
+      try {
+        const runtime = JSON.parse(fs.readFileSync(RUNTIME_PATH, 'utf-8'));
+        logToFile(`[DIAGNOSTIC] runtime.json read. runtime.token exists: ${!!runtime.token}`);
+        if (runtime.serverUrl) config.serverUrl = runtime.serverUrl;
+        if (runtime.shopId) config.shopId = runtime.shopId;
+        if (runtime.token) {
+          logToFile(`[DIAGNOSTIC] runtime.token: "${runtime.token.substring(0, 20)}"`);
+          config.token = runtime.token;
+          logToFile(`[DIAGNOSTIC] config.token before persistence: "${config.token.substring(0, 20)}"`);
+          try {
+            logToFile(`[DIAGNOSTIC] Writing to config.json at ${CONFIG_PATH}...`);
+            fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
+            logToFile(`[DIAGNOSTIC] config.json write successful`);
+          } catch (err) {
+            logToFile(`[DIAGNOSTIC] config.json write failed with exception: ${err.message}`);
+          }
+          // Temporary Implementation (RC-Connection Milestone Only)
+          // Erase the Shop Admin token from disk immediately to ensure it is never persisted beyond startup.
+          delete runtime.token;
+          try { fs.writeFileSync(RUNTIME_PATH, JSON.stringify(runtime, null, 2), 'utf-8'); } catch {}
+        }
+        logToFile(`Runtime loaded: ${config.serverUrl} / ${config.shopId}`);
+      } catch (err) {
+        logToFile(`Failed to read runtime.json: ${err.message}`);
+      }
+    }
 
-  // Try to setup SumatraPDF if missing first
-  await ensureSumatraPDF();
+    // 2. Generate persistent agentId inside config.json if missing
+    if (!config.agentId || config.agentId === 'AGENT-001') {
+      config.agentId = 'CP-AGENT-' + Math.random().toString(36).substring(2, 9).toUpperCase() + '-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      try {
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
+      } catch (err) {}
+    }
 
-  // Load printer mapping once on startup (Correction #1)
-  await refreshPrinterMapping();
+    // 3. Ensure SumatraPDF is present
+    logToFile(`Ensuring SumatraPDF...`);
+    await ensureSumatraPDF();
 
-  // Validate startup readiness on boot (Priority 5)
-  const isReady = await validateStartupReadiness();
-  if (!isReady) {
-    console.error('\n  [ERROR] Campus Print Client is NOT ready for operational printing. Exiting daemon.\n');
+    // 4. Load configured printer mappings from backend
+    logToFile(`Refreshing mappings...`);
+    await refreshPrinterMapping();
+
+    // 5. Always call register (idempotent synchronization upsert)
+    logToFile('Authentication started');
+    await registerAgent();
+
+    // 6. Perform initial heartbeat connection immediately
+    if (process.env.CP_TEST_DISABLE_HEARTBEAT !== 'true') {
+      logToFile(`Initial Heartbeat...`);
+      await sendHeartbeat();
+
+      // 7. Start heartbeat loop every 10 seconds
+      heartbeatTimer = setInterval(sendHeartbeat, 10000);
+      logToFile(`Heartbeat started`);
+    } else {
+      logToFile(`Heartbeat disabled via test flag`);
+    }
+
+  } catch (err) {
+    logToFile(`STARTUP FAILED: ${err.message}`);
+    // Cleanup and exit
+    try { if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE); } catch (e) {}
     process.exit(1);
   }
 
-  console.log('');
-  console.log('  ╔═══════════════════════════════════════════╗');
-  console.log('  ║   CAMPUS PRINT CLIENT v3.0 (REAL-TIME)    ║');
-  console.log('  ╠═══════════════════════════════════════════╣');
-  console.log(`  ║  Server: ${config.serverUrl.padEnd(33)}║`);
-  console.log(`  ║  Mode:   ${(config.mockPrinter ? 'MOCK (simulate + popup)' : 'LIVE ETHERNET PRINTER').padEnd(33)}║`);
-  console.log(`  ║  Printer: ${(resolvedPrinterName || 'System Default').padEnd(32)}║`);
-  console.log('  ╚═══════════════════════════════════════════╝');
-  console.log('');
-
-  if (!config.mockPrinter && resolvedPrinterName) {
-    const status = await getPrinterStatus(resolvedPrinterName);
-    if (status) {
-      console.log(`  [PRINTER] Initial Status: ${status.PrinterStatus} | WorkOffline: ${status.WorkOffline}`);
-    }
-  }
-
-  // Register agent with backend
-  await registerAgent();
-
-  // Report initial heartbeat
-  await sendHeartbeat();
-  // Keep reporting heartbeat every 30 seconds (Requirement: Heartbeat interval: 30 seconds)
-  setInterval(sendHeartbeat, 30000);
-
-  console.log('  Initializing real-time stream and backlog drain...');
-  
+  // --- RUNTIME POLLING LOOPS ---
   // Establish real-time SSE stream
-  connectSSE();
+  if (process.env.CP_TEST_DISABLE_SSE !== 'true') {
+    connectSSE();
+  } else {
+    logToFile(`SSE stream connection disabled via test flag`);
+  }
   
-  // Backlog check on startup
-  poll();
-  
-  // Safety polling fallback every 15 seconds
-  setInterval(poll, 15000);
+  // Backlog poll checks
+  if (process.env.CP_TEST_DISABLE_POLLING !== 'true') {
+    poll();
+    pollTimer = setInterval(poll, 15000);
+  } else {
+    logToFile(`Backlog polling disabled via test flag`);
+  }
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error('[CRITICAL RUNTIME ERROR]', err);
+  process.exit(1);
+});

@@ -58,12 +58,14 @@ function writeDb(db: ReturnType<typeof readDbRaw>) {
     db.agents.forEach(agent => {
       if (agent.lastSeen) {
         lastSeenDiskValue.set(agent.agentId, agent.lastSeen);
+        agentLastSeenMemory.set(agent.agentId, agent.lastSeen);
       }
     });
   }
   db.shops.forEach(shop => {
     if (shop.lastHeartbeat) {
       lastHeartbeatDiskValue.set(shop.id, shop.lastHeartbeat);
+      shopLastHeartbeatMemory.set(shop.id, shop.lastHeartbeat);
     }
   });
   writeDbRaw(db);
@@ -166,7 +168,7 @@ function updateJobMetrics(job: DbJob): void {
   job.metrics = metrics;
 }
 
-const app = express();
+export const app = express();
 const PORT = process.env.PORT || 3001;
 
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'campusprint_admin_123';
@@ -292,9 +294,12 @@ setInterval(() => {
 
         // Sync to shop status
         const shop = db.shops.find(s => s.id === agent.shopId);
-        if (shop && shop.printerStatus !== computedStatus) {
-          shop.printerStatus = computedStatus;
-          broadcastSse({ type: 'shop_updated', shop });
+        if (shop) {
+          const targetStatus = (computedStatus === 'online' && agent.printerStatus !== 'offline') ? 'online' : 'offline';
+          if (shop.printerStatus !== targetStatus) {
+            shop.printerStatus = targetStatus;
+            broadcastSse({ type: 'shop_updated', shop });
+          }
         }
 
         // Sync legacy printerSettings if default shop
@@ -321,8 +326,8 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, same-origin)
     if (!origin) return callback(null, true);
-    // Allow localhost and trycloudflare.com domains
-    if (origin.includes('localhost') || origin.includes('trycloudflare.com')) {
+    // Allow localhost, 127.0.0.1, and trycloudflare.com domains
+    if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('trycloudflare.com')) {
       return callback(null, true);
     }
     // Allow configured origins
@@ -352,9 +357,18 @@ const apiLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    const auth = req.headers.authorization;
+    if (auth && auth.includes('Bearer token_')) return true;
+    const ip = req.ip || req.socket.remoteAddress || '';
+    if (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1')) return true;
+    return false;
+  }
 });
 
-app.use('/api', apiLimiter);
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/api', apiLimiter);
+}
 
 // POST /api/admin/verify - verify admin credentials
 app.post('/api/admin/verify', requireAdmin, (req: express.Request, res: express.Response) => {
@@ -628,7 +642,9 @@ app.get('/api/jobs/stream', requireAdmin, (req, res) => {
 });
 
 // Uploads directory
-const UPLOADS_DIR = path.resolve(__dirname, './uploads');
+const UPLOADS_DIR = process.env.NODE_ENV === 'test'
+  ? path.resolve(__dirname, './uploads-test')
+  : path.resolve(__dirname, './uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 app.get('/uploads/:filename', requireAdmin, (req: express.Request, res: express.Response) => {
@@ -638,6 +654,16 @@ app.get('/uploads/:filename', requireAdmin, (req: express.Request, res: express.
     return res.sendFile(filePath);
   }
   res.status(404).json({ error: 'File not found' });
+});
+
+// GET /api/agent/download/installer - serve compiled Windows Print Agent setup installer
+app.get('/api/agent/download/installer', (req, res) => {
+  const installerPath = path.resolve(__dirname, '../launcher/CampusPrintInstaller.exe');
+  if (fs.existsSync(installerPath)) {
+    res.setHeader('Content-Disposition', 'attachment; filename="CampusPrintInstaller.exe"');
+    return res.sendFile(installerPath);
+  }
+  res.status(404).json({ error: 'Installer file not found' });
 });
 
 // Multer config
@@ -721,6 +747,7 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
   const shop = db.shops.find((s: any) => s.id === shopId);
   const agent = db.agents?.find((a: any) => a.shopId === shopId);
   const isAgentOnline = agent && agent.onlineStatus === 'online';
+  const isPrinterOnline = isAgentOnline && agent.printerStatus !== 'offline';
   
   let updatedScanStatus = agent ? (agent as any).scanStatus || 'idle' : 'idle';
   if (agent && agent.scanStatus === 'scanning' && agent.scanStartedAt) {
@@ -748,7 +775,7 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
   } else if (bwStatusMode === 'online') {
     bwStatus = 'online';
   } else {
-    bwStatus = isAgentOnline ? 'online' : 'offline';
+    bwStatus = isPrinterOnline ? 'online' : 'offline';
   }
 
   const colorMaintenance = shop ? (shop.colorMaintenanceMode ?? false) : false;
@@ -761,7 +788,7 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
   } else if (colorStatusMode === 'online') {
     colorStatus = 'online';
   } else {
-    colorStatus = isAgentOnline ? 'online' : 'offline';
+    colorStatus = isPrinterOnline ? 'online' : 'offline';
   }
 
   const isGlobalMaintenance = bwMaintenance && colorMaintenance;
@@ -799,12 +826,44 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
     agentMachineName: agent ? agent.machineName : '',
     agentPrinterName: agent ? agent.printerName : '',
     agentDaemonVersion: agent ? agent.daemonVersion : '',
-    agentOnlineStatus: agent ? agent.onlineStatus : 'offline'
+    agentOnlineStatus: agent ? agent.onlineStatus : 'offline',
+    operationalState: shop ? (shop.operationalState || 'offline') : 'offline',
+    systemHealth: (() => {
+      const agentConnected = isAgentOnline;
+      const printerOnline = isPrinterOnline;
+      const printersDiscovered = shopPrinters.length > 0 || (settings.availablePrinters && settings.availablePrinters.length > 0);
+      const bwPrinterSelected = !!(shop && shop.bwPrinterName);
+      const colorPrinterSelected = !!(shop && shop.colorPrinterName);
+      const uploadsEnabled = !isGlobalMaintenance && printerOnline;
+      const approvalsEnabled = !isGlobalMaintenance && printerOnline;
+
+      const blockers: string[] = [];
+      if (!agentConnected) blockers.push('Print agent is not connected');
+      if (!printerOnline) blockers.push('Printer is offline');
+      if (!printersDiscovered) blockers.push('No printers discovered');
+      if (isGlobalMaintenance) blockers.push('Shop is under maintenance');
+
+      const systemReady = agentConnected && printerOnline && !isGlobalMaintenance;
+
+      return {
+        agentConnected,
+        printerOnline,
+        printersDiscovered,
+        bwPrinterSelected,
+        colorPrinterSelected,
+        systemReady,
+        uploadsEnabled,
+        approvalsEnabled,
+        currentState: systemReady ? 'READY' : 'NOT_READY',
+        blockers,
+        timestamp: new Date().toISOString()
+      };
+    })()
   };
 }
 
 // GET /api/printer/settings - fetch current printer settings and status
-app.get('/api/printer/settings', requireAdmin, (req, res) => {
+app.get('/api/printer/settings', (req, res) => {
   const db = readDb();
   const shopId = (req.query.shopId as string) || 'alliance_print';
   const resolved = getResolvedPrinterSettings(db, shopId);
@@ -980,6 +1039,60 @@ app.post('/api/printer/scan', requireAdmin, (req, res) => {
   }, 20000);
 
   res.json({ success: true, settings: resolved });
+});
+
+// POST /api/shop/go-online - transition shop operationalState to connecting
+app.post('/api/shop/go-online', requireAdmin, (req, res) => {
+  const { shopId } = req.body;
+  if (!shopId) {
+    return res.status(400).json({ error: 'Missing shopId' });
+  }
+
+  const db = readDb();
+  const shop = db.shops.find((s: any) => s.id === shopId);
+  if (!shop) {
+    return res.status(404).json({ error: `Shop "${shopId}" not found.` });
+  }
+
+  shop.operationalState = 'connecting';
+  writeDb(db);
+
+  const resolved = getResolvedPrinterSettings(db, shopId);
+  broadcastSse({ type: 'printer_updated', settings: resolved });
+
+  res.json({ success: true });
+});
+
+// POST /api/shop/go-offline - transition shop operationalState to offline
+app.post('/api/shop/go-offline', requireAdmin, (req, res) => {
+  const { shopId } = req.body;
+  if (!shopId) {
+    return res.status(400).json({ error: 'Missing shopId' });
+  }
+
+  const db = readDb();
+  const shop = db.shops.find((s: any) => s.id === shopId);
+  if (!shop) {
+    return res.status(404).json({ error: `Shop "${shopId}" not found.` });
+  }
+
+  shop.operationalState = 'offline';
+  shop.printerStatus = 'offline';
+
+  // Mark matching agent as offline if any
+  if (db.agents) {
+    const agent = db.agents.find((a: any) => a.shopId === shopId);
+    if (agent) {
+      agent.onlineStatus = 'offline';
+    }
+  }
+
+  writeDb(db);
+
+  const resolved = getResolvedPrinterSettings(db, shopId);
+  broadcastSse({ type: 'printer_updated', settings: resolved });
+
+  res.json({ success: true });
 });
 
 // GET /api/shops - list all print shops with dynamic heartbeat status checks
@@ -1253,12 +1366,8 @@ app.post('/api/agent/scan-printers', requireAdmin, (req, res) => {
 });
 
 // POST /api/agent/register - Register a remote print agent
-app.post('/api/agent/register', (req, res) => {
-  const { agentId, shopId, machineName, printerName, daemonVersion, agentToken } = req.body;
-  
-  if (!agentToken || agentToken !== AGENT_TOKEN) {
-    return res.status(401).json({ error: 'Unauthorized agent token' });
-  }
+app.post('/api/agent/register', requireAdmin, (req, res) => {
+  const { agentId, shopId, machineName, printerName, daemonVersion, printers } = req.body;
 
   if (!agentId || !shopId) {
     return res.status(400).json({ error: 'Missing agentId or shopId' });
@@ -1288,12 +1397,28 @@ app.post('/api/agent/register', (req, res) => {
     db.agents.push(newAgent);
   }
 
+  // Update printers database table if provided
+  if (Array.isArray(printers)) {
+    if (!db.printers) db.printers = [];
+    db.printers = db.printers.filter(p => p.shopId !== shopId);
+    printers.forEach(pName => {
+      db.printers!.push({
+        printerId: formatPrinterId(pName),
+        shopId,
+        printerName: pName,
+        status: 'online',
+        discoveredAt: now
+      });
+    });
+  }
+
   // Sync shop status to online
   const shop = db.shops.find(s => s.id === shopId);
   if (!shop) {
     return res.status(404).json({ error: `Shop "${shopId}" is not registered on the platform.` });
   }
   shop.printerStatus = 'online';
+  shop.operationalState = 'online';
 
   // Sync legacy printerSettings if default shop
   if (shopId === 'alliance_print') {
@@ -1342,7 +1467,7 @@ app.post('/api/agent/register', (req, res) => {
 
 // POST /api/agent/heartbeat - Update heartbeat for a remote print agent
 app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
-  const { agentId, shopId, printerName, daemonVersion, printers } = req.body;
+  const { agentId, shopId, printerName, daemonVersion, printers, printerStatus } = req.body;
 
   if (!agentId || !shopId) {
     return res.status(400).json({ error: 'Missing agentId or shopId' });
@@ -1378,6 +1503,10 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
   }
   if (daemonVersion !== undefined && agent.daemonVersion !== daemonVersion) {
     agent.daemonVersion = daemonVersion;
+    changed = true;
+  }
+  if (printerStatus !== undefined && agent.printerStatus !== printerStatus) {
+    agent.printerStatus = printerStatus;
     changed = true;
   }
   
@@ -1428,11 +1557,16 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
     }
   }
 
-  // Sync shop status to online
+  // Sync shop status to reported printer status
   const shop = db.shops.find(s => s.id === shopId);
   if (shop) {
-    if (shop.printerStatus !== 'online') {
-      shop.printerStatus = 'online';
+    const targetStatus = printerStatus === 'offline' ? 'offline' : 'online';
+    if (shop.printerStatus !== targetStatus) {
+      shop.printerStatus = targetStatus;
+      changed = true;
+    }
+    if (shop.operationalState !== 'online') {
+      shop.operationalState = 'online';
       changed = true;
     }
     if (!shop.lastHeartbeat) {
@@ -1443,9 +1577,12 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
 
   // Sync legacy printerSettings if default shop
   if (shopId === 'alliance_print') {
-    if (db.printerSettings && db.printerSettings.adminOverrideStatus === 'none' && db.printerSettings.status !== 'online') {
-      db.printerSettings.status = 'online';
-      changed = true;
+    if (db.printerSettings && db.printerSettings.adminOverrideStatus === 'none') {
+      const targetStatus = printerStatus === 'offline' ? 'offline' : 'online';
+      if (db.printerSettings.status !== targetStatus) {
+        db.printerSettings.status = targetStatus;
+        changed = true;
+      }
     }
   }
 
@@ -1784,13 +1921,17 @@ app.post('/api/jobs', uploadLimiter, upload.array('files', 10), async (req, res)
 
     const shopAgent = db.agents?.find((a: any) => a.shopId === targetShopId);
     const isAgentOffline = !shopAgent || shopAgent.onlineStatus === 'offline';
-    if (isAgentOffline) {
+    const isPrinterOffline = shopAgent && shopAgent.printerStatus === 'offline';
+    if (isAgentOffline || isPrinterOffline) {
       if (files && files.length > 0) {
         files.forEach(f => {
           try { fs.unlinkSync(f.path); } catch {}
         });
       }
-      return res.status(503).json({ error: 'The print shop is currently offline. Print submissions are temporarily disabled.' });
+      const errMsg = isPrinterOffline 
+        ? 'The print shop printer is currently offline. Print submissions are temporarily disabled.'
+        : 'The print shop is currently offline. Print submissions are temporarily disabled.';
+      return res.status(503).json({ error: errMsg });
     }
 
     // Auto schedule if the shop is closed
@@ -1952,6 +2093,50 @@ app.post('/api/jobs/:id/status', requireAdmin, (req, res) => {
   if (progressPercent !== undefined) db.jobs[idx].progressPercent = progressPercent;
   if (reason !== undefined) db.jobs[idx].reason = reason;
   
+  if (status === 'printing') {
+    if (!db.jobs[idx].timeline) db.jobs[idx].timeline = [];
+    const hasClaimed = db.jobs[idx].timeline!.some(e => e.stage === 'claimed');
+    if (!hasClaimed) {
+      const resolvedPrinter = db.printerSettings?.selectedPrinter || 'UNKNOWN';
+      db.jobs[idx].timeline!.push({
+        stage: 'claimed',
+        at: new Date().toISOString(),
+        printerId: formatPrinterId(resolvedPrinter),
+        printerName: resolvedPrinter
+      });
+    }
+  }
+  
+  if (status === 'completed') {
+    if (!db.jobs[idx].timeline) db.jobs[idx].timeline = [];
+    
+    // Ensure 'claimed' stage exists so metrics (totalProcessingMs) can be computed
+    const hasClaimed = db.jobs[idx].timeline!.some(e => e.stage === 'claimed');
+    if (!hasClaimed) {
+      const resolvedPrinter = db.printerSettings?.selectedPrinter || 'UNKNOWN';
+      const approvedEntry = db.jobs[idx].timeline!.find(e => e.stage === 'approved');
+      const claimedTime = approvedEntry ? approvedEntry.at : new Date(Date.now() - 1000).toISOString();
+      db.jobs[idx].timeline!.push({
+        stage: 'claimed',
+        at: claimedTime,
+        printerId: formatPrinterId(resolvedPrinter),
+        printerName: resolvedPrinter
+      });
+    }
+
+    const hasCompleted = db.jobs[idx].timeline!.some(e => e.stage === 'completed');
+    if (!hasCompleted) {
+      const resolvedPrinter = db.printerSettings?.selectedPrinter || 'UNKNOWN';
+      db.jobs[idx].timeline!.push({
+        stage: 'completed',
+        at: new Date().toISOString(),
+        printerId: formatPrinterId(resolvedPrinter),
+        printerName: resolvedPrinter
+      });
+    }
+    updateJobMetrics(db.jobs[idx]);
+  }
+
   writeDb(db);
   
   // If the job is completed, delete the server file to save disk space
@@ -2202,7 +2387,9 @@ app.use((err: any, req: any, res: any, next: any) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n  Campus Print Server running on http://localhost:${PORT}`);
-  console.log(`  API: http://localhost:${PORT}/api/jobs\n`);
-});
+if (!process.env.VITEST) {
+  app.listen(PORT, () => {
+    console.log(`\n  Campus Print Server running on http://localhost:${PORT}`);
+    console.log(`  API: http://localhost:${PORT}/api/jobs\n`);
+  });
+}

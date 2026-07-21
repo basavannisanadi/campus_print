@@ -19,16 +19,24 @@ export default defineConfig(() => {
           '**/server/data/**',
           '**/server/uploads/**',
           '**/print-client/temp/**',
-          '**/print-client/printed_output/**'
+          '**/print-client/printed_output/**',
+          path.resolve(__dirname, 'server/data/**'),
+          path.resolve(__dirname, 'server/uploads/**'),
+          path.resolve(__dirname, 'print-client/temp/**'),
+          path.resolve(__dirname, 'print-client/printed_output/**')
         ]
       },
       proxy: {
         '/api': {
-          target: 'http://localhost:3001',
+          target: 'http://127.0.0.1:3001',
           changeOrigin: true,
         },
         '/uploads': {
-          target: 'http://localhost:3001',
+          target: 'http://127.0.0.1:3001',
+          changeOrigin: true,
+        },
+        '/download': {
+          target: 'http://127.0.0.1:3001',
           changeOrigin: true,
         },
       },

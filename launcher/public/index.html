@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Campus Print Launcher</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Plus+Jakarta+Sans:wght@400;600;700&family=Fira+Code&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="glass-container">
+    <header class="app-header">
+      <div class="logo-badge">🖨️</div>
+      <h1>Campus Print Hub</h1>
+      <p class="subtitle">Launcher Control Center</p>
+    </header>
+
+    <main class="control-panel">
+      <!-- Status Card Grid -->
+      <section class="status-grid">
+        <div class="status-card" id="card-backend">
+          <div class="card-left">
+            <span class="indicator red" id="ind-backend"></span>
+            <div class="card-details">
+              <h3>Backend Server</h3>
+              <p class="status-text" id="txt-backend">Offline</p>
+            </div>
+          </div>
+          <span class="step-num">01</span>
+        </div>
+
+        <div class="status-card" id="card-frontend">
+          <div class="card-left">
+            <span class="indicator red" id="ind-frontend"></span>
+            <div class="card-details">
+              <h3>Frontend Interface</h3>
+              <p class="status-text" id="txt-frontend">Offline</p>
+            </div>
+          </div>
+          <span class="step-num">02</span>
+        </div>
+
+        <div class="status-card" id="card-agent">
+          <div class="card-left">
+            <span class="indicator red" id="ind-agent"></span>
+            <div class="card-details">
+              <h3>Print Agent Daemon</h3>
+              <p class="status-text" id="txt-agent">Offline</p>
+            </div>
+          </div>
+          <span class="step-num">03</span>
+        </div>
+
+        <div class="status-card" id="card-printers">
+          <div class="card-left">
+            <span class="indicator grey" id="ind-printers"></span>
+            <div class="card-details">
+              <h3>Printer Hardware</h3>
+              <p class="status-text" id="txt-printers">0 Found</p>
+            </div>
+          </div>
+          <span class="step-num">04</span>
+        </div>
+      </section>
+
+      <!-- Error Toast Area -->
+      <div id="error-toast" class="error-toast hidden">
+        <span class="alert-icon">⚠️</span>
+        <div class="error-content">
+          <h4 id="error-title">Startup Failed</h4>
+          <p id="error-message">Something went wrong.</p>
+        </div>
+        <button id="btn-close-error" class="close-toast-btn">&times;</button>
+      </div>
+
+      <!-- Action Area -->
+      <section class="action-bar">
+        <button id="btn-start" class="btn btn-primary">Start Hub</button>
+        <button id="btn-stop" class="btn btn-secondary" disabled>Stop Hub</button>
+      </section>
+
+      <!-- Logs Terminal -->
+      <section class="terminal-container">
+        <div class="terminal-header">
+          <div class="window-dots">
+            <span class="dot red-dot"></span>
+            <span class="dot yellow-dot"></span>
+            <span class="dot green-dot"></span>
+          </div>
+          <span class="terminal-title">launcher.log</span>
+        </div>
+        <div class="terminal-body" id="log-output">
+          <div class="log-line text-dim">Launcher UI ready. Waiting for input...</div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>© 2026 Campus Print Hub · Standard Operational Environment</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

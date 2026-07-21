@@ -6,6 +6,7 @@ export interface TimelineEntry {
   daemonInstance?: string;
   printType?: 'bw' | 'color';
   selectedPrinter?: string;
+  reason?: string;
 }
 
 export interface FailureSnapshot {
@@ -71,6 +72,8 @@ export interface Shop {
   colorExpectedReturnTime?: string;
   adminUsername?: string;
   adminPasswordHash?: string;
+  operationalState?: 'online' | 'offline';
+  agentInstalled?: boolean;
   // Legacy fields
   phone?: string;
   isOpen?: boolean;

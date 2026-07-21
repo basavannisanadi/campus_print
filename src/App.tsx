@@ -4,6 +4,7 @@ import { PrintJob } from './types';
 import StudentPortal from './components/StudentPortal';
 import AdminPortal from './components/AdminPortal';
 import OwnerDashboard from './components/OwnerDashboard';
+import DownloadPage from './components/DownloadPage';
 import { getApiUrl } from './config';
 
 export default function App() {
@@ -28,6 +29,20 @@ export default function App() {
   // Discovery States
   const [scanStatus, setScanStatus] = useState<'idle' | 'scanning' | 'completed' | 'timeout' | 'error'>('idle');
   const [scanStartedAt, setScanStartedAt] = useState('');
+
+  // System Health state machine
+  const [systemHealth, setSystemHealth] = useState<any>({
+    agentConnected: false,
+    printersDiscovered: false,
+    bwPrinterSelected: false,
+    colorPrinterSelected: false,
+    systemReady: false,
+    uploadsEnabled: false,
+    approvalsEnabled: false,
+    currentState: 'OFFLINE',
+    blockers: [],
+    timestamp: ''
+  });
 
   // Multi-shop States
   const [shops, setShops] = useState<any[]>([]);
@@ -80,7 +95,10 @@ export default function App() {
 
   const fetchPrinterSettings = async () => {
     try {
-      const res = await fetch(getApiUrl(`/api/printer/settings?shopId=${selectedShopId}`));
+      const token = sessionStorage.getItem('adminToken') || '';
+      const res = await fetch(getApiUrl(`/api/printer/settings?shopId=${selectedShopId}`), {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (res.ok) {
         const settings = await res.json();
         setPrinterStatus(settings.status);
@@ -92,9 +110,12 @@ export default function App() {
         setAgentMachineName(settings.agentMachineName || '');
         setAgentPrinterName(settings.agentPrinterName || '');
         setAgentDaemonVersion(settings.agentDaemonVersion || '');
-        setAgentLastHeartbeat(settings.agentLastHeartbeat || '');
+        setAgentLastHeartbeat(settings.lastHeartbeat || '');
         setScanStatus(settings.scanStatus || 'idle');
         setScanStartedAt(settings.scanStartedAt || '');
+        if (settings.systemHealth) {
+          setSystemHealth(settings.systemHealth);
+        }
       }
       await fetchShops();
     } catch (err) {
@@ -118,7 +139,7 @@ export default function App() {
     if (role === 'shop_admin' && shopId && selectedShopId !== shopId) {
       setSelectedShopId(shopId);
     }
-  }, [selectedShopId, currentRoute]);
+  }, []);
 
   useEffect(() => {
     // Setup SSE connection
@@ -184,7 +205,7 @@ export default function App() {
       if (pollInterval) clearInterval(pollInterval);
       clearInterval(sseReconnectChecker);
     };
-  }, [selectedShopId]);
+  }, []);
 
   const selectedShop = shops.find(s => s.id === selectedShopId) || {
     id: 'tjohn_print',
@@ -249,12 +270,20 @@ export default function App() {
                     <p className="text-[9px] text-emerald-600 font-medium mt-0.5">Printer Connected</p>
                   </div>
                 </div>
+              ) : agentOnlineStatus === 'online' ? (
+                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <div className="text-left leading-none">
+                    <p className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider">🟡 STANDBY</p>
+                    <p className="text-[9px] text-amber-600 font-medium mt-0.5">Agent Connected (No Printer)</p>
+                  </div>
+                </div>
               ) : (
                 <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-50 border border-rose-200 shadow-sm">
                   <span className="w-2 h-2 rounded-full bg-rose-500" />
                   <div className="text-left leading-none">
                     <p className="text-[10px] font-extrabold text-rose-800 uppercase tracking-wider">🔴 OFFLINE</p>
-                    <p className="text-[9px] text-rose-600 font-medium mt-0.5">Printer Unavailable</p>
+                    <p className="text-[9px] text-rose-600 font-medium mt-0.5">Service Inactive</p>
                   </div>
                 </div>
               )}
@@ -267,7 +296,9 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
-        {currentRoute === '/admin' ? (
+        {currentRoute === '/download' ? (
+          <DownloadPage navigate={navigate} />
+        ) : currentRoute === '/admin' ? (
           <AdminPortal 
             jobs={jobs} 
             onRefreshJobs={fetchJobs} 
@@ -287,6 +318,7 @@ export default function App() {
             shops={shops}
             selectedShopId={selectedShopId}
             onSelectShop={handleSelectShop}
+            systemHealth={systemHealth}
           />
         ) : currentRoute === '/owner' ? (
           <OwnerDashboard 
@@ -304,6 +336,7 @@ export default function App() {
             selectedShopId={selectedShopId}
             onSelectShop={handleSelectShop}
             agentOnlineStatus={agentOnlineStatus}
+            systemHealth={systemHealth}
           />
         )}
       </main>

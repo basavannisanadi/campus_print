@@ -5,7 +5,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DB_PATH = path.resolve(__dirname, './data/db.json');
+const DB_PATH = process.env.NODE_ENV === 'test'
+  ? path.resolve(__dirname, './data/db.test.json')
+  : path.resolve(__dirname, './data/db.json');
 const DATA_DIR = path.dirname(DB_PATH);
 
 export interface TimelineEntry {
@@ -16,6 +18,7 @@ export interface TimelineEntry {
   daemonInstance?: string;
   printType?: 'bw' | 'color';
   selectedPrinter?: string;
+  reason?: string;
 }
 
 export interface FailureSnapshot {
@@ -83,6 +86,8 @@ export interface Shop {
   colorExpectedReturnTime?: string;
   adminUsername?: string;
   adminPasswordHash?: string;
+  operationalState?: 'online' | 'offline' | 'connecting';
+  agentInstalled?: boolean;
   // Legacy fields
   phone?: string;
   isOpen?: boolean;
@@ -115,6 +120,20 @@ export interface Agent {
   scanRequested?: boolean;
   scanStatus?: 'idle' | 'scanning' | 'completed' | 'timeout' | 'error';
   scanStartedAt?: string;
+  printerStatus?: 'online' | 'offline' | 'unknown';
+  startupProgress?: {
+    stepId: string;
+    label: string;
+    status: 'waiting' | 'running' | 'completed' | 'failed';
+    errorCode?: string;
+    message?: string;
+    timestamp?: string;
+  }[];
+  connectionError?: {
+    errorCode: string;
+    message: string;
+    timestamp: string;
+  } | null;
 }
 
 export interface Printer {
