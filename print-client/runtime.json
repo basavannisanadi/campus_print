@@ -1,4 +1,5 @@
 {
-  "serverUrl": "https://plastic-founder-repository-transparent.trycloudflare.com",
-  "shopId": "tjohn_print"
+  "serverUrl": "http://localhost:3001",
+  "shopId": "tjohn_print",
+  "token": ""
 }

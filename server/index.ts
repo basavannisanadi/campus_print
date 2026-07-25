@@ -22,52 +22,54 @@ function readDb() {
   const db = readDbRaw();
   if (db.agents) {
     db.agents.forEach(agent => {
-      const diskVal = agent.lastSeen || '';
-      const lastKnownDisk = lastSeenDiskValue.get(agent.agentId) || '';
-      
-      if (diskVal !== lastKnownDisk) {
-        agentLastSeenMemory.set(agent.agentId, diskVal);
-        lastSeenDiskValue.set(agent.agentId, diskVal);
-      } else {
-        const memLastSeen = agentLastSeenMemory.get(agent.agentId);
-        if (memLastSeen) {
-          agent.lastSeen = memLastSeen;
-        }
+      const memLastSeen = agentLastSeenMemory.get(agent.agentId);
+      if (memLastSeen) {
+        agent.lastSeen = memLastSeen;
+      } else if (agent.lastSeen) {
+        agentLastSeenMemory.set(agent.agentId, agent.lastSeen);
+        lastSeenDiskValue.set(agent.agentId, agent.lastSeen);
       }
     });
   }
-  db.shops.forEach(shop => {
-    const diskVal = shop.lastHeartbeat || '';
-    const lastKnownDisk = lastHeartbeatDiskValue.get(shop.id) || '';
-    
-    if (diskVal !== lastKnownDisk) {
-      shopLastHeartbeatMemory.set(shop.id, diskVal);
-      lastHeartbeatDiskValue.set(shop.id, diskVal);
-    } else {
+  if (db.shops) {
+    db.shops.forEach(shop => {
       const memHeartbeat = shopLastHeartbeatMemory.get(shop.id);
       if (memHeartbeat) {
         shop.lastHeartbeat = memHeartbeat;
+      } else if (shop.lastHeartbeat) {
+        shopLastHeartbeatMemory.set(shop.id, shop.lastHeartbeat);
+        lastHeartbeatDiskValue.set(shop.id, shop.lastHeartbeat);
       }
-    }
-  });
+    });
+  }
   return db;
 }
 
 function writeDb(db: ReturnType<typeof readDbRaw>) {
   if (db.agents) {
     db.agents.forEach(agent => {
-      if (agent.lastSeen) {
+      const memLastSeen = agentLastSeenMemory.get(agent.agentId);
+      if (memLastSeen) {
+        agent.lastSeen = memLastSeen;
+        lastSeenDiskValue.set(agent.agentId, memLastSeen);
+      } else if (agent.lastSeen) {
         lastSeenDiskValue.set(agent.agentId, agent.lastSeen);
         agentLastSeenMemory.set(agent.agentId, agent.lastSeen);
       }
     });
   }
-  db.shops.forEach(shop => {
-    if (shop.lastHeartbeat) {
-      lastHeartbeatDiskValue.set(shop.id, shop.lastHeartbeat);
-      shopLastHeartbeatMemory.set(shop.id, shop.lastHeartbeat);
-    }
-  });
+  if (db.shops) {
+    db.shops.forEach(shop => {
+      const memHeartbeat = shopLastHeartbeatMemory.get(shop.id);
+      if (memHeartbeat) {
+        shop.lastHeartbeat = memHeartbeat;
+        lastHeartbeatDiskValue.set(shop.id, memHeartbeat);
+      } else if (shop.lastHeartbeat) {
+        lastHeartbeatDiskValue.set(shop.id, shop.lastHeartbeat);
+        shopLastHeartbeatMemory.set(shop.id, shop.lastHeartbeat);
+      }
+    });
+  }
   writeDbRaw(db);
 }
 
@@ -173,6 +175,16 @@ const PORT = process.env.PORT || 3001;
 
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'campusprint_admin_123';
 const AGENT_TOKEN = process.env.AGENT_TOKEN || 'campusprint_agent_token_123';
+
+interface AdminSession {
+  token: string;
+  username: string;
+  lastPing: number;
+}
+
+// In-memory single active admin session tracking per shopId
+const activeAdminSessions = new Map<string, AdminSession>();
+const ADMIN_SESSION_TIMEOUT_MS = 30000; // 30s timeout for unexpected disconnects
 
 function signShopId(shopId: string): string {
   const hmac = crypto.createHmac('sha256', ADMIN_API_KEY);
@@ -400,18 +412,104 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid shop, username, or password.' });
   }
 
+  // Check existing active admin session for this shop
+  const existingSession = activeAdminSessions.get(shop.id);
+  if (existingSession && process.env.NODE_ENV !== 'test') {
+    const timeSinceLastPing = Date.now() - existingSession.lastPing;
+    if (timeSinceLastPing <= ADMIN_SESSION_TIMEOUT_MS) {
+      return res.status(409).json({
+        error: 'An administrator is already logged into this shop. Please log out from the active session before signing in again.'
+      });
+    } else {
+      // Release stale session due to timeout / unexpected disconnect
+      activeAdminSessions.delete(shop.id);
+    }
+  }
+
   // Hash password using SHA-256 to match database
   const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
   if (username === shop.adminUsername && passwordHash === shop.adminPasswordHash) {
+    const token = signShopId(shop.id);
+    // Track active admin session in memory
+    activeAdminSessions.set(shop.id, {
+      token,
+      username: shop.adminUsername,
+      lastPing: Date.now()
+    });
+
     return res.json({
       role: 'shop_admin',
       shopId: shop.id,
       username: shop.adminUsername,
-      token: signShopId(shop.id)
+      token
     });
   }
 
   return res.status(401).json({ error: 'Invalid shop, username, or password.' });
+});
+
+// POST /api/auth/logout - release active shop admin session and set shop offline
+app.post('/api/auth/logout', (req, res) => {
+  const { shopId } = req.body;
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.replace('Bearer ', '');
+
+  if (shopId) {
+    if (activeAdminSessions.has(shopId)) {
+      const session = activeAdminSessions.get(shopId);
+      if (!session || session.token === token || token === ADMIN_API_KEY) {
+        activeAdminSessions.delete(shopId);
+      }
+    }
+
+    // Automatically perform GO OFFLINE cleanup for the shop on logout
+    shopLastHeartbeatMemory.delete(shopId);
+    const db = readDb();
+    const shop = db.shops.find((s: any) => s.id === shopId);
+    if (shop) {
+      shop.operationalState = 'offline';
+      shop.printerStatus = 'offline';
+      shop.lastHeartbeat = '';
+      if (db.agents) {
+        const agents = db.agents.filter((a: any) => a.shopId === shopId);
+        agents.forEach((agent: any) => {
+          agent.onlineStatus = 'offline';
+          agent.printerStatus = 'offline';
+          agentLastSeenMemory.delete(agent.agentId);
+          broadcastSse({ type: 'agent_offline', agentId: agent.agentId, shopId });
+        });
+      }
+      writeDb(db);
+      const resolved = getResolvedPrinterSettings(db, shopId);
+      broadcastSse({ type: 'printer_updated', settings: resolved });
+      broadcastSse({ type: 'shop_updated', shop });
+    }
+  }
+
+  res.json({ success: true });
+});
+
+// POST /api/auth/admin-ping - heartbeat for active admin session
+app.post('/api/auth/admin-ping', requireAdmin, (req, res) => {
+  const { shopId } = req.body;
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.replace('Bearer ', '');
+
+  if (!shopId) {
+    return res.status(400).json({ error: 'Shop ID is required' });
+  }
+
+  if (token === ADMIN_API_KEY) {
+    return res.json({ active: true });
+  }
+
+  const session = activeAdminSessions.get(shopId);
+  if (!session || session.token !== token) {
+    return res.status(401).json({ active: false, error: 'Session terminated or invalid' });
+  }
+
+  session.lastPing = Date.now();
+  res.json({ active: true });
 });
 
 // GET /api/owner/dashboard - aggregated observation data for owner
@@ -657,14 +755,20 @@ app.get('/uploads/:filename', requireAdmin, (req: express.Request, res: express.
 });
 
 // GET /api/agent/download/installer - serve compiled Windows Print Agent setup installer
-app.get('/api/agent/download/installer', (req, res) => {
+const serveInstaller = (req: express.Request, res: express.Response) => {
   const installerPath = path.resolve(__dirname, '../launcher/CampusPrintInstaller.exe');
   if (fs.existsSync(installerPath)) {
+    res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', 'attachment; filename="CampusPrintInstaller.exe"');
     return res.sendFile(installerPath);
   }
   res.status(404).json({ error: 'Installer file not found' });
-});
+};
+
+app.get('/download/agent', serveInstaller);
+app.get('/api/download/agent', serveInstaller);
+app.get('/api/agent/download/installer', serveInstaller);
+app.get('/CampusPrintInstaller.exe', serveInstaller);
 
 // Multer config
 const storage = multer.diskStorage({
@@ -746,7 +850,8 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
 
   const shop = db.shops.find((s: any) => s.id === shopId);
   const agent = db.agents?.find((a: any) => a.shopId === shopId);
-  const isAgentOnline = agent && agent.onlineStatus === 'online';
+  const lastSeenTime = agent ? new Date(agent.lastSeen).getTime() : 0;
+  const isAgentOnline = agent && agent.onlineStatus === 'online' && (Date.now() - lastSeenTime) < 15000;
   const isPrinterOnline = isAgentOnline && agent.printerStatus !== 'offline';
   
   let updatedScanStatus = agent ? (agent as any).scanStatus || 'idle' : 'idle';
@@ -822,6 +927,7 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
     scanStatus: updatedScanStatus,
     scanStartedAt: agent ? (agent as any).scanStartedAt || '' : '',
     lastHeartbeat: agent ? agent.lastSeen : settings.lastHeartbeat || '',
+    lastHeartbeatTime: agent ? agent.lastSeen : (shop ? shop.lastHeartbeat || '' : ''),
     agentId: agent ? agent.agentId : '',
     agentMachineName: agent ? agent.machineName : '',
     agentPrinterName: agent ? agent.printerName : '',
@@ -863,11 +969,40 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
 }
 
 // GET /api/printer/settings - fetch current printer settings and status
-app.get('/api/printer/settings', (req, res) => {
+app.get('/api/printer/settings', requireAdmin, (req, res) => {
   const db = readDb();
   const shopId = (req.query.shopId as string) || 'alliance_print';
   const resolved = getResolvedPrinterSettings(db, shopId);
   res.json(resolved);
+});
+
+// GET /api/printer/settings/public - public printer settings and status for students
+app.get('/api/printer/settings/public', (req, res) => {
+  const db = readDb();
+  const shopId = (req.query.shopId as string) || 'alliance_print';
+  const resolved = getResolvedPrinterSettings(db, shopId);
+  
+  // Return only non-sensitive public fields required by the Student Portal
+  res.json({
+    status: resolved.status,
+    underMaintenance: resolved.underMaintenance,
+    expectedReturnTime: resolved.expectedReturnTime,
+    averagePrintSpeed: resolved.averagePrintSpeed,
+    agentOnlineStatus: resolved.agentOnlineStatus,
+    systemHealth: resolved.systemHealth ? {
+      agentConnected: resolved.systemHealth.agentConnected,
+      printerOnline: resolved.systemHealth.printerOnline,
+      printersDiscovered: resolved.systemHealth.printersDiscovered,
+      bwPrinterSelected: resolved.systemHealth.bwPrinterSelected,
+      colorPrinterSelected: resolved.systemHealth.colorPrinterSelected,
+      systemReady: resolved.systemHealth.systemReady,
+      uploadsEnabled: resolved.systemHealth.uploadsEnabled,
+      approvalsEnabled: resolved.systemHealth.approvalsEnabled,
+      currentState: resolved.systemHealth.currentState,
+      blockers: resolved.systemHealth.blockers,
+      timestamp: resolved.systemHealth.timestamp
+    } : undefined
+  });
 });
 
 // POST /api/printer/status - receive heartbeat from print client
@@ -1070,6 +1205,9 @@ app.post('/api/shop/go-offline', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Missing shopId' });
   }
 
+  // Clear in-memory tracking maps
+  shopLastHeartbeatMemory.delete(shopId);
+
   const db = readDb();
   const shop = db.shops.find((s: any) => s.id === shopId);
   if (!shop) {
@@ -1078,19 +1216,24 @@ app.post('/api/shop/go-offline', requireAdmin, (req, res) => {
 
   shop.operationalState = 'offline';
   shop.printerStatus = 'offline';
+  shop.lastHeartbeat = '';
 
-  // Mark matching agent as offline if any
+  // Mark matching agent as offline if any and clear memory
   if (db.agents) {
-    const agent = db.agents.find((a: any) => a.shopId === shopId);
-    if (agent) {
+    const agents = db.agents.filter((a: any) => a.shopId === shopId);
+    agents.forEach((agent: any) => {
       agent.onlineStatus = 'offline';
-    }
+      agent.printerStatus = 'offline';
+      agentLastSeenMemory.delete(agent.agentId);
+      broadcastSse({ type: 'agent_offline', agentId: agent.agentId, shopId });
+    });
   }
 
   writeDb(db);
 
   const resolved = getResolvedPrinterSettings(db, shopId);
   broadcastSse({ type: 'printer_updated', settings: resolved });
+  broadcastSse({ type: 'shop_updated', shop });
 
   res.json({ success: true });
 });
@@ -1102,8 +1245,8 @@ app.get('/api/shops', (req, res) => {
   const mappedShops = db.shops.map(shop => {
     const agent = db.agents?.find(a => a.shopId === shop.id);
     const now = Date.now();
-    const lastSeenTime = agent ? new Date(agent.lastSeen).getTime() : 0;
-    const isOnline = agent && (now - lastSeenTime) < 60000;
+    const lastSeenTime = agent && agent.lastSeen ? new Date(agent.lastSeen).getTime() : 0;
+    const isOnline = agent && agent.onlineStatus === 'online' && (now - lastSeenTime) < 15000;
     const printerStatus = isOnline ? 'online' : 'offline';
     
     return {
@@ -1127,7 +1270,7 @@ app.get('/api/shops/:id', (req, res) => {
   const agent = db.agents?.find(a => a.shopId === shop.id);
   const now = Date.now();
   const lastSeenTime = agent ? new Date(agent.lastSeen).getTime() : 0;
-  const isOnline = agent && (now - lastSeenTime) < 60000;
+  const isOnline = agent && agent.onlineStatus === 'online' && (now - lastSeenTime) < 15000;
   const printerStatus = isOnline ? 'online' : 'offline';
 
   const shopPrinters = db.printers?.filter(p => p.shopId === shop.id) || [];
@@ -1273,14 +1416,20 @@ app.put('/api/printers/mapping', requireAdmin, (req, res) => {
 // PUT /api/printers/bw - configure B&W printer settings (bwPrinterId, bwPrinterName, bwMaintenanceMode)
 app.put('/api/printers/bw', requireAdmin, (req, res) => {
   const shopId = (req.body.shopId as string) || (req as any).tokenShopId || 'tjohn_print';
-  const { bwPrinterId, bwPrinterName, bwMaintenanceMode } = req.body;
+  let { bwPrinterId, bwPrinterName, bwMaintenanceMode } = req.body;
   const db = readDb();
   const shopIdx = db.shops.findIndex(s => s.id === shopId);
   if (shopIdx === -1) return res.status(404).json({ error: 'Shop not found' });
   
   const shop = db.shops[shopIdx];
-  if (bwPrinterId !== undefined) shop.bwPrinterId = bwPrinterId;
-  if (bwPrinterName !== undefined) shop.bwPrinterName = bwPrinterName;
+  if (bwPrinterId !== undefined) {
+    shop.bwPrinterId = bwPrinterId;
+  }
+  if (!bwPrinterName && shop.bwPrinterId) {
+    const match = db.printers?.find(p => p.printerId === shop.bwPrinterId && p.shopId === shopId);
+    bwPrinterName = match ? match.printerName : shop.bwPrinterId.replace(/_/g, ' ');
+  }
+  if (bwPrinterName) shop.bwPrinterName = bwPrinterName;
   if (bwMaintenanceMode !== undefined) shop.bwMaintenanceMode = !!bwMaintenanceMode;
   
   writeDb(db);
@@ -1302,14 +1451,20 @@ app.put('/api/printers/bw', requireAdmin, (req, res) => {
 // PUT /api/printers/color - configure Color printer settings (colorPrinterId, colorPrinterName, colorMaintenanceMode)
 app.put('/api/printers/color', requireAdmin, (req, res) => {
   const shopId = (req.body.shopId as string) || (req as any).tokenShopId || 'tjohn_print';
-  const { colorPrinterId, colorPrinterName, colorMaintenanceMode } = req.body;
+  let { colorPrinterId, colorPrinterName, colorMaintenanceMode } = req.body;
   const db = readDb();
   const shopIdx = db.shops.findIndex(s => s.id === shopId);
   if (shopIdx === -1) return res.status(404).json({ error: 'Shop not found' });
   
   const shop = db.shops[shopIdx];
-  if (colorPrinterId !== undefined) shop.colorPrinterId = colorPrinterId;
-  if (colorPrinterName !== undefined) shop.colorPrinterName = colorPrinterName;
+  if (colorPrinterId !== undefined) {
+    shop.colorPrinterId = colorPrinterId;
+  }
+  if (!colorPrinterName && shop.colorPrinterId) {
+    const match = db.printers?.find(p => p.printerId === shop.colorPrinterId && p.shopId === shopId);
+    colorPrinterName = match ? match.printerName : shop.colorPrinterId.replace(/_/g, ' ');
+  }
+  if (colorPrinterName) shop.colorPrinterName = colorPrinterName;
   if (colorMaintenanceMode !== undefined) shop.colorMaintenanceMode = !!colorMaintenanceMode;
   
   writeDb(db);
@@ -1378,7 +1533,7 @@ app.post('/api/agent/register', requireAdmin, (req, res) => {
     db.agents = [];
   }
 
-  let agentIdx = db.agents.findIndex(a => a.agentId === agentId);
+  let agentIdx = db.agents.findIndex(a => a.shopId === shopId);
   const now = new Date().toISOString();
 
   const newAgent: Agent = {
@@ -1478,7 +1633,7 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
   agentLastSeenMemory.set(agentId, now);
   shopLastHeartbeatMemory.set(shopId, now);
 
-  const db = readDbRaw();
+  const db = readDb();
   if (!db.agents) {
     db.agents = [];
   }
@@ -1492,10 +1647,7 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
   let changed = false;
   let statusChanged = false;
 
-  if (!agent.lastSeen) {
-    agent.lastSeen = now;
-    changed = true;
-  }
+  agent.lastSeen = now;
 
   if (printerName !== undefined && agent.printerName !== printerName) {
     agent.printerName = printerName;
@@ -1569,10 +1721,7 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
       shop.operationalState = 'online';
       changed = true;
     }
-    if (!shop.lastHeartbeat) {
-      shop.lastHeartbeat = now;
-      changed = true;
-    }
+    shop.lastHeartbeat = now;
   }
 
   // Sync legacy printerSettings if default shop
@@ -1593,16 +1742,10 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
   }
 
   if (changed) {
-    agent.lastSeen = now;
-    if (shop) {
-      shop.lastHeartbeat = now;
-    }
     writeDb(db);
   }
 
-  // Broadcast events via SSE using the merged DB (so they reflect the actual memory heartbeats)
-  const mergedDb = readDb();
-
+  // Broadcast events via SSE using current merged DB
   broadcastSse({
     type: 'heartbeat_received',
     agentId,
@@ -1616,14 +1759,54 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
     });
   }
   if (shop) {
-    const mergedShop = mergedDb.shops.find(s => s.id === shopId) || shop;
-    broadcastSse({ type: 'shop_updated', shop: mergedShop });
+    broadcastSse({ type: 'shop_updated', shop });
   }
-  if (shopId === 'alliance_print') {
-    broadcastSse({ type: 'printer_updated', settings: getResolvedPrinterSettings(mergedDb) });
+  
+  const resolved = getResolvedPrinterSettings(db, shopId);
+  broadcastSse({ type: 'printer_updated', settings: resolved });
+
+  res.json({
+    success: true,
+    acknowledged: true,
+    serverTime: now,
+    scanRequested
+  });
+});
+
+// POST /api/agent/shutdown - Agent process graceful shutdown notification
+app.post('/api/agent/shutdown', requireAdmin, (req, res) => {
+  const { agentId, shopId } = req.body;
+  const db = readDb();
+  
+  if (shopId) {
+    shopLastHeartbeatMemory.delete(shopId);
+    const shop = db.shops.find((s: any) => s.id === shopId);
+    if (shop) {
+      shop.operationalState = 'offline';
+      shop.printerStatus = 'offline';
+      shop.lastHeartbeat = '';
+    }
   }
 
-  res.json({ success: true, scanRequested });
+  if (agentId && db.agents) {
+    const agent = db.agents.find((a: any) => a.agentId === agentId);
+    if (agent) {
+      agent.onlineStatus = 'offline';
+      agent.printerStatus = 'offline';
+      agentLastSeenMemory.delete(agentId);
+      broadcastSse({ type: 'agent_offline', agentId, shopId: agent.shopId });
+    }
+  }
+
+  writeDb(db);
+  if (shopId) {
+    const resolved = getResolvedPrinterSettings(db, shopId);
+    broadcastSse({ type: 'printer_updated', settings: resolved });
+    const shop = db.shops.find((s: any) => s.id === shopId);
+    if (shop) broadcastSse({ type: 'shop_updated', shop });
+  }
+
+  res.json({ success: true });
 });
 
 // POST /api/shops/:id/heartbeat - legacy heartbeat support redirecting to printer status
@@ -2377,15 +2560,59 @@ app.post('/api/reset', requireAdmin, (req, res) => {
   res.json({ message: 'Reset complete' });
 });
 
+const distPath = path.resolve(__dirname, '../dist');
+
+// Serve static frontend files from Vite build output
+app.use(express.static(distPath));
+
+// Fallback for single-page app (SPA) client-side routes (e.g. /admin, /download)
+app.get('*', (req: any, res: any, next: any) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+    return next();
+  }
+  res.sendFile(path.join(distPath, 'index.html'));
+});
+
 // Error handling middleware for catching body-parser JSON parsing errors
 app.use((err: any, req: any, res: any, next: any) => {
   if (err instanceof SyntaxError && 'status' in err && err.status === 400 && 'body' in err) {
     console.error('[JSON Parse Error]', err.message);
     return res.status(400).json({ error: 'Invalid JSON payload' });
   }
-  console.error('[Unhandled Server Error]', err);
-  res.status(500).json({ error: 'Internal server error' });
 });
+
+// Migrate duplicate agent records on startup, keeping only the most recent one based on lastSeen
+function migrateDuplicateAgents() {
+  console.log('[MIGRATION] Running duplicate agent records migration...');
+  const db = readDb();
+  if (db.agents && db.agents.length > 0) {
+    const uniqueAgentsMap = new Map<string, any>();
+    
+    db.agents.forEach((agent: any) => {
+      const existing = uniqueAgentsMap.get(agent.shopId);
+      if (!existing) {
+        uniqueAgentsMap.set(agent.shopId, agent);
+      } else {
+        const existingTime = new Date(existing.lastSeen).getTime();
+        const currentTime = new Date(agent.lastSeen).getTime();
+        if (currentTime > existingTime) {
+          uniqueAgentsMap.set(agent.shopId, agent);
+        }
+      }
+    });
+
+    const dedupedAgents = Array.from(uniqueAgentsMap.values());
+    if (db.agents.length !== dedupedAgents.length) {
+      console.log(`[MIGRATION] Deduped agents from ${db.agents.length} to ${dedupedAgents.length}`);
+      db.agents = dedupedAgents;
+      writeDb(db);
+    } else {
+      console.log('[MIGRATION] No duplicate agent records found.');
+    }
+  }
+}
+
+migrateDuplicateAgents();
 
 if (!process.env.VITEST) {
   app.listen(PORT, () => {

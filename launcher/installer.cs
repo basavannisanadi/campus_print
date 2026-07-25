@@ -67,7 +67,8 @@ class CampusPrintInstaller {
 
                 using (RegistryKey commandKey = key.CreateSubKey(@"shell\open\command")) {
                     string nodePath = FindNodePath();
-                    string commandString = "wscript.exe \"" + vbsPath + "\" \"" + nodePath + "\" \"" + Path.Combine(installDir, "bridge.cjs") + "\" \"%1\"";
+                    string bridgePath = Path.Combine(installDir, "bridge.cjs");
+                    string commandString = "cmd.exe /c title Campus Print Agent & \"" + nodePath + "\" \"" + bridgePath + "\" \"%1\"";
                     commandKey.SetValue("", commandString);
                 }
             }

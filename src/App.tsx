@@ -95,10 +95,13 @@ export default function App() {
 
   const fetchPrinterSettings = async () => {
     try {
-      const token = sessionStorage.getItem('adminToken') || '';
-      const res = await fetch(getApiUrl(`/api/printer/settings?shopId=${selectedShopId}`), {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const token = sessionStorage.getItem('adminToken');
+      const endpoint = token
+        ? `/api/printer/settings?shopId=${selectedShopId}`
+        : `/api/printer/settings/public?shopId=${selectedShopId}`;
+      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+      const res = await fetch(getApiUrl(endpoint), { headers });
       if (res.ok) {
         const settings = await res.json();
         setPrinterStatus(settings.status);
@@ -225,72 +228,83 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       {/* Header */}
-      <header className="relative overflow-hidden bg-white border-b border-slate-200">
-        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 via-violet-500/5 to-purple-500/5" />
+      <header className="relative overflow-hidden bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 shadow-xs">
+        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 via-violet-500/5 to-purple-500/5 pointer-events-none" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-20">
-            {/* Logo & Title */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/25">
-                <Printer className="w-5 h-5 text-white" />
-              </div>
+            {/* Logo Button with Micro-Tap Scale */}
+            <div className="flex items-center gap-3.5">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-600 shadow-md shadow-indigo-500/20 border-none cursor-pointer btn-primary-action text-white"
+              >
+                <Printer className="w-5.5 h-5.5" />
+              </button>
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                  <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                  <h1 
+                    onClick={() => navigate('/')} 
+                    className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight cursor-pointer hover:text-indigo-600 transition-colors"
+                  >
                     Campus Print Hub
                   </h1>
                   {currentRoute === '/admin' ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 shadow-sm w-fit">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs font-mono">
                       ⚙️ Shop Admin
                     </span>
                   ) : currentRoute === '/owner' ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm w-fit">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs font-mono">
                       👑 Platform Owner
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-sm w-fit">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-2xs font-mono">
                       📍 {selectedShop.name}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 hidden sm:block mt-0.5">
+                <p className="text-xs text-slate-500 font-medium hidden sm:block mt-0.5">
                   Fast, reliable campus printing
                 </p>
               </div>
             </div>
 
-            {/* Printer Status */}
+            {/* Printer Telemetry Beacon Badge */}
             <div className="flex items-center gap-3">
-              {/* Printer Hardware Status Badge */}
               {printerStatus === 'online' ? (
-                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 shadow-sm">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-emerald-50 border border-emerald-200/80 shadow-xs backdrop-blur-md">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-pulse-beacon absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                  </span>
                   <div className="text-left leading-none">
-                    <p className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider">🟢 LIVE</p>
-                    <p className="text-[9px] text-emerald-600 font-medium mt-0.5">Printer Connected</p>
+                    <p className="text-[10px] font-black text-emerald-900 uppercase tracking-wider font-mono">🟢 LIVE</p>
+                    <p className="text-[9px] text-emerald-600 font-semibold mt-0.5">Printer Connected</p>
                   </div>
                 </div>
               ) : agentOnlineStatus === 'online' ? (
-                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 shadow-sm">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-amber-50 border border-amber-200/80 shadow-xs backdrop-blur-md">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-pulse-beacon absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+                  </span>
                   <div className="text-left leading-none">
-                    <p className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider">🟡 STANDBY</p>
-                    <p className="text-[9px] text-amber-600 font-medium mt-0.5">Agent Connected (No Printer)</p>
+                    <p className="text-[10px] font-black text-amber-900 uppercase tracking-wider font-mono">🟡 STANDBY</p>
+                    <p className="text-[9px] text-amber-600 font-semibold mt-0.5">Agent Connected (No Printer)</p>
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-50 border border-rose-200 shadow-sm">
-                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-rose-50 border border-rose-200/80 shadow-xs backdrop-blur-md">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
                   <div className="text-left leading-none">
-                    <p className="text-[10px] font-extrabold text-rose-800 uppercase tracking-wider">🔴 OFFLINE</p>
-                    <p className="text-[9px] text-rose-600 font-medium mt-0.5">Service Inactive</p>
+                    <p className="text-[10px] font-black text-rose-900 uppercase tracking-wider font-mono">🔴 OFFLINE</p>
+                    <p className="text-[9px] text-rose-600 font-semibold mt-0.5">Service Inactive</p>
                   </div>
                 </div>
               )}
             </div>
           </div>
         </div>
-        {/* Bottom gradient accent line */}
         <div className="h-0.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500" />
       </header>
 

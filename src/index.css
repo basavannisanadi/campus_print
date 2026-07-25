@@ -1,12 +1,123 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
 * {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', monospace;
 }
 
 body {
-  background: #f8fafc;
+  background-color: #f8fafc;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================
+   BUTTON MICRO-INTERACTIONS & MOTION SYSTEM
+   ========================================== */
+
+/* Primary CTA Button (Gradients + Lift + Active Scale) */
+.btn-primary-action {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
+              background-color 0.18s ease;
+  will-change: transform;
+}
+
+.btn-primary-action:hover:not(:disabled) {
+  transform: translateY(-1.5px);
+  box-shadow: 0 10px 22px -5px rgba(79, 70, 229, 0.35);
+}
+
+.btn-primary-action:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.975);
+  box-shadow: 0 4px 10px -2px rgba(79, 70, 229, 0.2);
+}
+
+/* Outline & Secondary Buttons */
+.btn-secondary-action {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
+              background-color 0.18s ease, 
+              border-color 0.18s ease;
+}
+
+.btn-secondary-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.btn-secondary-action:active:not(:disabled) {
+  transform: translateY(0) scale(0.975);
+}
+
+/* Operational Alert / Danger Buttons */
+.btn-danger-action {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-danger-action:hover:not(:disabled) {
+  transform: translateY(-1.5px);
+  box-shadow: 0 10px 20px -5px rgba(225, 29, 72, 0.3);
+}
+
+.btn-danger-action:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.975);
+}
+
+/* Success Release Buttons */
+.btn-success-action {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-success-action:hover:not(:disabled) {
+  transform: translateY(-1.5px);
+  box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.3);
+}
+
+.btn-success-action:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.975);
+}
+
+/* Icon Control Buttons */
+.btn-icon-action {
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), 
+              background-color 0.15s ease;
+}
+
+.btn-icon-action:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+
+.btn-icon-action:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+/* ==========================================
+   TELEMETRY & STATUS ANIMATIONS
+   ========================================== */
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.9); opacity: 0.9; }
+  50% { transform: scale(1.3); opacity: 0.3; }
+  100% { transform: scale(0.9); opacity: 0.9; }
+}
+
+.animate-pulse-beacon {
+  animation: pulse-ring 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes modal-pop {
+  0% { opacity: 0; transform: scale(0.95) translateY(8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.animate-modal-pop {
+  animation: modal-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes fadeIn {
@@ -18,43 +129,8 @@ body {
   animation: fadeIn 0.4s ease-out;
 }
 
-@keyframes pulse-ring {
-  0% { transform: scale(0.8); opacity: 1; }
-  100% { transform: scale(2); opacity: 0; }
-}
-
-.animate-pulse-ring {
-  animation: pulse-ring 1.5s ease-out infinite;
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-.animate-shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
-}
-
-.perspective-sm {
-  perspective: 250px;
-}
-
-.preserve-3d {
-  transform-style: preserve-3d;
-}
-
-.rotate-y-180 {
-  transform: rotateY(180deg);
-}
-
-.bg-scanlines {
-  background: linear-gradient(
-    rgba(18, 16, 16, 0) 50%, 
-    rgba(0, 0, 0, 0.2) 50%
-  );
-  background-size: 100% 4px;
-}
-
+/* Scrollbar tuning */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }

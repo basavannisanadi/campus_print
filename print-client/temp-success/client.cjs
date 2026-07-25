@@ -9,12 +9,185 @@ const logFile = path.join(__dirname, 'logs', 'client.log');
 if (!fs.existsSync(path.dirname(logFile))) {
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
 }
-function logToFile(msg) {
-  const line = `[Client] [${new Date().toISOString()}] ${msg}\n`;
-  try { fs.appendFileSync(logFile, line); } catch(e) {}
+const diagLogFile = path.join(__dirname, 'logs', 'diagnostic_execution.log');
+if (!fs.existsSync(path.dirname(diagLogFile))) {
+  try { fs.mkdirSync(path.dirname(diagLogFile), { recursive: true }); } catch (e) {}
 }
 
-logToFile('Started');
+function diagLog(msg) {
+  const entry = `[DIAGNOSTIC] [${new Date().toISOString()}] PID:${process.pid} PPID:${process.ppid} | ${msg}\n`;
+  try { fs.appendFileSync(diagLogFile, entry); } catch (e) {}
+  console.log(entry.trim());
+}
+
+diagLog(`CLIENT EXECUTION STARTED | Argv: ${JSON.stringify(process.argv)} | Cwd: ${process.cwd()} | Node: ${process.version}`);
+
+process.on('exit', (code) => {
+  diagLog(`CLIENT PROCESS EXITING | Code: ${code}`);
+});
+
+// --- CONSOLIDATED DIAGNOSTIC GENERATOR ---
+const DIAGNOSTIC_DIR = path.join(__dirname, 'diagnostics');
+const DIAGNOSTIC_REPORT_PATH = path.join(DIAGNOSTIC_DIR, 'diagnostics_report.txt');
+if (!fs.existsSync(DIAGNOSTIC_DIR)) {
+  try { fs.mkdirSync(DIAGNOSTIC_DIR, { recursive: true }); } catch (e) {}
+}
+
+const diagState = {
+  agentVersion: '1.0.0',
+  nodeVersion: process.version,
+  windowsVersion: `${os.type()} ${os.release()} (${os.arch()})`,
+  machineName: os.hostname() || 'UNKNOWN',
+  serverUrl: '',
+  shopId: '',
+  pid: process.pid,
+  ppid: process.ppid,
+  startupStages: [],
+  networkErrors: [],
+  refreshPrinterMappingTimeMs: 0,
+  registration: { sent: false, httpStatus: null, responseBody: null },
+  heartbeat: { loopStarted: false, firstSent: false, httpStatus: null, responseBody: null },
+  sse: { connected: false, status: 'Not Connected' },
+  exceptions: [],
+  rejections: []
+};
+
+function writeDiagnosticReport() {
+  try {
+    const report = [];
+    report.push('================================================================');
+    report.push('         CAMPUS PRINT AGENT — CONSOLIDATED DIAGNOSTIC REPORT     ');
+    report.push('================================================================');
+    report.push(`Generated At            : ${new Date().toISOString()}`);
+    report.push(`Agent Version           : ${diagState.agentVersion}`);
+    report.push(`Node.js Version         : ${diagState.nodeVersion}`);
+    report.push(`Windows OS Version      : ${diagState.windowsVersion}`);
+    report.push(`Machine Name (Hostname) : ${diagState.machineName}`);
+    report.push(`Target Server URL       : ${config.serverUrl || diagState.serverUrl || 'Unset'}`);
+    report.push(`Shop ID                 : ${config.shopId || diagState.shopId || 'Unset'}`);
+    report.push(`Daemon PID              : ${diagState.pid}`);
+    report.push(`Parent PID (PPID)       : ${diagState.ppid}`);
+    report.push('----------------------------------------------------------------');
+    report.push('1. CONFIGURATION & RUNTIME FILES:');
+    
+    const RUNTIME_PATH = path.join(__dirname, 'runtime.json');
+    const CONFIG_PATH = path.join(__dirname, 'config.json');
+
+    try {
+      const runtimeRaw = fs.existsSync(RUNTIME_PATH) ? fs.readFileSync(RUNTIME_PATH, 'utf8') : 'FILE NOT FOUND';
+      report.push(`  runtime.json: ${runtimeRaw.trim()}`);
+    } catch (e) { report.push(`  runtime.json error: ${e.message}`); }
+    
+    try {
+      const configRaw = fs.existsSync(CONFIG_PATH) ? JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) : {};
+      if (configRaw.token) configRaw.token = configRaw.token.substring(0, 10) + '...[MASKED]';
+      report.push(`  config.json : ${JSON.stringify(configRaw, null, 2)}`);
+    } catch (e) { report.push(`  config.json error: ${e.message}`); }
+
+    report.push('----------------------------------------------------------------');
+    report.push('2. 10-STAGE STARTUP PROGRESSION:');
+    if (diagState.startupStages.length === 0) {
+      report.push('  No startup stages recorded yet.');
+    } else {
+      diagState.startupStages.forEach(s => report.push(`  ${s}`));
+    }
+
+    report.push('----------------------------------------------------------------');
+    report.push('3. REGISTRATION STATUS:');
+    report.push(`  Request Sent        : ${diagState.registration.sent}`);
+    report.push(`  HTTP Status Code    : ${diagState.registration.httpStatus || 'N/A'}`);
+    report.push(`  Response Payload    : ${JSON.stringify(diagState.registration.responseBody || {})}`);
+
+    report.push('----------------------------------------------------------------');
+    report.push('4. HEARTBEAT SYSTEM STATUS:');
+    report.push(`  Heartbeat Loop Started : ${diagState.heartbeat.loopStarted}`);
+    report.push(`  First Heartbeat Sent   : ${diagState.heartbeat.firstSent}`);
+    report.push(`  HTTP Status Code       : ${diagState.heartbeat.httpStatus || 'N/A'}`);
+    report.push(`  Response Payload       : ${JSON.stringify(diagState.heartbeat.responseBody || {})}`);
+
+    report.push('----------------------------------------------------------------');
+    report.push('5. REAL-TIME STREAM (SSE) STATUS:');
+    report.push(`  SSE Stream Connected   : ${diagState.sse.connected}`);
+    report.push(`  SSE Stream Status      : ${diagState.sse.status}`);
+
+    report.push('----------------------------------------------------------------');
+    report.push('6. PRINTER DISCOVERY BENCHMARKS:');
+    report.push(`  refreshPrinterMapping() Total Time : ${diagState.refreshPrinterMappingTimeMs} ms`);
+
+    report.push('----------------------------------------------------------------');
+    report.push('7. NETWORK & PROTOCOL ERRORS:');
+    if (diagState.networkErrors.length === 0) {
+      report.push('  None recorded.');
+    } else {
+      diagState.networkErrors.forEach(err => report.push(`  [ERROR] ${err}`));
+    }
+
+    report.push('----------------------------------------------------------------');
+    report.push('8. UNCAUGHT EXCEPTIONS & UNHANDLED REJECTIONS:');
+    if (diagState.exceptions.length === 0 && diagState.rejections.length === 0) {
+      report.push('  None recorded.');
+    } else {
+      diagState.exceptions.forEach(e => report.push(`  [EXCEPTION] ${e}`));
+      diagState.rejections.forEach(r => report.push(`  [REJECTION] ${r}`));
+    }
+
+    report.push('----------------------------------------------------------------');
+    report.push('9. LAUNCHER LOG (TAIL 30 LINES):');
+    try {
+      const launcherLogPath = path.join(__dirname, 'logs', 'launcher.log');
+      if (fs.existsSync(launcherLogPath)) {
+        const lines = fs.readFileSync(launcherLogPath, 'utf8').trim().split(/\r?\n/);
+        lines.slice(-30).forEach(l => report.push(`  ${l}`));
+      } else { report.push('  launcher.log file not found'); }
+    } catch (e) { report.push(`  Error reading launcher.log: ${e.message}`); }
+
+    report.push('----------------------------------------------------------------');
+    report.push('10. CLIENT LOG (TAIL 40 LINES):');
+    try {
+      const clientLogPath = path.join(__dirname, 'logs', 'client.log');
+      if (fs.existsSync(clientLogPath)) {
+        const lines = fs.readFileSync(clientLogPath, 'utf8').trim().split(/\r?\n/);
+        lines.slice(-40).forEach(l => report.push(`  ${l}`));
+      } else { report.push('  client.log file not found'); }
+    } catch (e) { report.push(`  Error reading client.log: ${e.message}`); }
+
+    report.push('================================================================');
+    report.push('                     END OF DIAGNOSTIC REPORT                   ');
+    report.push('================================================================\n');
+
+    fs.writeFileSync(DIAGNOSTIC_REPORT_PATH, report.join('\n'), 'utf8');
+  } catch (err) {
+    console.error('Failed to write diagnostic report:', err.message);
+  }
+}
+
+process.on('uncaughtException', (err) => {
+  const msg = err ? err.stack || err.message || String(err) : 'Unknown error';
+  diagLog(`CLIENT UNCAUGHT EXCEPTION: ${msg}`);
+  diagState.exceptions.push(`[${new Date().toISOString()}] ${msg}`);
+  writeDiagnosticReport();
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  const msg = reason ? reason.stack || reason.message || String(reason) : 'Unknown rejection';
+  diagLog(`CLIENT UNHANDLED REJECTION: ${msg}`);
+  diagState.rejections.push(`[${new Date().toISOString()}] ${msg}`);
+  writeDiagnosticReport();
+});
+
+function logToFile(msg) {
+  const timestamp = new Date().toLocaleTimeString();
+  diagLog(msg);
+  const line = `[Client] [${new Date().toISOString()}] ${msg}\n`;
+  try { fs.appendFileSync(logFile, line); } catch(e) {}
+  
+  if (msg.includes('[')) {
+    diagState.startupStages.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
+  }
+  writeDiagnosticReport();
+}
+
+logToFile('Campus Print Agent Daemon Started');
 
 // Overwrite child_process.exec to force windowsHide: true on Windows systems (eliminates all flashing CMD windows)
 const originalExec = cp.exec;
@@ -175,6 +348,11 @@ function getAuthHeader() {
 function apiGet(endpoint) {
   return new Promise((resolve, reject) => {
     const url = new URL(endpoint, config.serverUrl);
+    logToFile(`\n[DIAGNOSTIC REQUEST]`);
+    logToFile(`SERVER URL = ${config.serverUrl}`);
+    logToFile(`GET = ${url.href}`);
+    logToFile(`HTTP METHOD = GET`);
+    
     const client = getHttpClient(url);
     client.get(url, { 
       timeout: 10000, 
@@ -184,11 +362,25 @@ function apiGet(endpoint) {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
+        logToFile(`[DIAGNOSTIC RESPONSE]`);
+        logToFile(`GET = ${url.href}`);
+        logToFile(`STATUS CODE = ${res.statusCode}`);
+        logToFile(`RESPONSE BODY = ${data}`);
         if (res.statusCode === 404) return reject(new Error('404'));
         if (res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode}`));
         try { resolve(JSON.parse(data)); } catch { resolve(data); }
       });
-    }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+    }).on('error', (err) => {
+      logToFile(`[DIAGNOSTIC ERROR]`);
+      logToFile(`GET = ${url.href}`);
+      logToFile(`ERROR = ${err.message}`);
+      reject(err);
+    }).on('timeout', function() { 
+      this.destroy(); 
+      logToFile(`[DIAGNOSTIC TIMEOUT]`);
+      logToFile(`GET = ${url.href}`);
+      reject(new Error('Timeout')); 
+    });
   });
 }
 
@@ -204,6 +396,12 @@ function apiPost(endpoint, body) {
       }
     }
     const payload = JSON.stringify(body);
+    logToFile(`\n[DIAGNOSTIC REQUEST]`);
+    logToFile(`SERVER URL = ${config.serverUrl}`);
+    logToFile(`POST = ${url.href}`);
+    logToFile(`HTTP METHOD = POST`);
+    logToFile(`REQUEST BODY = ${payload}`);
+    
     const client = getHttpClient(url);
     const req = client.request(url, {
       method: 'POST',
@@ -218,6 +416,10 @@ function apiPost(endpoint, body) {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
+        logToFile(`[DIAGNOSTIC RESPONSE]`);
+        logToFile(`POST = ${url.href}`);
+        logToFile(`STATUS CODE = ${res.statusCode}`);
+        logToFile(`RESPONSE BODY = ${data}`);
         if (res.statusCode >= 400) {
           logToFile(`HTTP POST ${endpoint} Failed: HTTP ${res.statusCode} - ${data}`);
           return reject(new Error(`HTTP ${res.statusCode}`));
@@ -226,11 +428,14 @@ function apiPost(endpoint, body) {
       });
     });
     req.on('error', (err) => {
-      logToFile(`Network error on POST ${endpoint}: ${err.message}`);
+      logToFile(`[DIAGNOSTIC ERROR]`);
+      logToFile(`POST = ${url.href}`);
+      logToFile(`ERROR = ${err.message}`);
       reject(err);
     });
     req.on('timeout', () => { 
-      logToFile(`Timeout on POST ${endpoint}`);
+      logToFile(`[DIAGNOSTIC TIMEOUT]`);
+      logToFile(`POST = ${url.href}`);
       req.destroy(); 
       reject(new Error('Timeout')); 
     });
@@ -242,18 +447,39 @@ function apiPost(endpoint, body) {
 function downloadFile(filePath, dest) {
   return new Promise((resolve, reject) => {
     const url = new URL(filePath, config.serverUrl);
+    logToFile(`\n[DIAGNOSTIC REQUEST]`);
+    logToFile(`SERVER URL = ${config.serverUrl}`);
+    logToFile(`GET = ${url.href}`);
+    logToFile(`HTTP METHOD = GET (File Download)`);
+    
     const client = getHttpClient(url);
     client.get(url, { 
       timeout: 30000,
       headers: { 'Authorization': getAuthHeader() },
       agent: false
     }, (res) => {
-      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)); }
+      logToFile(`[DIAGNOSTIC RESPONSE]`);
+      logToFile(`GET = ${url.href}`);
+      logToFile(`STATUS CODE = ${res.statusCode}`);
+      if (res.statusCode !== 200) { 
+        res.resume(); 
+        return reject(new Error(`HTTP ${res.statusCode}`)); 
+      }
       const ws = fs.createWriteStream(dest);
       res.pipe(ws);
       ws.on('finish', () => ws.close(resolve));
       ws.on('error', reject);
-    }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Download timeout')); });
+    }).on('error', (err) => {
+      logToFile(`[DIAGNOSTIC ERROR]`);
+      logToFile(`GET = ${url.href}`);
+      logToFile(`ERROR = ${err.message}`);
+      reject(err);
+    }).on('timeout', function() { 
+      this.destroy(); 
+      logToFile(`[DIAGNOSTIC TIMEOUT]`);
+      logToFile(`GET = ${url.href}`);
+      reject(new Error('Download timeout')); 
+    });
   });
 }
 
@@ -368,9 +594,6 @@ function getDefaultPrinter() {
 }
 
 function getInstalledPrinters() {
-  if (config && config.mockPrinter) {
-    return Promise.resolve(['MockBwPrinter', 'MockColorPrinter']);
-  }
   return new Promise((resolve) => {
     const cmd = "powershell -Command \"Get-Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name\"";
     exec(cmd, { timeout: 10000 }, (err, stdout) => {
@@ -797,6 +1020,11 @@ function connectSSE() {
   }
 
   const streamUrl = new URL('/api/jobs/stream', config.serverUrl);
+  logToFile(`\n[DIAGNOSTIC REQUEST]`);
+  logToFile(`SERVER URL = ${config.serverUrl}`);
+  logToFile(`GET = ${streamUrl.href}`);
+  logToFile(`HTTP METHOD = GET (SSE Stream)`);
+  
   const client = getHttpClient(streamUrl);
   
   sseRequest = client.get(streamUrl, {
@@ -808,12 +1036,30 @@ function connectSSE() {
     },
     agent: false
   }, (res) => {
+    logToFile(`[DIAGNOSTIC RESPONSE]`);
+    logToFile(`GET = ${streamUrl.href}`);
+    logToFile(`STATUS CODE = ${res.statusCode}`);
+    
     if (res.statusCode !== 200) {
       setTimeout(connectSSE, 10000);
       return;
     }
 
+    // Set 45s inactivity timeout on socket (server sends keep-alive every 15s)
+    if (res.socket) {
+      res.socket.setTimeout(45000);
+      res.socket.on('timeout', () => {
+        logToFile('[SSE] Socket timeout (45s inactivity). Reconnecting...');
+        try { res.destroy(); } catch {}
+        setTimeout(connectSSE, 3000);
+      });
+    }
+
     res.on('data', (chunk) => {
+      // Reset socket timeout timer on receiving any chunk (including keep-alives)
+      if (res.socket) {
+        res.socket.setTimeout(45000);
+      }
       const text = chunk.toString();
       const lines = text.split('\n');
       for (const line of lines) {
@@ -842,7 +1088,10 @@ function connectSSE() {
     });
   });
 
-  sseRequest.on('error', () => {
+  sseRequest.on('error', (err) => {
+    logToFile(`[DIAGNOSTIC ERROR]`);
+    logToFile(`GET = ${streamUrl.href}`);
+    logToFile(`ERROR = ${err ? err.message : 'Unknown'}`);
     setTimeout(connectSSE, 10000);
   });
 }
@@ -948,6 +1197,7 @@ setInterval(() => {
 
 // --- REGISTRATION & HEARTBEAT SYSTEM ---
 async function registerAgent() {
+  logToFile('[6/10] Registration request sent');
   const list = await getInstalledPrinters();
   const payload = {
     agentId: config.agentId,
@@ -957,16 +1207,25 @@ async function registerAgent() {
     daemonVersion: config.daemonVersion || '1.0.0',
     printers: list
   };
-  logToFile(`Registering with backend...`);
   await apiPost('/api/agent/register', payload);
   isRegistered = true;
-  logToFile(`Registration success`);
+  logToFile('[7/10] Registration acknowledged');
+  logToFile('Registration success');
 }
 
 // --- MAIN STARTUP SEQUENCE ---
 async function main() {
-  logToFile('Main Startup Sequence Initiated');
-  
+  logToFile('[1/10] Agent launched');
+  console.log('\n==============================================================');
+  console.log('             CAMPUS PRINT AGENT — LIVE LOG CONSOLE            ');
+  console.log('==============================================================');
+  console.log(`  Shop ID : ${config.shopId}`);
+  console.log(`  Server  : ${config.serverUrl}`);
+  console.log('  Status  : CONNECTING TO CAMPUS PRINT HUB...');
+  console.log('  Notice  : Keep this window open while taking print requests.');
+  console.log('            Click GO OFFLINE in Admin Console to close.');
+  console.log('==============================================================\n');
+
   try {
     // 1. Read runtime.json if it exists (written by launcher bridge)
     const RUNTIME_PATH = path.join(__dirname, 'runtime.json');
@@ -979,24 +1238,26 @@ async function main() {
         if (runtime.token) {
           logToFile(`[DIAGNOSTIC] runtime.token: "${runtime.token.substring(0, 20)}"`);
           config.token = runtime.token;
-          logToFile(`[DIAGNOSTIC] config.token before persistence: "${config.token.substring(0, 20)}"`);
           try {
-            logToFile(`[DIAGNOSTIC] Writing to config.json at ${CONFIG_PATH}...`);
             fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
-            logToFile(`[DIAGNOSTIC] config.json write successful`);
           } catch (err) {
-            logToFile(`[DIAGNOSTIC] config.json write failed with exception: ${err.message}`);
+            logToFile(`[DIAGNOSTIC] config.json write failed: ${err.message}`);
           }
-          // Temporary Implementation (RC-Connection Milestone Only)
-          // Erase the Shop Admin token from disk immediately to ensure it is never persisted beyond startup.
           delete runtime.token;
           try { fs.writeFileSync(RUNTIME_PATH, JSON.stringify(runtime, null, 2), 'utf-8'); } catch {}
         }
+        logToFile('[2/10] runtime.json loaded');
         logToFile(`Runtime loaded: ${config.serverUrl} / ${config.shopId}`);
       } catch (err) {
         logToFile(`Failed to read runtime.json: ${err.message}`);
       }
     }
+
+    if (!config.serverUrl || !config.shopId) {
+      logToFile('[ERROR] Configuration invalid: Missing serverUrl or shopId');
+      process.exit(1);
+    }
+    logToFile('[3/10] Configuration validated');
 
     // 2. Generate persistent agentId inside config.json if missing
     if (!config.agentId || config.agentId === 'AGENT-001') {
@@ -1004,6 +1265,14 @@ async function main() {
       try {
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
       } catch (err) {}
+    }
+
+    // Check backend reachability
+    try {
+      await apiGet('/api/shops/' + config.shopId);
+      logToFile('[4/10] Backend reachable');
+    } catch (e) {
+      logToFile(`[4/10 WARN] Backend reachability test failed: ${e.message}`);
     }
 
     // 3. Ensure SumatraPDF is present
@@ -1015,29 +1284,48 @@ async function main() {
     await refreshPrinterMapping();
 
     // 5. Always call register (idempotent synchronization upsert)
-    logToFile('Authentication started');
+    logToFile('[5/10] Authentication successful');
     await registerAgent();
 
     // 6. Perform initial heartbeat connection immediately
     if (process.env.CP_TEST_DISABLE_HEARTBEAT !== 'true') {
-      logToFile(`Initial Heartbeat...`);
+      logToFile('[8/10] Initial heartbeat sent');
       await sendHeartbeat();
+      logToFile('[9/10] Heartbeat acknowledged by backend');
+      logToFile('Agent marked LIVE');
 
       // 7. Start heartbeat loop every 10 seconds
-      heartbeatTimer = setInterval(sendHeartbeat, 10000);
-      logToFile(`Heartbeat started`);
+      heartbeatTimer = setInterval(async () => {
+        try {
+          await sendHeartbeat();
+          logToFile('[HEARTBEAT] Backend acknowledged');
+        } catch (e) {
+          logToFile(`[HEARTBEAT ERROR] ${e.message}`);
+        }
+      }, 10000);
+      logToFile('[10/10] Agent ready');
     } else {
       logToFile(`Heartbeat disabled via test flag`);
     }
 
   } catch (err) {
     logToFile(`STARTUP FAILED: ${err.message}`);
-    // Cleanup and exit
     try { if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE); } catch (e) {}
     process.exit(1);
   }
 
-  // --- RUNTIME POLLING LOOPS ---
+  // --- RUNTIME POLLING LOOPS & SHUTDOWN WATCHER ---
+  setInterval(() => {
+    const signalPath = path.join(__dirname, 'shutdown.signal');
+    if (fs.existsSync(signalPath)) {
+      console.log('\n  🛑 SHUTDOWN SIGNAL DETECTED: Terminating Campus Print Agent daemon...\n');
+      logToFile('[SHUTDOWN] Shutdown signal file detected. Terminating daemon.');
+      try { fs.unlinkSync(signalPath); } catch {}
+      try { if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE); } catch {}
+      process.exit(0);
+    }
+  }, 1000);
+
   // Establish real-time SSE stream
   if (process.env.CP_TEST_DISABLE_SSE !== 'true') {
     connectSSE();

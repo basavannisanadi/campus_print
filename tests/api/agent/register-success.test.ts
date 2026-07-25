@@ -134,8 +134,8 @@ describe('Agent Registration Success Integration Test', () => {
       childProcess.stdout?.on('data', (data) => stdout += data.toString());
       childProcess.stderr?.on('data', (data) => stderr += data.toString());
 
-      // Let the child process execute and verify it remains alive for 2.5 seconds
-      const observationTime = 2500;
+      // Let the child process execute and verify it remains alive for 12 seconds
+      const observationTime = 12000;
       setTimeout(() => {
         try {
           // 1. Verify that the process has NOT terminated (remains alive)
@@ -172,11 +172,11 @@ describe('Agent Registration Success Integration Test', () => {
       }, observationTime);
 
       childProcess.on('exit', (code) => {
-        // If the process exits prematurely before the 2.5s observation window, fail the test
+        // If the process exits prematurely before the observation window, fail the test
         if (code !== null) {
           reject(new Error(`Child process terminated prematurely with exit code: ${code}. stderr: ${stderr}, stdout: ${stdout}`));
         }
       });
     });
-  });
+  }, 25000);
 });

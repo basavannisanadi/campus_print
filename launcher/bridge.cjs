@@ -1,6 +1,32 @@
 const cp = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+
+const diagLogFile = path.join(__dirname, 'logs', 'diagnostic_execution.log');
+if (!fs.existsSync(path.dirname(diagLogFile))) {
+  try { fs.mkdirSync(path.dirname(diagLogFile), { recursive: true }); } catch (e) {}
+}
+
+function diagLog(msg) {
+  const entry = `[DIAGNOSTIC] [${new Date().toISOString()}] PID:${process.pid} PPID:${process.ppid} | ${msg}\n`;
+  try { fs.appendFileSync(diagLogFile, entry); } catch (e) {}
+  console.log(entry.trim());
+}
+
+diagLog(`BRIDGE EXECUTION STARTED | Argv: ${JSON.stringify(process.argv)} | Cwd: ${process.cwd()} | Node: ${process.version}`);
+
+process.on('exit', (code) => {
+  diagLog(`BRIDGE PROCESS EXITING | Code: ${code}`);
+});
+
+process.on('uncaughtException', (err) => {
+  diagLog(`BRIDGE UNCAUGHT EXCEPTION: ${err ? err.stack || err.message || err : 'Unknown error'}`);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  diagLog(`BRIDGE UNHANDLED REJECTION: ${reason ? reason.stack || reason.message || reason : 'Unknown rejection'}`);
+});
 
 // Patches child_process.exec and child_process.spawn to run silently on Windows
 const originalExec = cp.exec;
@@ -137,8 +163,33 @@ function handleStart() {
     }
   }
 
-  // 2. Validate parameters & write configuration atomically
+  // 2. Validate parameters & check if configuration changed
+  let configChanged = true;
   if (serverUrl && shopId) {
+    try {
+      if (fs.existsSync(runtimeJsonPath)) {
+        const currentRuntime = JSON.parse(fs.readFileSync(runtimeJsonPath, 'utf8'));
+        if (
+          currentRuntime.serverUrl === serverUrl &&
+          currentRuntime.shopId === shopId &&
+          currentRuntime.token === token
+        ) {
+          configChanged = false;
+        }
+      } else if (fs.existsSync(configFilePath)) {
+        const currentConfig = JSON.parse(fs.readFileSync(configFilePath, 'utf8'));
+        if (
+          currentConfig.serverUrl === serverUrl &&
+          currentConfig.shopId === shopId &&
+          currentConfig.token === token
+        ) {
+          configChanged = false;
+        }
+      }
+    } catch (e) {
+      configChanged = true;
+    }
+
     try {
       const tempConfig = { serverUrl, shopId, token };
       fs.writeFileSync(runtimeTmpPath, JSON.stringify(tempConfig, null, 2), 'utf8');
@@ -163,41 +214,90 @@ function handleStart() {
       log("No valid runtime configuration (runtime.json) exists and none was provided. Aborting launch.");
       process.exit(1);
     }
+    configChanged = false; // Starting manually without params preserves active config
   }
 
-  // 3. Check daemon.lock process life (Check process, but let client write it)
+  // 3. Check daemon.lock process life (Restart if config changed)
   const existingPid = getExistingPid();
   if (existingPid) {
     if (isProcessRunning(existingPid)) {
-      log(`Start ignored: Agent daemon process is already running with PID ${existingPid}.`);
-      process.exit(0);
+      if (configChanged) {
+        log(`Config change detected. Restarting active daemon PID ${existingPid}...`);
+        
+        // Write stop signal
+        try {
+          const signalPath = path.join(targetDir, 'shutdown.signal');
+          fs.writeFileSync(signalPath, 'stop', 'utf8');
+        } catch (e) {}
+        
+        // Force kill the process tree to guarantee it stops immediately
+        try {
+          cp.execSync(`taskkill /F /PID ${existingPid} /T`, { windowsHide: true });
+        } catch (e) {
+          try { process.kill(existingPid, 'SIGKILL'); } catch (e2) {}
+        }
+        
+        // Wait a brief moment to ensure ports and lockfiles are released
+        let retries = 10;
+        while (isProcessRunning(existingPid) && retries > 0) {
+          cp.execSync('choice /d y /t 1 > nul', { windowsHide: true });
+          retries--;
+        }
+        
+        // Remove stale lock file if it still exists
+        try {
+          if (fs.existsSync(lockFilePath)) {
+            fs.unlinkSync(lockFilePath);
+          }
+        } catch (e) {}
+        
+        log("Existing daemon stopped. Starting new daemon with updated config.");
+      } else {
+        log(`Start ignored: Agent daemon process is already running with PID ${existingPid} and identical config.`);
+        process.exit(0);
+      }
     } else {
       log(`Stale lock file found for dead PID ${existingPid}. Removing lock.`);
       try { fs.unlinkSync(lockFilePath); } catch (e) {}
     }
   }
 
-  // 4. Launch client.cjs in a visible console window (no args, client reads configs directly)
-  log(`Spawning print-client daemon (client.cjs) in a visible window from ${clientPath}...`);
-  const command = `start "Campus Print Agent" "${process.execPath}" "${clientPath}"`;
-  originalExec(command, {
-    cwd: targetDir,
-    windowsHide: false
-  });
-
-  log("Print Agent spawned in visible window. Exiting bridge.");
-  process.exit(0);
+  // 4. Run client.cjs directly in this visible console window
+  log(`Starting Print Agent daemon (client.cjs) in Taskbar window...`);
+  try {
+    require(clientPath);
+  } catch (err) {
+    log(`Fatal error starting agent daemon: ${err.message}`);
+    process.exit(1);
+  }
 }
 
 function handleStop() {
   log("Stopping Print Agent: Writing stop signal to shutdown.signal...");
   try {
-    const signalPath = path.join(targetDir, 'shutdown.signal');
+    const signalPath = path.join(__dirname, 'shutdown.signal');
     fs.writeFileSync(signalPath, 'stop', 'utf8');
     log("Stop signal written successfully.");
   } catch (err) {
     log(`Failed to write stop signal: ${err.message}`);
   }
+  const pid = getExistingPid();
+  if (pid) {
+    log(`Attempting process termination for PID ${pid}...`);
+    try {
+      cp.execSync(`taskkill /F /PID ${pid} /T`, { windowsHide: true });
+      log(`Process tree for PID ${pid} killed via taskkill.`);
+    } catch (e) {
+      try { process.kill(pid, 'SIGKILL'); } catch (e2) {}
+    }
+  }
+  try {
+    if (fs.existsSync(lockFilePath)) {
+      fs.unlinkSync(lockFilePath);
+      log("daemon.lock removed.");
+    }
+  } catch (e) {}
+  log("Print Agent shutdown completed.");
   process.exit(0);
 }
 

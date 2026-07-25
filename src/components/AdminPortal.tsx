@@ -20,7 +20,8 @@ import {
   Check,
   Settings,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Activity
 } from 'lucide-react';
 import { PrintJob, Shop } from '../types';
 import { getApiUrl } from '../config';
@@ -140,6 +141,7 @@ export default function AdminPortal({
   const [localConnectionError, setLocalConnectionError] = useState<string>('');
   const [showOnlineConfirm, setShowOnlineConfirm] = useState<boolean>(false);
   const [showOfflineConfirm, setShowOfflineConfirm] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'queues' | 'agent' | 'settings' | 'qr'>('queues');
 
   const executeGoOffline = async () => {
     setShowOfflineConfirm(false);
@@ -162,7 +164,10 @@ export default function AdminPortal({
       if (res.ok && data.success) {
         setOperationalState('offline');
         setAgentOnlineStatusState('offline');
+        setBwStatus('offline');
+        setColorStatus('offline');
         setConnectionError(null);
+        onRefreshPrinterSettings();
         
         const protocolUrl = 'campusprint://stop';
         const iframe = document.createElement('iframe');
@@ -394,6 +399,14 @@ export default function AdminPortal({
   const [colorExpectedReturnTime, setColorExpectedReturnTime] = useState('06:02 PM');
   const [colorSuccess, setColorSuccess] = useState(false);
   const [savingColorSettings, setSavingColorSettings] = useState(false);
+  const [bwError, setBwError] = useState('');
+  const [colorError, setColorError] = useState('');
+  
+  // Baseline states for dirty-state tracking
+  const [baseBwPrinterId, setBaseBwPrinterId] = useState('');
+  const [baseBwMaintenance, setBaseBwMaintenance] = useState(false);
+  const [baseColorPrinterId, setBaseColorPrinterId] = useState('');
+  const [baseColorMaintenance, setBaseColorMaintenance] = useState(false);
 
   // Printer Mappings States
   const [bwPrinterId, setBwPrinterId] = useState('');
@@ -404,6 +417,10 @@ export default function AdminPortal({
   const [colorStatus, setColorStatus] = useState('offline');
   const [savingMapping, setSavingMapping] = useState(false);
   const [mappingSuccess, setMappingSuccess] = useState(false);
+
+  // Derived dirty states for B&W and Color operations forms
+  const isBwDirty = bwPrinterId !== baseBwPrinterId || bwMaintenance !== baseBwMaintenance;
+  const isColorDirty = colorPrinterId !== baseColorPrinterId || colorMaintenance !== baseColorMaintenance;
 
 
   // Shop Profile States
@@ -541,18 +558,26 @@ export default function AdminPortal({
               setSelectedPrinter(shopData.activePrinterId || '');
             }
             if (settings.bw) {
-              setBwMaintenance(settings.bw.underMaintenance || false);
+              const nextBwM = settings.bw.underMaintenance || false;
+              const nextBwId = settings.bw.selectedPrinterId || '';
+              setBwMaintenance(nextBwM);
+              setBaseBwMaintenance(nextBwM);
+              setBwPrinterId(nextBwId);
+              setBaseBwPrinterId(nextBwId);
               setBwStatusMode(settings.bw.statusMode || 'auto');
               setBwExpectedReturnTime(settings.bw.expectedReturnTime || '06:02 PM');
-              setBwPrinterId(settings.bw.selectedPrinterId || '');
               setBwPrinterName(settings.bw.selectedPrinterName || '');
               setBwStatus(settings.bw.status || 'offline');
             }
             if (settings.color) {
-              setColorMaintenance(settings.color.underMaintenance || false);
+              const nextColorM = settings.color.underMaintenance || false;
+              const nextColorId = settings.color.selectedPrinterId || '';
+              setColorMaintenance(nextColorM);
+              setBaseColorMaintenance(nextColorM);
+              setColorPrinterId(nextColorId);
+              setBaseColorPrinterId(nextColorId);
               setColorStatusMode(settings.color.statusMode || 'auto');
               setColorExpectedReturnTime(settings.color.expectedReturnTime || '06:02 PM');
-              setColorPrinterId(settings.color.selectedPrinterId || '');
               setColorPrinterName(settings.color.selectedPrinterName || '');
               setColorStatus(settings.color.status || 'offline');
             }
@@ -586,9 +611,23 @@ export default function AdminPortal({
       });
       if (mappingRes.ok) {
         const mapping = await mappingRes.json();
-        setBwPrinterId(mapping.bwPrinterId || '');
+        const nextBwId = mapping.bwPrinterId || '';
+        const nextColorId = mapping.colorPrinterId || '';
+        
+        setBaseBwPrinterId(prevBase => {
+          if (bwPrinterId === prevBase) {
+            setBwPrinterId(nextBwId);
+          }
+          return nextBwId;
+        });
         setBwPrinterName(mapping.bwPrinterName || '');
-        setColorPrinterId(mapping.colorPrinterId || '');
+        
+        setBaseColorPrinterId(prevBase => {
+          if (colorPrinterId === prevBase) {
+            setColorPrinterId(nextColorId);
+          }
+          return nextColorId;
+        });
         setColorPrinterName(mapping.colorPrinterName || '');
       }
 
@@ -599,13 +638,25 @@ export default function AdminPortal({
       if (settingsRes.ok) {
         const settings = await settingsRes.json();
         if (settings.bw) {
-          setBwMaintenance(settings.bw.underMaintenance || false);
+          const nextBwM = settings.bw.underMaintenance || false;
+          setBaseBwMaintenance(prevBase => {
+            if (bwMaintenance === prevBase) {
+              setBwMaintenance(nextBwM);
+            }
+            return nextBwM;
+          });
           setBwStatusMode(settings.bw.statusMode || 'auto');
           setBwExpectedReturnTime(settings.bw.expectedReturnTime || '06:02 PM');
           setBwStatus(settings.bw.status || 'offline');
         }
         if (settings.color) {
-          setColorMaintenance(settings.color.underMaintenance || false);
+          const nextColorM = settings.color.underMaintenance || false;
+          setBaseColorMaintenance(prevBase => {
+            if (colorMaintenance === prevBase) {
+              setColorMaintenance(nextColorM);
+            }
+            return nextColorM;
+          });
           setColorStatusMode(settings.color.statusMode || 'auto');
           setColorExpectedReturnTime(settings.color.expectedReturnTime || '06:02 PM');
           setColorStatus(settings.color.status || 'offline');
@@ -728,7 +779,41 @@ export default function AdminPortal({
     return () => clearInterval(interval);
   }, [isAdminLoggedIn, selectedShopId]);
 
+  useEffect(() => {
+    if (!isAdminLoggedIn) return;
 
+    const token = sessionStorage.getItem('adminToken');
+    const role = sessionStorage.getItem('role');
+    const currentShopId = sessionStorage.getItem('shopId') || selectedShopId;
+    if (role !== 'shop_admin' || !currentShopId || !token) return;
+
+    const sendAdminPing = async () => {
+      try {
+        const res = await fetch(getApiUrl('/api/auth/admin-ping'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ shopId: currentShopId })
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          if (data.active === false) {
+            handleSignOut();
+            alert('Your session has expired or was terminated because another session began.');
+          }
+        }
+      } catch (err) {
+        console.error('Admin ping failed:', err);
+      }
+    };
+
+    sendAdminPing();
+    const pingInterval = setInterval(sendAdminPing, 10000); // 10s heartbeat ping
+
+    return () => clearInterval(pingInterval);
+  }, [isAdminLoggedIn, selectedShopId]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -760,14 +845,34 @@ export default function AdminPortal({
         setIsAdminLoggedIn(true);
       } else {
         const errData = await res.json();
-        setLoginError(errData.error || 'Invalid shop, username, or password.');
+        setLoginError(errData.error || 'An administrator is already logged into this shop. Please log out from the active session before signing in again.');
       }
     } catch {
       setLoginError('Cannot connect to server. Please try again.');
     }
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      await executeGoOffline();
+    } catch (e) {}
+    
+    const token = sessionStorage.getItem('adminToken');
+    const currentShopId = sessionStorage.getItem('shopId') || selectedShopId;
+    try {
+      if (token && currentShopId) {
+        await fetch(getApiUrl('/api/auth/logout'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ shopId: currentShopId })
+        });
+      }
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
     sessionStorage.removeItem('adminToken');
     sessionStorage.removeItem('role');
     sessionStorage.removeItem('shopId');
@@ -777,31 +882,38 @@ export default function AdminPortal({
     setAdminPassword('');
   };
 
-
-
   const handleSaveBwSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingBwSettings(true);
     setBwSuccess(false);
     try {
       const token = sessionStorage.getItem('adminToken');
+      console.log('[DIAGNOSTIC handleSaveBwSettings] availablePrinters:', availablePrinters);
+      console.log('[DIAGNOSTIC handleSaveBwSettings] bwPrinterId:', bwPrinterId);
       const printerObj = availablePrinters.find(p => p.printerId === bwPrinterId);
+      console.log('[DIAGNOSTIC handleSaveBwSettings] selected printer object returned by find():', printerObj);
       const printerNameVal = printerObj ? printerObj.printerName : '';
+      console.log('[DIAGNOSTIC handleSaveBwSettings] printerNameVal:', printerNameVal);
       
+      const payload = {
+        shopId: activeShopId,
+        bwPrinterId,
+        bwPrinterName: printerNameVal,
+        bwMaintenanceMode: bwMaintenance
+      };
+      console.log('[DIAGNOSTIC handleSaveBwSettings] exact payload sent to PUT /api/printers/bw:', JSON.stringify(payload, null, 2));
+
       const res = await fetch(getApiUrl('/api/printers/bw'), {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          shopId: activeShopId,
-          bwPrinterId,
-          bwPrinterName: printerNameVal,
-          bwMaintenanceMode: bwMaintenance
-        })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
+        setBaseBwPrinterId(bwPrinterId);
+        setBaseBwMaintenance(bwMaintenance);
         setBwSuccess(true);
         onRefreshPrinterSettings();
         setTimeout(() => setBwSuccess(false), 3000);
@@ -836,6 +948,8 @@ export default function AdminPortal({
         })
       });
       if (res.ok) {
+        setBaseColorPrinterId(colorPrinterId);
+        setBaseColorMaintenance(colorMaintenance);
         setColorSuccess(true);
         onRefreshPrinterSettings();
         setTimeout(() => setColorSuccess(false), 3000);
@@ -1191,6 +1305,67 @@ export default function AdminPortal({
         </div>
       </div>
 
+      {/* Sub-Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200/80 pb-3 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveTab('queues')}
+          className={`py-2.5 px-4.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border-none btn-secondary-action ${
+            activeTab === 'queues'
+              ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20'
+              : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80 shadow-2xs'
+          }`}
+        >
+          <Printer className="w-4 h-4" />
+          <span>Print Queues</span>
+          <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-mono ${
+            activeTab === 'queues' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+          }`}>
+            {jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId).length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('agent')}
+          className={`py-2.5 px-4.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border-none btn-secondary-action ${
+            activeTab === 'agent'
+              ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20'
+              : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80 shadow-2xs'
+          }`}
+        >
+          <Activity className="w-4 h-4" />
+          <span>Agent & Hardware</span>
+          <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('settings')}
+          className={`py-2.5 px-4.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border-none btn-secondary-action ${
+            activeTab === 'settings'
+              ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20'
+              : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80 shadow-2xs'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          <span>Shop Settings & Rates</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('qr')}
+          className={`py-2.5 px-4.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border-none btn-secondary-action ${
+            activeTab === 'qr'
+              ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20'
+              : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80 shadow-2xs'
+          }`}
+        >
+          <QrCode className="w-4 h-4" />
+          <span>Print QR Poster</span>
+        </button>
+      </div>
+
       {launcherError && (
         <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-4 text-xs font-bold flex items-center gap-2">
           <span>⚠️</span>
@@ -1198,497 +1373,185 @@ export default function AdminPortal({
         </div>
       )}
 
-      {/* 4-State Connection Dashboard Area */}
-      <div className="space-y-6">
-        {/* Main Connection Status Card */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm font-sans">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 text-left">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className={`w-2.5 h-2.5 rounded-full ${
-                  isOnline
-                    ? 'bg-emerald-500 animate-pulse'
-                    : isConnecting
-                    ? 'bg-amber-500 animate-pulse'
-                    : 'bg-slate-400'
-                }`} />
-                <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 font-mono">
-                  System Status: {
-                    isOnline
-                      ? 'ONLINE'
-                      : isConnecting
-                      ? 'CONNECTING'
-                      : 'OFFLINE'
-                  }
-                </h4>
+      {/* TAB 1: PRINT QUEUES */}
+      {activeTab === 'queues' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Dashboard Widgets */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
+              <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 flex-shrink-0">
+                <TrendingUp className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-slate-800">
-                Campus Print Agent Control
-              </h3>
-              <p className="text-slate-500 text-xs font-medium">
-                {isOffline && '🔴 Shop is offline. Start the desktop agent to connect the hardware queue.'}
-                {isConnecting && '⚡ Launching desktop agent... Awaiting secure heartbeat registration.'}
-                {isOnline && '🟢 Shop is online. Telemetry link active. Ready to accept cloud print requests.'}
-              </p>
-              <div className="mt-4 flex items-center">
-                <a
-                  href={getApiUrl('/download/agent')}
-                  download="CampusPrintInstaller.exe"
-                  className="py-1.5 px-3 rounded-lg border border-blue-200 bg-transparent hover:bg-blue-50 hover:border-blue-300 text-blue-600 text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer no-underline active:bg-blue-100"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Download Campus Print Agent
-                </a>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Today's Revenue</p>
+                <h3 className="text-2xl font-black text-slate-800 mt-1">
+                  ₹{loadingStats ? '...' : stats.revenue.toLocaleString('en-IN')}
+                </h3>
               </div>
             </div>
-            
-            <div className="flex items-center gap-3 flex-shrink-0">
-              {/* Action Buttons */}
-              {isConnecting ? (
-                <button
-                  onClick={handleCancelStartup}
-                  disabled={launcherBusy}
-                  className="py-2.5 px-5 rounded-xl font-extrabold text-xs transition-all cursor-pointer border-none shadow-sm bg-rose-600 hover:bg-rose-500 text-white"
-                >
-                  Cancel Connecting
-                </button>
-              ) : (
-                <button
-                  onClick={handleToggleOnlineStatus}
-                  disabled={launcherBusy}
-                  className={`py-2.5 px-5 rounded-xl font-extrabold text-xs transition-all cursor-pointer border-none shadow-sm ${
-                    isOnline
-                      ? 'bg-rose-600 hover:bg-rose-500 text-white'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
-                  }`}
-                >
-                  {isOnline ? '🔴 GO OFFLINE' : '🟢 GO ONLINE'}
-                </button>
-              )}
-            </div>
-          </div>
 
-          {/* Local Connection Error Display (State 3 Connecting Timeout) */}
-          {localConnectionError && (
-            <div className="mt-4 bg-rose-50 border border-rose-200 rounded-xl p-4 text-left space-y-2">
-              <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">
-                <span>⚠️ Connection Timeout</span>
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
+              <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-500 flex-shrink-0">
+                <CheckCircle className="w-6 h-6" />
               </div>
-              <p className="text-xs text-rose-700/90 leading-relaxed font-medium">
-                {localConnectionError}
-              </p>
-            </div>
-          )}
-
-          {/* Active Device Configuration (Only when ONLINE and heartbeat is active) */}
-          {isOnline && (
-            <div className="mt-6 border-t border-slate-100 pt-6 text-left space-y-4">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Active Device Configuration</h4>
-              
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 text-xs text-left">
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Printer Status</p>
-                  <p className="font-extrabold text-slate-800 mt-0.5 truncate">
-                    {bwStatus === 'online' ? (activePrinterName || 'System Default') : (bwStatus === 'unknown' ? 'Printer Status Unknown' : 'Printer Offline')}
-                  </p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Total Printers</p>
-                  <p className="font-extrabold text-slate-800 mt-0.5">
-                    {printersCount || 0} discovered
-                  </p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Uptime</p>
-                  <p className="font-extrabold text-slate-800 mt-0.5">
-                    {agentUptime ? `${Math.floor(agentUptime / 60)}m ${agentUptime % 60}s` : '0s'}
-                  </p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Telemetry link</p>
-                  <p className="font-extrabold text-slate-800 mt-0.5 truncate">
-                    {formatHeartbeat(lastHeartbeatTime)}
-                  </p>
-                </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Completed Jobs</p>
+                <h3 className="text-2xl font-black text-slate-800 mt-1">
+                  {loadingStats ? '...' : stats.jobs}
+                </h3>
               </div>
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* Dashboard Widgets */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
-          <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 flex-shrink-0">
-            <TrendingUp className="w-6 h-6" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Today's Revenue</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">
-              ₹{loadingStats ? '...' : stats.revenue.toLocaleString('en-IN')}
-            </h3>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-500 flex-shrink-0">
-            <CheckCircle className="w-6 h-6" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Completed Jobs</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">
-              {loadingStats ? '...' : stats.jobs}
-            </h3>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 flex-shrink-0">
-            <Clock className="w-6 h-6 animate-pulse" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pending</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">
-              {loadingStats ? '...' : stats.pending}
-            </h3>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
-          <div className="w-12 h-12 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 flex-shrink-0">
-            <AlertTriangle className="w-6 h-6" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Failed Jobs</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">
-              {loadingStats ? '...' : stats.failed}
-            </h3>
-          </div>
-        </div>
-      </div>
-
-      {/* 7-Day Revenue Summary (collapsible) */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm font-sans overflow-hidden">
-        <button
-          onClick={() => setShowRevenueSummary(!showRevenueSummary)}
-          className="w-full flex items-center justify-between p-5 bg-transparent border-none cursor-pointer text-left"
-        >
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 flex-shrink-0">
-              <TrendingUp className="w-4.5 h-4.5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-800 m-0">Revenue Summary</h3>
-              <p className="text-[11px] text-slate-400 font-semibold m-0 mt-0.5">Last 7 Days</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {!showRevenueSummary && stats.dailyRevenue && (
-              <span className="text-xs font-bold text-slate-400">
-                7-day total: ₹{stats.dailyRevenue.reduce((s, d) => s + d.revenue, 0).toLocaleString('en-IN')}
-              </span>
-            )}
-            {showRevenueSummary ? (
-              <ChevronUp className="w-4.5 h-4.5 text-slate-400" />
-            ) : (
-              <ChevronDown className="w-4.5 h-4.5 text-slate-400" />
-            )}
-          </div>
-        </button>
-
-        {showRevenueSummary && stats.dailyRevenue && (
-          <div className="px-5 pb-5 border-t border-slate-100">
-            {/* SVG Bar Chart */}
-            <div className="mt-4 mb-5">
-              <svg
-                viewBox="0 0 700 120"
-                className="w-full"
-                style={{ maxHeight: '120px' }}
-              >
-                {(() => {
-                  const data = stats.dailyRevenue;
-                  const maxRev = Math.max(...data.map(d => d.revenue), 1);
-                  const barWidth = 60;
-                  const gap = 40;
-                  const chartHeight = 90;
-                  return data.map((day, i) => {
-                    const barHeight = Math.max((day.revenue / maxRev) * chartHeight, 2);
-                    const x = i * (barWidth + gap) + 20;
-                    const y = chartHeight - barHeight + 5;
-                    return (
-                      <g key={day.date}>
-                        <rect
-                          x={x}
-                          y={y}
-                          width={barWidth}
-                          height={barHeight}
-                          rx={6}
-                          fill={i === 0 ? '#f59e0b' : '#e2e8f0'}
-                          opacity={i === 0 ? 1 : 0.7}
-                        />
-                        {day.revenue > 0 && (
-                          <text
-                            x={x + barWidth / 2}
-                            y={y - 4}
-                            textAnchor="middle"
-                            className="text-[10px] font-bold"
-                            fill="#64748b"
-                          >
-                            ₹{day.revenue.toLocaleString('en-IN')}
-                          </text>
-                        )}
-                        <text
-                          x={x + barWidth / 2}
-                          y={chartHeight + 18}
-                          textAnchor="middle"
-                          className="text-[9px] font-semibold"
-                          fill="#94a3b8"
-                        >
-                          {day.label.length > 3 ? day.label.slice(0, 3) : day.label}
-                        </text>
-                      </g>
-                    );
-                  });
-                })()}
-              </svg>
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
+              <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 flex-shrink-0">
+                <Clock className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pending</p>
+                <h3 className="text-2xl font-black text-slate-800 mt-1">
+                  {loadingStats ? '...' : stats.pending}
+                </h3>
+              </div>
             </div>
 
-            {/* Day-by-day list */}
-            <div className="space-y-1.5">
-              {stats.dailyRevenue.map((day, i) => (
-                <div
-                  key={day.date}
-                  className={`flex items-center justify-between py-2 px-3 rounded-lg text-sm ${
-                    i === 0
-                      ? 'bg-amber-50 border border-amber-100'
-                      : 'bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`font-bold ${
-                      i === 0 ? 'text-amber-700' : 'text-slate-600'
-                    }`}>
-                      {day.label}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-medium">{day.date}</span>
-                  </div>
-                  <span className={`font-black tabular-nums ${
-                    i === 0 ? 'text-amber-700' : day.revenue > 0 ? 'text-slate-700' : 'text-slate-300'
-                  }`}>
-                    ₹{day.revenue.toLocaleString('en-IN')}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
+              <div className="w-12 h-12 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 flex-shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Failed Jobs</p>
+                <h3 className="text-2xl font-black text-slate-800 mt-1">
+                  {loadingStats ? '...' : stats.failed}
+                </h3>
+              </div>
+            </div>
+          </div>
+
+          {/* 7-Day Revenue Summary (collapsible) */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm font-sans overflow-hidden">
+            <button
+              onClick={() => setShowRevenueSummary(!showRevenueSummary)}
+              className="w-full flex items-center justify-between p-5 bg-transparent border-none cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 flex-shrink-0">
+                  <TrendingUp className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 m-0">Revenue Summary</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold m-0 mt-0.5">Last 7 Days</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                {!showRevenueSummary && stats.dailyRevenue && (
+                  <span className="text-xs font-bold text-slate-400">
+                    7-day total: ₹{stats.dailyRevenue.reduce((s, d) => s + d.revenue, 0).toLocaleString('en-IN')}
+                  </span>
+                )}
+                {showRevenueSummary ? (
+                  <ChevronUp className="w-4.5 h-4.5 text-slate-400" />
+                ) : (
+                  <ChevronDown className="w-4.5 h-4.5 text-slate-400" />
+                )}
+              </div>
+            </button>
+
+            {showRevenueSummary && stats.dailyRevenue && (
+              <div className="px-5 pb-5 border-t border-slate-100">
+                {/* SVG Bar Chart */}
+                <div className="mt-4 mb-5">
+                  <svg
+                    viewBox="0 0 700 120"
+                    className="w-full"
+                    style={{ maxHeight: '120px' }}
+                  >
+                    {(() => {
+                      const data = stats.dailyRevenue;
+                      const maxRev = Math.max(...data.map(d => d.revenue), 1);
+                      const barWidth = 60;
+                      const gap = 40;
+                      const chartHeight = 90;
+                      return data.map((day, i) => {
+                        const barHeight = Math.max((day.revenue / maxRev) * chartHeight, 2);
+                        const x = i * (barWidth + gap) + 20;
+                        const y = chartHeight - barHeight + 5;
+                        return (
+                          <g key={day.date}>
+                            <rect
+                              x={x}
+                              y={y}
+                              width={barWidth}
+                              height={barHeight}
+                              rx={6}
+                              fill={i === 0 ? '#f59e0b' : '#e2e8f0'}
+                              opacity={i === 0 ? 1 : 0.7}
+                            />
+                            {day.revenue > 0 && (
+                              <text
+                                x={x + barWidth / 2}
+                                y={y - 4}
+                                textAnchor="middle"
+                                className="text-[10px] font-bold"
+                                fill="#64748b"
+                              >
+                                ₹{day.revenue.toLocaleString('en-IN')}
+                              </text>
+                            )}
+                            <text
+                              x={x + barWidth / 2}
+                              y={chartHeight + 18}
+                              textAnchor="middle"
+                              className="text-[9px] font-semibold"
+                              fill="#94a3b8"
+                            >
+                              {day.label.length > 3 ? day.label.slice(0, 3) : day.label}
+                            </text>
+                          </g>
+                        );
+                      });
+                    })()}
+                  </svg>
+                </div>
+
+                {/* Day-by-day list */}
+                <div className="space-y-1.5">
+                  {stats.dailyRevenue.map((day, i) => (
+                    <div
+                      key={day.date}
+                      className={`flex items-center justify-between py-2 px-3 rounded-lg text-sm ${
+                        i === 0
+                          ? 'bg-amber-50 border border-amber-100'
+                          : 'bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`font-bold ${
+                          i === 0 ? 'text-amber-700' : 'text-slate-600'
+                        }`}>
+                          {day.label}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">{day.date}</span>
+                      </div>
+                      <span className={`font-black tabular-nums ${
+                        i === 0 ? 'text-amber-700' : day.revenue > 0 ? 'text-slate-700' : 'text-slate-300'
+                      }`}>
+                        ₹{day.revenue.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 7-day total */}
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-200 px-3">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">7-Day Total</span>
+                  <span className="text-lg font-black text-slate-800">
+                    ₹{stats.dailyRevenue.reduce((s, d) => s + d.revenue, 0).toLocaleString('en-IN')}
                   </span>
                 </div>
-              ))}
-            </div>
-
-            {/* 7-day total */}
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-200 px-3">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">7-Day Total</span>
-              <span className="text-lg font-black text-slate-800">
-                ₹{stats.dailyRevenue.reduce((s, d) => s + d.revenue, 0).toLocaleString('en-IN')}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Agent & Health Monitoring Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Agent Status Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between font-sans">
-          <div>
-            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
-              <Printer className="w-5 h-5 text-indigo-500" />
-              <span>Agent Status Card</span>
-            </h3>
-            <div className="space-y-3.5 text-sm font-semibold text-slate-600">
-              <div className="flex justify-between items-center">
-                <span>Agent Status:</span>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wider ${
-                  isOnline ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {isOnline ? '🟢 ONLINE' : '🔴 OFFLINE'}
-                </span>
               </div>
- 
-              {!agentLastHeartbeat ? (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span>Machine:</span>
-                    <span className="text-slate-900 font-bold">Unknown</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Connected Printer:</span>
-                    <span className="text-slate-900 font-bold text-slate-450">No printers discovered</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Configured Printer:</span>
-                    <span className="text-slate-900 font-bold text-slate-450">Not configured</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Heartbeat:</span>
-                    <span className="text-slate-900 font-bold text-slate-450">Never</span>
-                  </div>
-                </>
-              ) : !isOnline ? (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span>Configured Printer:</span>
-                    <span className="text-slate-900 font-bold">
-                      {[bwPrinterName, colorPrinterName].filter(Boolean).join(' / ') || 'Not configured'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Connected Printer:</span>
-                    <span className="text-slate-900 font-bold text-rose-600">Unknown (Agent Offline)</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Heartbeat:</span>
-                    <span className="text-slate-900 font-bold">
-                      Last seen {formatHeartbeat(agentLastHeartbeat)}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span>Configured Printer:</span>
-                    <span className="text-slate-900 font-bold">
-                      {[bwPrinterName, colorPrinterName].filter(Boolean).join(' / ') || 'Not configured'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Connected Printer:</span>
-                    <span className="text-slate-900 font-bold">
-                      {agentPrinterName || 'System Default'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Heartbeat:</span>
-                    <span className="text-emerald-600 font-bold">Live</span>
-                  </div>
-                </>
-              )}
-
-              <div className="flex justify-between items-center">
-                <span>Daemon Version:</span>
-                <span className="text-slate-500 font-mono text-xs">{agentDaemonVersion || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Jobs Waiting:</span>
-                <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-200 font-bold font-mono">
-                  {jobs.filter(j => j.status === 'queued').length}
-                </span>
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="mt-5 pt-4 border-t border-slate-100">
-            <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 font-mono">
-              Printer Discovery
-            </h4>
-            <button
-              type="button"
-              onClick={handleScanPrinters}
-              disabled={scanning || agentOnlineStatusState !== 'online'}
-              className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} />
-              {scanning ? 'Scanning installed printers...' : 'Refresh Installed Printers'}
-            </button>
-            
-            {agentOnlineStatusState !== 'online' ? (
-              <p className="text-[10px] text-rose-500 font-bold text-center mt-1.5 leading-tight">
-                ⚠️ Start the Campus Print Agent to discover printers.
-              </p>
-            ) : scanning ? (
-              <p className="text-[10px] text-indigo-600 font-semibold text-center mt-1.5 leading-tight">
-                Scanning installed printers...
-              </p>
-            ) : scanSuccessMsg ? (
-              <p className="text-[10px] text-emerald-600 font-bold text-center mt-1.5 leading-tight">
-                {scanSuccessMsg}
-              </p>
-            ) : errorMsg ? (
-              <p className="text-[10px] text-rose-500 font-bold text-center mt-1.5 leading-tight">
-                ⚠️ {errorMsg}
-              </p>
-            ) : null}
-          </div>
-        </div>
-
-        {/* System Health Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between font-sans">
-          <div>
-            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-indigo-500" />
-              <span>System Health Card</span>
-            </h3>
-            <div className="space-y-3.5 text-xs font-semibold text-slate-600">
-              <div className="flex justify-between items-center">
-                <span>1. Agent Connected:</span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
-                  systemHealth?.agentConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {systemHealth?.agentConnected ? '🟢 CONNECTED' : '🔴 OFFLINE'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>2. Printers Discovered:</span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
-                  systemHealth?.printersDiscovered ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {systemHealth?.printersDiscovered ? '🟢 DISCOVERED' : '🔴 NO DEVICES'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>3. B&W Printer Selected:</span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
-                  systemHealth?.bwPrinterSelected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {systemHealth?.bwPrinterSelected ? '🟢 SELECTED' : '🔴 MISSING'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>4. Color Printer Selected:</span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
-                  systemHealth?.colorPrinterSelected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {systemHealth?.colorPrinterSelected ? '🟢 SELECTED' : '🔴 MISSING'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>5. System Ready:</span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
-                  systemHealth?.systemReady ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {systemHealth?.systemReady ? '🟢 READY' : '🔴 NOT READY'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>6. Uploads Enabled:</span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
-                  systemHealth?.uploadsEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {systemHealth?.uploadsEnabled ? '🟢 ENABLED' : '🔴 DISABLED'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>7. Approvals Enabled:</span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
-                  systemHealth?.approvalsEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                  {systemHealth?.approvalsEnabled ? '🟢 ENABLED' : '🔴 DISABLED'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Left Column: Pending Approvals & Spooler Table */}
-        <div className="lg:col-span-2 space-y-6">
           {/* Pending Approvals Card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-left font-sans space-y-6">
             <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
@@ -1722,7 +1585,7 @@ export default function AdminPortal({
                     <button
                       type="submit"
                       disabled={isSearchingToken}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition-all border-none cursor-pointer flex items-center gap-1.5"
+                      className="px-4.5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 text-white font-bold text-xs rounded-2xl shadow-sm border-none cursor-pointer flex items-center gap-1.5 btn-primary-action"
                     >
                       Search
                     </button>
@@ -1763,9 +1626,10 @@ export default function AdminPortal({
 
                     {isShopAdmin ? (
                       <button
+                        type="button"
                         onClick={() => handleApproveJob(searchResultJob.id)}
                         disabled={approvingJobId === searchResultJob.id}
-                        className="w-full mt-2 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 border-none cursor-pointer transition-all"
+                        className="w-full mt-2 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-bold text-xs rounded-2xl shadow-sm flex items-center justify-center gap-1.5 border-none cursor-pointer btn-success-action"
                       >
                         <Play className="w-3.5 h-3.5" />
                         {approvingJobId === searchResultJob.id ? 'Releasing...' : 'Release To Queue'}
@@ -1825,397 +1689,650 @@ export default function AdminPortal({
             </div>
           </div>
 
-          {/* Left Column: Spooler Table */}
+          {/* Operational Log & Spooler Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left font-sans">
-          <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <h3 className="text-base font-bold text-slate-800">Operational Log & Control</h3>
-            <button 
-              onClick={() => { fetchStats(); onRefreshJobs(); }} 
-              className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-all cursor-pointer bg-transparent border-none"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-          </div>
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h3 className="text-base font-bold text-slate-800">Operational Log & Spooler Control</h3>
+              <button 
+                onClick={() => { fetchStats(); onRefreshJobs(); }} 
+                className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-all cursor-pointer bg-transparent border-none"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
 
-          <div className="overflow-x-auto font-sans">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">
-                  <th className="px-6 py-4 text-left">Student Token</th>
-                  <th className="px-6 py-4 text-left">Document Details</th>
-                  <th className="px-6 py-4 text-left">Copies</th>
-                  <th className="px-6 py-4 text-left">Charges</th>
-                  <th className="px-6 py-4 text-left">Status</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {jobs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
-                      No active print queue jobs.
-                    </td>
+            <div className="overflow-x-auto font-sans">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">
+                    <th className="px-6 py-4 text-left">Student Token</th>
+                    <th className="px-6 py-4 text-left">Document Details</th>
+                    <th className="px-6 py-4 text-left">Copies</th>
+                    <th className="px-6 py-4 text-left">Charges</th>
+                    <th className="px-6 py-4 text-left">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
-                ) : (
-                  jobs.map(job => {
-                    const shop = shops.find(s => s.id === selectedShopId);
-                    const bw = shop ? shop.bwPrice : 2;
-                    const color = shop ? shop.colorPrice : 5;
-                    const rate = job.printMode === 'color' ? color : bw;
-                    const billedPgs = job.sides === 'double' ? Math.ceil(job.pageCount / 2) : job.pageCount;
-                    const estimatedCost = job.chargedAmount !== undefined ? job.chargedAmount : (job.copies * billedPgs * rate);
-                    
-                    let statusBg = 'bg-slate-50 text-slate-600 border-slate-200';
-                    if (job.status === 'completed') statusBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                    else if (job.status === 'printing') statusBg = 'bg-indigo-50 text-indigo-700 border-indigo-200';
-                    else if (job.status === 'queued') statusBg = 'bg-amber-50 text-amber-700 border-amber-200';
-                    else if (job.status === 'pending_approval') statusBg = 'bg-orange-50 text-orange-700 border-orange-200';
-                    else if (['failed', 'printer_offline', 'paper_empty'].includes(job.status)) {
-                      statusBg = 'bg-red-50 text-red-700 border-red-200';
-                    }
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {jobs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                        No active print queue jobs.
+                      </td>
+                    </tr>
+                  ) : (
+                    jobs.map(job => {
+                      const shop = shops.find(s => s.id === selectedShopId);
+                      const bw = shop ? shop.bwPrice : 2;
+                      const color = shop ? shop.colorPrice : 5;
+                      const rate = job.printMode === 'color' ? color : bw;
+                      const billedPgs = job.sides === 'double' ? Math.ceil(job.pageCount / 2) : job.pageCount;
+                      const estimatedCost = job.chargedAmount !== undefined ? job.chargedAmount : (job.copies * billedPgs * rate);
+                      
+                      let statusBg = 'bg-slate-50 text-slate-600 border-slate-200';
+                      if (job.status === 'completed') statusBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      else if (job.status === 'printing') statusBg = 'bg-indigo-50 text-indigo-700 border-indigo-200';
+                      else if (job.status === 'queued') statusBg = 'bg-amber-50 text-amber-700 border-amber-200';
+                      else if (job.status === 'pending_approval') statusBg = 'bg-orange-50 text-orange-700 border-orange-200';
+                      else if (['failed', 'printer_offline', 'paper_empty'].includes(job.status)) {
+                        statusBg = 'bg-red-50 text-red-700 border-red-200';
+                      }
 
-                    const isFailedState = ['failed', 'printer_offline', 'paper_empty'].includes(job.status);
+                      const isFailedState = ['failed', 'printer_offline', 'paper_empty'].includes(job.status);
 
-                    return (
-                      <tr key={job.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4 font-mono font-bold text-indigo-600">
-                          {job.token}
-                          <div className="text-[10px] text-slate-400 font-sans font-medium mt-0.5">
-                            {job.studentName}
-                          </div>
-                        </td>
+                      return (
+                        <tr key={job.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 font-mono font-bold text-indigo-600">
+                            {job.token}
+                            <div className="text-[10px] text-slate-400 font-sans font-medium mt-0.5">
+                              {job.studentName}
+                            </div>
+                          </td>
 
-                        <td className="px-6 py-4 max-w-[180px]">
-                          <p className="font-semibold text-slate-800 truncate" title={job.fileName}>
-                            {job.fileName}
-                          </p>
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                            {formatBytes(job.fileSize)} · {job.pageCount} pgs
-                          </p>
-                        </td>
+                          <td className="px-6 py-4 max-w-[180px]">
+                            <p className="font-semibold text-slate-800 truncate" title={job.fileName}>
+                              {job.fileName}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              {formatBytes(job.fileSize)} · {job.pageCount} pgs
+                            </p>
+                          </td>
 
-                        <td className="px-6 py-4">
-                          <span className="px-2 py-1 rounded text-[10px] font-bold border bg-slate-100 text-slate-600 border-slate-200 font-mono">
-                            {job.copies} Copies
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 font-bold text-slate-800">
-                          ₹{estimatedCost}
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${statusBg}`}>
-                              {job.status.replace('_', ' ')}
+                          <td className="px-6 py-4">
+                            <span className="px-2 py-1 rounded text-[10px] font-bold border bg-slate-100 text-slate-600 border-slate-200 font-mono">
+                              {job.copies} Copies
                             </span>
-                            {job.reason && job.reason !== 'Rejected by Administrator' && (
-                              <p className="text-[10px] text-red-500 max-w-[150px] leading-tight" title={job.reason}>
-                                Reason: {job.reason}
-                              </p>
-                            )}
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {job.status === 'pending_approval' && isShopAdmin && (
-                              <button
-                                onClick={() => handleApproveJob(job.id)}
-                                disabled={approvingJobId === job.id}
-                                className="p-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px] border-none"
-                              >
-                                <Play className="w-3.5 h-3.5" />
-                                Approve Job
-                              </button>
-                            )}
+                          <td className="px-6 py-4 font-bold text-slate-800">
+                            ₹{estimatedCost}
+                          </td>
 
-                            {['pending_approval', 'queued', 'paused'].includes(job.status) && (
-                              <button
-                                onClick={() => handleRejectJob(job.id)}
-                                className="p-1.5 rounded bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px]"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                Reject
-                              </button>
-                            )}
+                          <td className="px-6 py-4">
+                            <div className="space-y-1">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${statusBg}`}>
+                                {job.status.replace('_', ' ')}
+                              </span>
+                              {job.reason && job.reason !== 'Rejected by Administrator' && (
+                                <p className="text-[10px] text-red-500 max-w-[150px] leading-tight" title={job.reason}>
+                                  Reason: {job.reason}
+                                </p>
+                              )}
+                            </div>
+                          </td>
 
-                            {(isFailedState || job.status === 'paused') && (
-                              <button
-                                onClick={() => updateJobStatus(job.id, 'queued', { progressPercent: 0, reason: '' })}
-                                disabled={job.printMode === 'color' ? colorStatus !== 'online' : bwStatus !== 'online'}
-                                className="p-1.5 rounded bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                <Play className="w-3.5 h-3.5" />
-                                Retry
-                              </button>
-                            )}
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {job.status === 'pending_approval' && isShopAdmin && (
+                                <button
+                                  onClick={() => handleApproveJob(job.id)}
+                                  disabled={approvingJobId === job.id}
+                                  className="p-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px] border-none"
+                                >
+                                  <Play className="w-3.5 h-3.5" />
+                                  Approve Job
+                                </button>
+                              )}
 
-                            {(job.status === 'queued' || job.status === 'printing') && (
-                              <button
-                                onClick={() => updateJobStatus(job.id, 'paused')}
-                                className="p-1.5 rounded bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px]"
-                              >
-                                <Pause className="w-3.5 h-3.5" />
-                                Pause
-                              </button>
-                            )}
+                              {['pending_approval', 'queued', 'paused'].includes(job.status) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectJob(job.id)}
+                                  className="p-2 rounded-xl bg-rose-50 border border-rose-200/80 hover:bg-rose-100 text-rose-600 font-bold flex items-center gap-1 text-[10px] cursor-pointer btn-danger-action"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Reject
+                                </button>
+                              )}
 
-                            {job.status === 'printing' && (
-                              <button
-                                onClick={() => updateJobStatus(job.id, 'completed', { progressPercent: 100 })}
-                                className="p-1.5 rounded bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px]"
-                              >
-                                Force Complete
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                              {(isFailedState || job.status === 'paused') && (
+                                <button
+                                  onClick={() => updateJobStatus(job.id, 'queued', { progressPercent: 0, reason: '' })}
+                                  disabled={job.printMode === 'color' ? colorStatus !== 'online' : bwStatus !== 'online'}
+                                  className="p-1.5 rounded bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <Play className="w-3.5 h-3.5" />
+                                  Retry
+                                </button>
+                              )}
+
+                              {(job.status === 'queued' || job.status === 'printing') && (
+                                <button
+                                  onClick={() => updateJobStatus(job.id, 'paused')}
+                                  className="p-1.5 rounded bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px]"
+                                >
+                                  <Pause className="w-3.5 h-3.5" />
+                                  Pause
+                                </button>
+                              )}
+
+                              {job.status === 'printing' && (
+                                <button
+                                  onClick={() => updateJobStatus(job.id, 'completed', { progressPercent: 100 })}
+                                  className="p-1.5 rounded bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-600 transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px]"
+                                >
+                                  Force Complete
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Right Column: Settings Form */}
-        <div className="space-y-6 text-left font-sans">
-
-
-          {/* Black & White Operations */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
-              <Printer className="w-4.5 h-4.5 text-indigo-500" />
-              <span>BLACK & WHITE OPERATIONS</span>
-            </h3>
-            <form onSubmit={handleSaveBwSettings} className="space-y-4">
-              {bwSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl animate-fadeIn">
-                  ✓ Black & White settings saved!
+      {/* TAB 2: AGENT & HARDWARE CONTROL */}
+      {activeTab === 'agent' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Main Connection Status Card */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm font-sans">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 text-left">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${
+                    isOnline
+                      ? 'bg-emerald-500 animate-pulse'
+                      : isConnecting
+                      ? 'bg-amber-500 animate-pulse'
+                      : 'bg-slate-400'
+                  }`} />
+                  <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 font-mono">
+                    System Status: {
+                      isOnline
+                        ? 'ONLINE'
+                        : isConnecting
+                        ? 'CONNECTING'
+                        : 'OFFLINE'
+                    }
+                  </h4>
                 </div>
-              )}
-
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
-                  Current Printer
-                </label>
-                <select
-                  value={bwPrinterId}
-                  onChange={(e: any) => setBwPrinterId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                  disabled={availablePrinters.filter(p => p.status === 'online').length === 0}
-                  required
-                >
-                  {availablePrinters.filter(p => p.status === 'online').length === 0 ? (
-                    <option value="">Start the Campus Print Agent to discover printers.</option>
-                  ) : (
-                    <>
-                      <option value="" disabled>Select B&W Printer</option>
-                      {availablePrinters.filter(p => p.status === 'online').map(printer => (
-                        <option key={printer.printerId} value={printer.printerId}>{printer.printerName}</option>
-                      ))}
-                    </>
-                  )}
-                </select>
+                <h3 className="text-base font-bold text-slate-800">
+                  Campus Print Agent Control
+                </h3>
+                <p className="text-slate-500 text-xs font-medium">
+                  {isOffline && '🔴 Shop is offline. Start the desktop agent to connect the hardware queue.'}
+                  {isConnecting && '⚡ Launching desktop agent... Awaiting secure heartbeat registration.'}
+                  {isOnline && '🟢 Shop is online. Telemetry link active. Ready to accept cloud print requests.'}
+                </p>
+                <div className="mt-4 flex items-center">
+                  <a
+                    href={getApiUrl('/download/agent')}
+                    download="CampusPrintInstaller.exe"
+                    className="py-1.5 px-3 rounded-lg border border-blue-200 bg-transparent hover:bg-blue-50 hover:border-blue-300 text-blue-600 text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer no-underline active:bg-blue-100"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download Campus Print Agent
+                  </a>
+                </div>
               </div>
-
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
-                <div className="text-left">
-                  <label className="block text-xs font-bold text-slate-800">
-                    Maintenance
-                  </label>
-                  <span className="text-[10px] text-slate-400 block leading-tight mt-0.5 max-w-[160px]">
-                    Disables Black & White print submissions immediately.
-                  </span>
-                </div>
+              
+              <div className="flex items-center gap-3 flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => setBwMaintenance(!bwMaintenance)}
-                  className={`w-12 h-6.5 rounded-full p-1 transition-all duration-200 focus:outline-none cursor-pointer border-none flex items-center ${
-                    bwMaintenance ? 'bg-rose-500 justify-end' : 'bg-slate-300 justify-start'
+                  onClick={isConnecting ? handleCancelStartup : handleToggleOnlineStatus}
+                  disabled={launcherBusy}
+                  className={`py-2.5 px-4.5 rounded-2xl font-bold text-xs cursor-pointer border-none flex items-center gap-2 shadow-sm btn-primary-action ${
+                    isOnline
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-500/20'
+                      : isConnecting
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-amber-500/20 animate-pulse'
+                      : 'bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-rose-500/20'
                   }`}
                 >
-                  <span className="w-4.5 h-4.5 rounded-full bg-white shadow-sm block" />
+                  <span className={`w-2 h-2 rounded-full bg-white ${isOnline || isConnecting ? 'animate-ping' : ''}`} />
+                  {isOnline 
+                    ? '🟢 SHOP ONLINE (GO OFFLINE)' 
+                    : isConnecting 
+                    ? '⚡ CONNECTING (CANCEL)' 
+                    : '🔴 SHOP OFFLINE (GO ONLINE)'
+                  }
                 </button>
-              </div>
-
-              <button
-                type="submit"
-                disabled={savingBwSettings}
-                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none"
-              >
-                <Save className="w-4 h-4" />
-                {savingBwSettings ? 'Saving B&W Settings...' : 'Save Settings'}
-              </button>
-            </form>
-          </div>
-
-          {/* Color Operations */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
-              <Printer className="w-4.5 h-4.5 text-violet-500" />
-              <span>COLOR OPERATIONS</span>
-            </h3>
-            <form onSubmit={handleSaveColorSettings} className="space-y-4">
-              {colorSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl animate-fadeIn">
-                  ✓ Color settings saved!
-                </div>
-              )}
-
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
-                  Current Printer
-                </label>
-                <select
-                  value={colorPrinterId}
-                  onChange={(e: any) => setColorPrinterId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                  disabled={availablePrinters.filter(p => p.status === 'online').length === 0}
-                  required
-                >
-                  {availablePrinters.filter(p => p.status === 'online').length === 0 ? (
-                    <option value="">Start the Campus Print Agent to discover printers.</option>
-                  ) : (
-                    <>
-                      <option value="" disabled>Select Color Printer</option>
-                      {availablePrinters.filter(p => p.status === 'online').map(printer => (
-                        <option key={printer.printerId} value={printer.printerId}>{printer.printerName}</option>
-                      ))}
-                    </>
-                  )}
-                </select>
-              </div>
-
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
-                <div className="text-left">
-                  <label className="block text-xs font-bold text-slate-800">
-                    Maintenance
-                  </label>
-                  <span className="text-[10px] text-slate-400 block leading-tight mt-0.5 max-w-[160px]">
-                    Disables Color print submissions immediately.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setColorMaintenance(!colorMaintenance)}
-                  className={`w-12 h-6.5 rounded-full p-1 transition-all duration-200 focus:outline-none cursor-pointer border-none flex items-center ${
-                    colorMaintenance ? 'bg-rose-500 justify-end' : 'bg-slate-300 justify-start'
-                  }`}
-                >
-                  <span className="w-4.5 h-4.5 rounded-full bg-white shadow-sm block" />
-                </button>
-              </div>
-
-              <button
-                type="submit"
-                disabled={savingColorSettings}
-                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none"
-              >
-                <Save className="w-4 h-4" />
-                {savingColorSettings ? 'Saving Color Settings...' : 'Save Settings'}
-              </button>
-            </form>
-          </div>
-
-          {/* Printer Service Health Info Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4 font-mono">
-              Printer Service Health
-            </h3>
-            <div className="space-y-4 text-xs font-semibold text-slate-600">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-700 uppercase tracking-wider">B&W</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                    bwStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}>
-                    {bwStatus === 'online' ? '🟢 Ready' : '🔴 Offline'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Printer:</span>
-                  <span className="text-slate-900 font-bold">
-                    {bwStatus === 'online' ? (bwPrinterName || 'Not configured') : 'None (Offline)'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Maintenance:</span>
-                  <span className={`font-bold ${bwMaintenance ? 'text-rose-600' : 'text-slate-500'}`}>
-                    {bwMaintenance ? 'ON' : 'OFF'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-700 uppercase tracking-wider">Color</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                    colorStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}>
-                    {colorStatus === 'online' ? '🟢 Ready' : '🔴 Offline'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Printer:</span>
-                  <span className="text-slate-900 font-bold">
-                    {colorStatus === 'online' ? (colorPrinterName || 'Not configured') : 'None (Offline)'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Maintenance:</span>
-                  <span className={`font-bold ${colorMaintenance ? 'text-rose-600' : 'text-slate-500'}`}>
-                    {colorMaintenance ? 'ON' : 'OFF'}
-                  </span>
-                </div>
               </div>
             </div>
 
-            {/* Remote Agent Telemetry (Requirement 6) */}
-            <div className="border-t border-slate-100 pt-5 mt-5">
-              <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 font-mono">
-                Remote Daemon Telemetry
-              </h4>
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/60 text-xs space-y-1.5 font-semibold text-slate-600">
-                <div className="flex justify-between items-center">
-                  <span>Agent Status:</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                    agentOnlineStatusState === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}>
-                    {agentOnlineStatusState === 'online' ? '🟢 ONLINE' : '🔴 OFFLINE'}
-                  </span>
+            {localConnectionError && (
+              <div className="mt-4 bg-rose-50 border border-rose-200 rounded-xl p-4 text-left space-y-2">
+                <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">
+                  <span>⚠️ Connection Timeout</span>
                 </div>
-                {agentId && (
-                  <div className="flex justify-between">
-                    <span>Agent ID:</span>
-                    <span className="text-slate-900 font-bold">{agentId}</span>
+                <p className="text-xs text-rose-700/90 leading-relaxed font-medium">
+                  {localConnectionError}
+                </p>
+              </div>
+            )}
+
+            {isOnline && (
+              <div className="mt-6 border-t border-slate-100 pt-6 text-left space-y-4">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Active Device Configuration</h4>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 text-xs text-left">
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Printer Status</p>
+                    <p className="font-extrabold text-slate-800 mt-0.5 truncate">
+                      {bwStatus === 'online' ? (activePrinterName || 'System Default') : (bwStatus === 'unknown' ? 'Printer Status Unknown' : 'Printer Offline')}
+                    </p>
                   </div>
-                )}
-                {agentPrinterName && (
-                  <div className="flex justify-between">
-                    <span>Printer Name:</span>
-                    <span className="text-slate-900 font-bold">{agentPrinterName}</span>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Total Printers</p>
+                    <p className="font-extrabold text-slate-800 mt-0.5">
+                      {printersCount || 0} discovered
+                    </p>
                   </div>
-                )}
-                {agentDaemonVersion && (
-                  <div className="flex justify-between">
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Uptime</p>
+                    <p className="font-extrabold text-slate-800 mt-0.5">
+                      {agentUptime ? `${Math.floor(agentUptime / 60)}m ${agentUptime % 60}s` : '0s'}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Telemetry link</p>
+                    <p className="font-extrabold text-slate-800 mt-0.5 truncate">
+                      {formatHeartbeat(lastHeartbeatTime)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Agent & Health Monitoring Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Agent Status Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between font-sans">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                  <Printer className="w-5 h-5 text-indigo-500" />
+                  <span>Agent Status Card</span>
+                </h3>
+                <div className="space-y-3.5 text-sm font-semibold text-slate-600">
+                  <div className="flex justify-between items-center">
+                    <span>Agent Status:</span>
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wider ${
+                      isOnline ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {isOnline ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                    </span>
+                  </div>
+
+                  {!agentLastHeartbeat ? (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <span>Machine:</span>
+                        <span className="text-slate-900 font-bold">Unknown</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Connected Printer:</span>
+                        <span className="text-slate-900 font-bold text-slate-450">No printers discovered</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Configured Printer:</span>
+                        <span className="text-slate-900 font-bold text-slate-450">Not configured</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Heartbeat:</span>
+                        <span className="text-slate-900 font-bold text-slate-450">Never</span>
+                      </div>
+                    </>
+                  ) : !isOnline ? (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <span>Configured Printer:</span>
+                        <span className="text-slate-900 font-bold">
+                          {[bwPrinterName, colorPrinterName].filter(Boolean).join(' / ') || 'Not configured'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Connected Printer:</span>
+                        <span className="text-slate-900 font-bold text-rose-600">Unknown (Agent Offline)</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Heartbeat:</span>
+                        <span className="text-slate-900 font-bold">
+                          Last seen {formatHeartbeat(agentLastHeartbeat)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <span>Configured Printer:</span>
+                        <span className="text-slate-900 font-bold">
+                          {[bwPrinterName, colorPrinterName].filter(Boolean).join(' / ') || 'Not configured'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Connected Printer:</span>
+                        <span className="text-slate-900 font-bold">
+                          {agentPrinterName || 'System Default'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Heartbeat:</span>
+                        <span className="text-emerald-600 font-bold">Live</span>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex justify-between items-center">
                     <span>Daemon Version:</span>
-                    <span className="text-slate-500 font-mono text-[10px]">{agentDaemonVersion}</span>
+                    <span className="text-slate-500 font-mono text-xs">{agentDaemonVersion || 'N/A'}</span>
                   </div>
-                )}
-                <div className="flex justify-between">
-                  <span>Last Heartbeat:</span>
-                  <span className="text-slate-900">
-                    {agentLastHeartbeat ? new Date(agentLastHeartbeat).toLocaleTimeString() : 'Never'}
-                  </span>
+                  <div className="flex justify-between items-center">
+                    <span>Jobs Waiting:</span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-200 font-bold font-mono">
+                      {jobs.filter(j => j.status === 'queued').length}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 font-mono">
+                  Printer Discovery
+                </h4>
+                <button
+                  type="button"
+                  onClick={handleScanPrinters}
+                  disabled={scanning || agentOnlineStatusState !== 'online'}
+                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} />
+                  {scanning ? 'Scanning installed printers...' : 'Refresh Installed Printers'}
+                </button>
+                
+                {agentOnlineStatusState !== 'online' ? (
+                  <p className="text-[10px] text-rose-500 font-bold text-center mt-1.5 leading-tight">
+                    ⚠️ Start the Campus Print Agent to discover printers.
+                  </p>
+                ) : scanning ? (
+                  <p className="text-[10px] text-indigo-600 font-semibold text-center mt-1.5 leading-tight">
+                    Scanning installed printers...
+                  </p>
+                ) : scanSuccessMsg ? (
+                  <p className="text-[10px] text-emerald-600 font-bold text-center mt-1.5 leading-tight">
+                    {scanSuccessMsg}
+                  </p>
+                ) : errorMsg ? (
+                  <p className="text-[10px] text-rose-500 font-bold text-center mt-1.5 leading-tight">
+                    ⚠️ {errorMsg}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            {/* System Health Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between font-sans">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-indigo-500" />
+                  <span>System Health Card</span>
+                </h3>
+                <div className="space-y-3.5 text-xs font-semibold text-slate-600">
+                  <div className="flex justify-between items-center">
+                    <span>1. Agent Connected:</span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                      systemHealth?.agentConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {systemHealth?.agentConnected ? '🟢 CONNECTED' : '🔴 OFFLINE'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>2. Printers Discovered:</span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                      systemHealth?.printersDiscovered ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {systemHealth?.printersDiscovered ? '🟢 DISCOVERED' : '🔴 NO DEVICES'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>3. B&W Printer Selected:</span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                      systemHealth?.bwPrinterSelected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {systemHealth?.bwPrinterSelected ? '🟢 SELECTED' : '🔴 MISSING'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>4. Color Printer Selected:</span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                      systemHealth?.colorPrinterSelected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {systemHealth?.colorPrinterSelected ? '🟢 SELECTED' : '🔴 MISSING'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>5. System Ready:</span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                      systemHealth?.systemReady ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {systemHealth?.systemReady ? '🟢 READY' : '🔴 NOT READY'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>6. Uploads Enabled:</span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                      systemHealth?.uploadsEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {systemHealth?.uploadsEnabled ? '🟢 ENABLED' : '🔴 DISABLED'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>7. Approvals Enabled:</span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                      systemHealth?.approvalsEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {systemHealth?.approvalsEnabled ? '🟢 ENABLED' : '🔴 DISABLED'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+          {/* B&W and Color Printer Selection Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Black & White Operations */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                <Printer className="w-4.5 h-4.5 text-indigo-500" />
+                <span>BLACK & WHITE OPERATIONS</span>
+              </h3>
+              <form onSubmit={handleSaveBwSettings} className="space-y-4">
+                {bwSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl animate-fadeIn">
+                    ✓ Black & White settings saved!
+                  </div>
+                )}
+                {bwError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl animate-fadeIn">
+                    ⚠️ {bwError}
+                  </div>
+                )}
 
+                <div>
+                  <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                    Current Printer
+                  </label>
+                  <select
+                    value={bwPrinterId}
+                    onChange={(e: any) => setBwPrinterId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={availablePrinters.filter(p => p.status === 'online').length === 0}
+                    required
+                  >
+                    {availablePrinters.filter(p => p.status === 'online').length === 0 ? (
+                      <option value="">Start the Campus Print Agent to discover printers.</option>
+                    ) : (
+                      <>
+                        <option value="" disabled>Select B&W Printer</option>
+                        {availablePrinters.filter(p => p.status === 'online').map(printer => (
+                          <option key={printer.printerId} value={printer.printerId}>{printer.printerName}</option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+                  <div className="text-left">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Maintenance
+                    </label>
+                    <span className="text-[10px] text-slate-400 block leading-tight mt-0.5 max-w-[160px]">
+                      Disables Black & White print submissions immediately.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBwMaintenance(!bwMaintenance)}
+                    className={`w-12 h-6.5 rounded-full p-1 transition-all duration-200 focus:outline-none cursor-pointer border-none flex items-center ${
+                      bwMaintenance ? 'bg-rose-500 justify-end' : 'bg-slate-300 justify-start'
+                    }`}
+                  >
+                    <span className="w-4.5 h-4.5 rounded-full bg-white shadow-sm block" />
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={savingBwSettings}
+                  className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm btn-primary-action"
+                >
+                  <Save className="w-4 h-4" />
+                  {savingBwSettings ? 'Saving B&W Settings...' : 'Save Settings'}
+                </button>
+
+                {isBwDirty && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBwPrinterId(baseBwPrinterId);
+                      setBwMaintenance(baseBwMaintenance);
+                    }}
+                    className="w-full py-2 px-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs transition-all cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    Discard Changes
+                  </button>
+                )}
+              </form>
+            </div>
+
+            {/* Color Operations */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                <Printer className="w-4.5 h-4.5 text-violet-500" />
+                <span>COLOR OPERATIONS</span>
+              </h3>
+              <form onSubmit={handleSaveColorSettings} className="space-y-4">
+                {colorSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl animate-fadeIn">
+                    ✓ Color settings saved!
+                  </div>
+                )}
+                {colorError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl animate-fadeIn">
+                    ⚠️ {colorError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                    Current Printer
+                  </label>
+                  <select
+                    value={colorPrinterId}
+                    onChange={(e: any) => setColorPrinterId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={availablePrinters.filter(p => p.status === 'online').length === 0}
+                    required
+                  >
+                    {availablePrinters.filter(p => p.status === 'online').length === 0 ? (
+                      <option value="">Start the Campus Print Agent to discover printers.</option>
+                    ) : (
+                      <>
+                        <option value="" disabled>Select Color Printer</option>
+                        {availablePrinters.filter(p => p.status === 'online').map(printer => (
+                          <option key={printer.printerId} value={printer.printerId}>{printer.printerName}</option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+                  <div className="text-left">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Maintenance
+                    </label>
+                    <span className="text-[10px] text-slate-400 block leading-tight mt-0.5 max-w-[160px]">
+                      Disables Color print submissions immediately.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setColorMaintenance(!colorMaintenance)}
+                    className={`w-12 h-6.5 rounded-full p-1 transition-all duration-200 focus:outline-none cursor-pointer border-none flex items-center ${
+                      colorMaintenance ? 'bg-rose-500 justify-end' : 'bg-slate-300 justify-start'
+                    }`}
+                  >
+                    <span className="w-4.5 h-4.5 rounded-full bg-white shadow-sm block" />
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={savingColorSettings}
+                  className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm btn-primary-action"
+                >
+                  <Save className="w-4 h-4" />
+                  {savingColorSettings ? 'Saving Color Settings...' : 'Save Settings'}
+                </button>
+
+                {isColorDirty && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setColorPrinterId(baseColorPrinterId);
+                      setColorMaintenance(baseColorMaintenance);
+                    }}
+                    className="w-full py-2 px-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs transition-all cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    Discard Changes
+                  </button>
+                )}
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: SHOP SETTINGS & PRICING */}
+      {activeTab === 'settings' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadeIn">
           {/* Shop Profile Settings */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
@@ -2308,58 +2425,74 @@ export default function AdminPortal({
               </button>
             </form>
           </div>
+        </div>
+      )}
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center">
-            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 text-left flex items-center gap-2">
-              <QrCode className="w-4.5 h-4.5 text-indigo-500" />
-              <span>Poster QR Code</span>
-            </h3>
+      {/* TAB 4: PRINT QR CODE POSTER */}
+      {activeTab === 'qr' && (
+        <div className="max-w-xl mx-auto animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-indigo-500" />
+                <span>Shop Kiosk QR Poster</span>
+              </h3>
+              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
+                Ready to Print
+              </span>
+            </div>
 
-            <div className="p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200/80 mb-4 flex flex-col items-center justify-center min-h-[198px]">
+            <div className="p-6 bg-slate-50/70 rounded-3xl border border-dashed border-slate-200 flex flex-col items-center justify-center space-y-4">
               <img 
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=4f46e5&data=${encodeURIComponent(qrUrl)}`} 
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&color=4f46e5&data=${encodeURIComponent(qrUrl)}`} 
                 alt="Print Hub QR Code" 
-                className="w-[150px] h-[150px] rounded-xl shadow-sm bg-white p-1 border border-slate-100"
+                className="w-[200px] h-[200px] rounded-2xl shadow-md bg-white p-2 border border-slate-100"
               />
-              <p className="text-[10px] text-slate-400 font-mono mt-3 truncate w-full text-center">
-                {qrUrl}
-              </p>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-700">Scan to upload print files</p>
+                <p className="text-[11px] text-slate-400 font-mono truncate max-w-sm">
+                  {qrUrl}
+                </p>
+              </div>
             </div>
 
             <button
+              type="button"
               onClick={printQrPoster}
-              className="w-full py-2 px-4 rounded-xl border border-indigo-200 hover:bg-indigo-50/50 text-indigo-600 font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer bg-white"
+              className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-extrabold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer border-none shadow-md shadow-indigo-500/20 btn-primary-action"
             >
-              <Printer className="w-3.5 h-3.5" />
+              <Printer className="w-4.5 h-4.5" />
               Print QR Poster
             </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Two-Step Confirmation Modal: Go Online */}
+      {/* Confirmation Modal with Spring Pop Entrance Animation */}
       {showOnlineConfirm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 space-y-6 text-center transform scale-100 transition-all duration-300">
-            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl shadow-inner">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl border border-slate-100 p-6 max-w-md w-full text-center space-y-5 shadow-2xl animate-modal-pop">
+            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto text-xl shadow-inner">
               🟢
             </div>
-            <div className="space-y-2">
-              <h3 className="text-lg font-bold text-slate-800">Confirm Going Online</h3>
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-extrabold text-slate-800">Confirm Going Online</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                This will automatically start the Campus Print Agent process on this machine, verify system connectivity, and allow students to upload and queue print jobs.
+                This will automatically launch the print agent service, verify hardware connectivity, and open student submissions.
               </p>
             </div>
-            <div className="flex gap-3 justify-center">
+            <div className="flex gap-3 justify-center pt-1">
               <button
+                type="button"
                 onClick={() => setShowOnlineConfirm(false)}
-                className="py-2.5 px-5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                className="py-2.5 px-5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold cursor-pointer btn-secondary-action"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={executeGoOnline}
-                className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold transition-all cursor-pointer shadow-md shadow-emerald-200"
+                className="py-2.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-black cursor-pointer border-none shadow-md shadow-emerald-500/20 btn-success-action"
               >
                 Yes, Go Online
               </button>
@@ -2370,27 +2503,29 @@ export default function AdminPortal({
 
       {/* Two-Step Confirmation Modal: Go Offline */}
       {showOfflineConfirm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 space-y-6 text-center transform scale-100 transition-all duration-300">
-            <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto text-xl shadow-inner">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl border border-slate-100 p-6 max-w-md w-full text-center space-y-5 shadow-2xl animate-modal-pop">
+            <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto text-xl shadow-inner">
               ⚠️
             </div>
-            <div className="space-y-2">
-              <h3 className="text-lg font-bold text-slate-800">Confirm Going Offline</h3>
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-extrabold text-slate-800">Confirm Going Offline</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
                 This will terminate the active Print Agent daemon process and disconnect the shop. Students will be immediately prevented from submitting new print jobs.
               </p>
             </div>
-            <div className="flex gap-3 justify-center">
+            <div className="flex gap-3 justify-center pt-1">
               <button
+                type="button"
                 onClick={() => setShowOfflineConfirm(false)}
-                className="py-2.5 px-5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                className="py-2.5 px-5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold cursor-pointer btn-secondary-action"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={executeGoOffline}
-                className="py-2.5 px-6 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold transition-all cursor-pointer shadow-md shadow-rose-200"
+                className="py-2.5 px-6 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 text-white text-xs font-black cursor-pointer border-none shadow-md shadow-rose-500/20 btn-danger-action"
               >
                 Yes, Disconnect Shop
               </button>
