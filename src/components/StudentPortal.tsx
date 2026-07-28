@@ -513,19 +513,19 @@ export default function StudentPortal({
   // ─── STAGE 1: SIGN IN VIEW ─────────────────────────────────
   if (!isRemembered) {
     return (
-      <div className="max-w-md mx-auto my-12 animate-fadeIn font-sans text-left">
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-          <div className="px-8 py-6 bg-gradient-to-r from-indigo-600 to-violet-700 text-white text-center">
-            <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center mx-auto mb-3 border border-white/15">
-              <Printer className="w-6 h-6 text-white" />
+      <div className="max-w-md mx-auto my-12 text-left font-sans">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden">
+          <div className="p-8 pb-6 text-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
+            <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center mx-auto mb-4">
+              <Printer className="w-5.5 h-5.5 text-slate-700 dark:text-slate-350" />
             </div>
-            <h2 className="text-xl font-bold">Sign In to Print</h2>
-            <p className="text-xs text-indigo-100/70 mt-1">Access institutional high-speed print hubs</p>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Sign In to Print</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-450 mt-1">Access institutional high-speed print hubs</p>
           </div>
 
           <div className="p-8 space-y-5">
             {loginError && (
-              <div className="flex items-center gap-2 p-3.5 rounded-xl bg-red-50 border border-red-100 text-xs text-red-600 animate-fadeIn font-semibold">
+              <div className="flex items-center gap-2 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 text-xs text-rose-600 dark:text-rose-450 font-semibold" role="alert">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                 {loginError}
               </div>
@@ -533,32 +533,32 @@ export default function StudentPortal({
 
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                <label className="block text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-mono">
                   Username or Email
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                  <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type="text"
                     value={loginUsername}
                     onChange={(e) => setLoginUsername(e.target.value)}
                     placeholder="e.g. basav"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all font-semibold"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:focus:ring-indigo-500/40 focus:border-indigo-500 transition-all font-semibold"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                <label className="block text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-mono">
                   Password
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type="password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all font-semibold"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:focus:ring-indigo-500/40 focus:border-indigo-500 transition-all font-semibold"
                   />
                 </div>
               </div>
@@ -567,14 +567,14 @@ export default function StudentPortal({
             <button
               type="button"
               onClick={handleUsernamePasswordLogin}
-              className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-700 text-white font-semibold text-sm hover:from-indigo-700 hover:to-violet-800 transition-all duration-200 shadow-lg shadow-indigo-500/20 cursor-pointer flex items-center justify-center gap-2 border-none"
+              className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 border-none shadow-2xs"
             >
               Sign In & Connect
             </button>
 
-            <div className="relative flex items-center justify-center my-5">
-              <div className="absolute inset-x-0 h-[1px] bg-slate-100" />
-              <span className="relative px-3 bg-white text-[9px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+            <div className="relative flex items-center justify-center my-4">
+              <div className="absolute inset-x-0 h-[1px] bg-slate-100 dark:bg-slate-800" />
+              <span className="relative px-3 bg-white dark:bg-slate-900 text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono">
                 OR
               </span>
             </div>
@@ -585,7 +585,7 @@ export default function StudentPortal({
                 setLoginError('');
                 setShowGoogleModal(true);
               }}
-              className="w-full py-3 px-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs transition-all duration-200 shadow-sm flex items-center justify-center gap-3 cursor-pointer select-none"
+              className="w-full py-2.5 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-350 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-750 dark:text-slate-200 font-bold text-xs transition-colors shadow-2xs flex items-center justify-center gap-3 cursor-pointer select-none"
             >
               <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -599,60 +599,60 @@ export default function StudentPortal({
         </div>
 
         {showGoogleModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fadeIn">
-            <div className="bg-white w-full max-w-[420px] rounded-2xl border border-slate-200/80 shadow-2xl p-8 relative flex flex-col text-left">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-[420px] rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg p-8 relative flex flex-col text-left">
               <button
                 onClick={() => {
                   setShowGoogleModal(false);
                   setShowCustomGoogleInput(false);
                 }}
-                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer border-none bg-transparent"
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-105 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-650 dark:hover:text-slate-350 transition-colors cursor-pointer border-none bg-transparent"
               >
                 <X className="w-4 h-4" />
               </button>
 
               <div className="flex flex-col items-center text-center mb-6">
-                <h3 className="text-lg font-bold text-slate-900 mt-2">Choose Google account</h3>
-                <p className="text-xs text-slate-500 mt-1">to continue to Campus Print Hub</p>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Choose Google account</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">to continue to Campus Print Hub</p>
               </div>
 
               {!showCustomGoogleInput ? (
                 <div className="space-y-2 mb-4">
                   {[
-                    { name: 'Basav', email: 'basav@university.edu', avatarColor: 'bg-indigo-600 text-white' },
-                    { name: 'Student Test', email: 'student@university.edu', avatarColor: 'bg-emerald-600 text-white' }
+                    { name: 'Basav', email: 'basav@university.edu', avatarColor: 'bg-indigo-650 text-white' },
+                    { name: 'Student Test', email: 'student@university.edu', avatarColor: 'bg-emerald-650 text-white' }
                   ].map((acc) => (
                     <button
                       key={acc.email}
                       onClick={() => handleGoogleLogin(acc.name, acc.email)}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-100 hover:border-slate-200 hover:bg-slate-50/50 transition-all text-left cursor-pointer bg-white"
+                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-150 dark:border-slate-800 hover:border-slate-250 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-850 transition-colors text-left cursor-pointer bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-200"
                     >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${acc.avatarColor}`}>
                         {acc.name.charAt(0)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-slate-800 leading-tight">{acc.name}</p>
-                        <p className="text-[10px] text-slate-400 leading-none mt-0.5">{acc.email}</p>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight">{acc.name}</p>
+                        <p className="text-[10px] text-slate-450 dark:text-slate-400 leading-none mt-1">{acc.email}</p>
                       </div>
                     </button>
                   ))}
 
                   <button
                     onClick={() => setShowCustomGoogleInput(true)}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/10 transition-all text-left cursor-pointer bg-white"
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/10 dark:hover:bg-indigo-950/10 transition-colors text-left cursor-pointer bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300"
                   >
-                    <div className="w-8 h-8 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center font-bold text-xs text-slate-500">
+                    <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-850 flex items-center justify-center font-bold text-xs text-slate-400 dark:text-slate-500">
                       +
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-slate-700 leading-tight">Use another account</p>
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300 leading-tight">Use another account</p>
                     </div>
                   </button>
                 </div>
               ) : (
                 <div className="space-y-4 mb-4">
                   <div>
-                    <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                    <label className="block text-[10px] font-extrabold text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-mono">
                       Google Profile Name
                     </label>
                     <input
@@ -660,11 +660,11 @@ export default function StudentPortal({
                       value={customGoogleName}
                       onChange={(e) => setCustomGoogleName(e.target.value)}
                       placeholder="e.g. Ramesh Kumar"
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                    <label className="block text-[10px] font-extrabold text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-mono">
                       Google Email Address
                     </label>
                     <input
@@ -672,7 +672,7 @@ export default function StudentPortal({
                       value={customGoogleEmail}
                       onChange={(e) => setCustomGoogleEmail(e.target.value)}
                       placeholder="e.g. ramesh@gmail.com"
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                     />
                   </div>
 
@@ -680,7 +680,7 @@ export default function StudentPortal({
                     <button
                       type="button"
                       onClick={() => setShowCustomGoogleInput(false)}
-                      className="flex-1 py-2 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all border-none"
+                      className="flex-1 py-2 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors border-none cursor-pointer"
                     >
                       Back
                     </button>
@@ -690,7 +690,7 @@ export default function StudentPortal({
                         if (!customGoogleName.trim() || !customGoogleEmail.trim()) return;
                         handleGoogleLogin(customGoogleName.trim(), customGoogleEmail.trim());
                       }}
-                      className="flex-1 py-2 px-4 rounded-xl bg-indigo-600 text-white text-xs font-bold transition-all border-none"
+                      className="flex-1 py-2 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors border-none cursor-pointer"
                     >
                       Confirm
                     </button>
@@ -700,21 +700,16 @@ export default function StudentPortal({
             </div>
           </div>
         )}
-      </div>
-    );
-  }
-
-  // ─── STAGE 2: SUCCESS VIEW ─────────────────────────────────
-  if (success) {
+      <  if (success) {
     return (
       <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn font-sans text-left">
-        <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 border border-indigo-100 text-indigo-700">
+        <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 text-indigo-700 dark:text-indigo-400">
             📍 {shopInfo?.name || 'Campus Print Hub'}
           </span>
           <button
             onClick={handleSignOut}
-            className="py-1.5 px-3 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold transition-all cursor-pointer bg-white"
+            className="py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-350 text-xs font-bold transition-all cursor-pointer bg-white dark:bg-slate-900"
           >
             Sign Out
           </button>
@@ -722,39 +717,36 @@ export default function StudentPortal({
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8">
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center animate-fadeIn">
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xs border border-slate-200 dark:border-slate-800 p-8 text-center">
               <div className="flex justify-center mb-5">
-                <div className="relative">
-                  <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center">
-                    <CheckCircle className="w-10 h-10 text-emerald-600" />
-                  </div>
-                  <div className="absolute inset-0 w-20 h-20 rounded-full bg-emerald-400/30 animate-pulse-ring" />
+                <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/40 border border-emerald-250 dark:border-emerald-900/50 flex items-center justify-center">
+                  <CheckCircle className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
                 </div>
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">
+              <h2 className="text-xl font-black text-slate-800 dark:text-white mb-2">
                 Upload Successful
               </h2>
-              <p className="text-slate-500 mb-6 text-sm">
-                Please show your Approval Token to the shop owner after payment.
+              <p className="text-slate-500 dark:text-slate-400 mb-6 text-xs leading-relaxed">
+                Please show your Approval Token to the shop operator after payment.
               </p>
 
-              <div className="bg-slate-50 rounded-xl p-5 mb-6 border border-slate-100 text-left max-h-56 overflow-y-auto font-sans">
-                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 font-mono">
+              <div className="bg-slate-50 dark:bg-slate-950 rounded-xl p-5 mb-6 border border-slate-100 dark:border-slate-850 text-left max-h-56 overflow-y-auto font-sans">
+                <p className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 font-mono">
                   Your Approval Tokens
                 </p>
                 <div className="space-y-2">
                   {success.jobs.map((j, idx) => {
                     return (
-                      <div key={idx} className="flex flex-col bg-white p-3 rounded-lg border border-slate-200 space-y-1">
+                      <div key={idx} className="flex flex-col bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800 space-y-1">
                         <div className="flex justify-between items-center">
-                          <span className="text-xs text-slate-500 font-semibold truncate max-w-[170px]">
+                          <span className="text-xs text-slate-700 dark:text-slate-300 font-bold truncate max-w-[170px]">
                             {j.fileName}
                           </span>
-                          <span className="text-sm font-extrabold text-orange-600 font-mono">
+                          <span className="text-sm font-extrabold text-orange-600 dark:text-orange-400 font-mono">
                             {j.tokenId || 'N/A'}
                           </span>
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[10px] text-slate-450 dark:text-slate-550 font-mono">
                           Status: Pending Approval
                         </div>
                       </div>
@@ -765,7 +757,7 @@ export default function StudentPortal({
 
               <button
                 onClick={resetForm}
-                className="w-full py-3.5 px-6 rounded-xl bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 transition-all duration-200 shadow-lg shadow-indigo-500/25 cursor-pointer border-none"
+                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 dark:bg-indigo-650 text-white font-semibold text-xs hover:bg-indigo-750 dark:hover:bg-indigo-700 transition-colors cursor-pointer border-none shadow-xs"
               >
                 Print More Documents
               </button>
@@ -792,17 +784,17 @@ export default function StudentPortal({
 
   // ─── STAGE 3: MAIN DASHBOARD VIEW ───────────────────────────
   return (
-    <div className="max-w-7xl mx-auto space-y-6 animate-fadeIn font-sans text-left">
+    <div className="max-w-7xl mx-auto space-y-6 font-sans text-left">
       {/* Top Info Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           {shops.length > 1 ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider font-mono">Shop:</span>
+              <span className="text-xs font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono">Shop:</span>
               <select
                 value={selectedShopId}
                 onChange={(e) => onSelectShop(e.target.value)}
-                className="py-1.5 px-3 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               >
                 {shops.map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
@@ -810,34 +802,34 @@ export default function StudentPortal({
               </select>
             </div>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 w-fit">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-55/40 dark:bg-indigo-950/30 border border-indigo-150 dark:border-indigo-900 text-indigo-700 dark:text-indigo-300 w-fit">
               📍 {shopInfo?.name || 'Campus Print Hub'}
             </span>
           )}
-          <div className="flex items-center gap-4 text-xs text-slate-400 font-semibold font-mono">
+          <div className="flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500 font-semibold font-mono">
             <span className="flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 text-slate-400" /> {shopInfo.address || 'N/A'}
+              <MapPin className="w-3.5 h-3.5" /> {shopInfo.address || 'N/A'}
             </span>
             <span className="flex items-center gap-1">
-              <Phone className="w-3.5 h-3.5 text-slate-400" /> {shopInfo.phoneNumber || shopInfo.phone || 'N/A'}
+              <Phone className="w-3.5 h-3.5" /> {shopInfo.phoneNumber || shopInfo.phone || 'N/A'}
             </span>
           </div>
         </div>
         <button
           onClick={handleSignOut}
-          className="py-1.5 px-3 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold transition-all cursor-pointer bg-white"
+          className="py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-350 text-xs font-bold transition-all cursor-pointer bg-white dark:bg-slate-900"
         >
           Sign Out
         </button>
       </div>
 
-      {/* System Health State Machine & Blockers Checklist */}
+      {/* System Health Blocker Warning Card */}
       {systemHealth && !systemHealth.systemReady && (
-        <div className="p-5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
-          <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+        <div className="p-5 bg-rose-50 dark:bg-rose-955/20 border border-rose-250 dark:border-rose-900/30 text-rose-800 dark:text-rose-300 rounded-xl flex items-start gap-3" role="alert">
+          <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
           <div>
             <h4 className="text-sm font-bold">Printing service is currently unavailable.</h4>
-            <p className="text-xs text-rose-700 mt-1 leading-normal font-semibold">
+            <p className="text-xs text-rose-700 dark:text-rose-400 mt-1 leading-normal font-semibold">
               Please try again later or contact the print administrator.
             </p>
           </div>
@@ -846,11 +838,11 @@ export default function StudentPortal({
 
       {/* Maintenance Mode Warning Card */}
       {isGlobalMaintenance && (
-        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
-          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="p-4 bg-amber-50 dark:bg-amber-955/10 border border-amber-200 dark:border-amber-900/30 text-amber-800 dark:text-amber-300 rounded-xl flex items-start gap-3" role="alert">
+          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
             <h4 className="text-sm font-bold">⚠️ Shop Offline</h4>
-            <p className="text-xs text-amber-700 mt-1 leading-normal font-medium font-bold">
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 leading-normal font-bold">
               This print shop is currently under maintenance. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
             </p>
           </div>
@@ -859,11 +851,11 @@ export default function StudentPortal({
 
       {/* B&W Maintenance Mode Warning Card */}
       {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.bwMaintenanceMode && (
-        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
-          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="p-4 bg-amber-50 dark:bg-amber-955/10 border border-amber-250 dark:border-amber-900/30 text-amber-850 dark:text-amber-300 rounded-xl flex items-start gap-3" role="alert">
+          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
             <h4 className="text-sm font-bold">⚠️ B&W Printing Offline</h4>
-            <p className="text-xs text-amber-700 mt-1 leading-normal font-medium">
+            <p className="text-xs text-amber-700 dark:text-amber-450 mt-1 leading-normal font-semibold">
               Black & White printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || '06:02 PM'}</strong>.
             </p>
           </div>
@@ -872,11 +864,11 @@ export default function StudentPortal({
 
       {/* Color Maintenance Mode Warning Card */}
       {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.colorMaintenanceMode && (
-        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-start gap-3 shadow-inner animate-fadeIn font-sans">
-          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="p-4 bg-amber-50 dark:bg-amber-955/10 border border-amber-250 dark:border-amber-900/30 text-amber-850 dark:text-amber-300 rounded-xl flex items-start gap-3" role="alert">
+          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
             <h4 className="text-sm font-bold">⚠️ Color Printing Offline</h4>
-            <p className="text-xs text-amber-700 mt-1 leading-normal font-medium">
+            <p className="text-xs text-amber-700 dark:text-amber-450 mt-1 leading-normal font-semibold">
               Color printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
             </p>
           </div>
@@ -887,36 +879,36 @@ export default function StudentPortal({
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8">
         {/* Left column: Print Upload Form */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-2xs">
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-805 bg-slate-50/50 dark:bg-slate-950/20">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-indigo-50">
-                  <Upload className="w-4.5 h-4.5 text-indigo-600" />
+                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-950/40">
+                  <Upload className="w-4.5 h-4.5 text-indigo-600 dark:text-indigo-400" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Upload to Print</h2>
-                  <p className="text-xs text-slate-400">Configure settings and send queues</p>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">Upload to Print</h2>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">Configure settings and send queues</p>
                 </div>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
               {/* User badge */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-150 dark:border-slate-800">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-8.5 h-8.5 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center font-black text-indigo-600 text-xs shadow-sm flex-shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-150 dark:border-indigo-900 flex items-center justify-center font-black text-indigo-650 dark:text-indigo-400 text-xs shadow-2xs flex-shrink-0">
                     {studentName.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1 text-left">
-                    <p className="text-xs font-bold text-slate-800 truncate leading-tight">{studentName}</p>
-                    <p className="text-[10px] text-slate-400 truncate leading-none mt-1">{studentEmail}</p>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate leading-tight">{studentName}</p>
+                    <p className="text-[10px] text-slate-450 dark:text-slate-400 truncate leading-none mt-1">{studentEmail}</p>
                   </div>
                 </div>
               </div>
 
               {/* Drag and Drop File box */}
               <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                <label className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-widest mb-1.5 font-mono">
                   Ingestion File
                 </label>
                 <div
@@ -924,12 +916,12 @@ export default function StudentPortal({
                   onDragLeave={(submitting || isUploadDisabled) ? undefined : handleDragLeave}
                   onDrop={(submitting || isUploadDisabled) ? undefined : handleDrop}
                   onClick={() => !(submitting || isUploadDisabled) && fileInputRef.current?.click()}
-                  className={`relative rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-all duration-200 ${
+                  className={`relative rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-all duration-150 ${
                     (submitting || isUploadDisabled)
-                      ? 'border-slate-100 bg-slate-50/50 cursor-not-allowed opacity-60'
+                      ? 'border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/20 cursor-not-allowed opacity-60'
                       : dragOver
-                      ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]'
-                      : 'border-slate-200 bg-slate-50/30 hover:border-indigo-300 hover:bg-indigo-50/20'
+                      ? 'border-indigo-500 bg-indigo-50/20 dark:bg-indigo-950/20'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-955/10 hover:border-slate-350 dark:hover:border-slate-700'
                   }`}
                 >
                   <input
@@ -942,33 +934,33 @@ export default function StudentPortal({
                     disabled={submitting || isUploadDisabled}
                   />
                   <div className="flex flex-col items-center justify-center gap-2">
-                    <Upload className="w-8 h-8 text-slate-300" />
+                    <Upload className="w-8 h-8 text-slate-400 dark:text-slate-500" />
                     <div>
-                      <p className="text-xs font-semibold text-slate-700">Drag files here or click to browse</p>
-                      <p className="text-[10px] text-slate-400 mt-1">PDF, DOC, DOCX, PPT, PPTX, PNG, JPG (Max 50MB)</p>
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Drag files here or click to browse</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-550 mt-1 font-mono">PDF, DOCX, PPTX, PNG, JPG (Max 50MB)</p>
                     </div>
                   </div>
                 </div>
               </div>
 
               {error && (
-                <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-xs font-semibold rounded-xl leading-relaxed">
-                  ❌ {error}
+                <div className="p-3 bg-rose-50 dark:bg-rose-955/20 border border-rose-150 dark:border-rose-900/30 text-rose-600 dark:text-rose-455 text-xs font-semibold rounded-xl leading-relaxed">
+                  {error}
                 </div>
               )}
 
               {submitting && (
-                <div className="space-y-2 animate-fadeIn p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="space-y-2 p-4 bg-slate-50 dark:bg-slate-955/40 rounded-xl border border-slate-150 dark:border-slate-800">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+                    <span className="text-slate-550 dark:text-slate-400 font-medium flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-555 dark:text-indigo-400" />
                       Uploading files...
                     </span>
-                    <span className="font-bold text-indigo-600">{uploadProgress}%</span>
+                    <span className="font-bold text-indigo-605 dark:text-indigo-400">{uploadProgress}%</span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                  <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                     <div 
-                      className="h-full rounded-full bg-indigo-600 transition-all duration-300" 
+                      className="h-full rounded-full bg-indigo-600 dark:bg-indigo-500 transition-all duration-300" 
                       style={{ width: `${uploadProgress}%` }}
                     />
                   </div>
@@ -984,27 +976,27 @@ export default function StudentPortal({
                       onClick={() => setActiveFileName(file.name)}
                       className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
                         activeFileName === file.name
-                          ? 'border-indigo-200 bg-indigo-50/20'
-                          : 'border-slate-150 bg-white hover:bg-slate-50/50'
+                          ? 'border-indigo-500 dark:border-indigo-550 bg-indigo-50/15 dark:bg-indigo-950/20 shadow-2xs'
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-850/50'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <FileText className={`w-4 h-4 flex-shrink-0 ${activeFileName === file.name ? 'text-indigo-500' : 'text-slate-400'}`} />
+                        <FileText className={`w-4 h-4 flex-shrink-0 ${activeFileName === file.name ? 'text-indigo-500' : 'text-slate-400 dark:text-slate-500'}`} />
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-slate-800 truncate">{file.name}</p>
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{file.name}</p>
+                          <p className="text-[10px] text-slate-455 dark:text-slate-550 font-mono mt-0.5">
                             {formatFileSize(file.size)} · {fileConfigs[file.name]?.pageCount || 1} pgs
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-xs font-black text-slate-700 bg-slate-100/80 px-2.5 py-1 rounded-lg border border-slate-200/40">
+                        <span className="text-xs font-black text-slate-700 dark:text-slate-300 bg-slate-105/80 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200/40 dark:border-slate-700 font-mono font-bold">
                           ₹{getFileCost(file.name)}
                         </span>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); removeFile(file.name); }}
-                          className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 border-none bg-transparent cursor-pointer"
+                          className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-650 dark:hover:text-slate-350 border-none bg-transparent cursor-pointer"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -1015,12 +1007,12 @@ export default function StudentPortal({
               )}
 
               {files.length > 0 && (
-                <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl text-left flex justify-between items-center animate-fadeIn font-sans">
+                <div className="p-4 bg-indigo-50/30 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/50 rounded-xl text-left flex justify-between items-center font-sans">
                   <div>
-                    <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-widest font-mono">Batch Total Estimate</span>
-                    <p className="text-lg font-black text-slate-800 mt-1">₹{getBatchTotal()}</p>
+                    <span className="text-[10px] font-extrabold text-indigo-555 dark:text-indigo-400 uppercase tracking-widest font-mono">Batch Total Estimate</span>
+                    <p className="text-lg font-black text-slate-800 dark:text-white mt-1">₹{getBatchTotal()}</p>
                   </div>
-                  <span className="text-[10px] font-semibold text-slate-400 font-mono">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-550 font-mono">
                     {files.length} {files.length === 1 ? 'File' : 'Files'}
                   </span>
                 </div>
@@ -1029,7 +1021,7 @@ export default function StudentPortal({
               <button
                 type="submit"
                 disabled={files.length === 0 || submitting || isUploadDisabled}
-                className="w-full py-3.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs transition-all shadow-lg shadow-indigo-500/25 cursor-pointer flex items-center justify-center gap-2 border-none"
+                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-650 dark:hover:bg-indigo-750 disabled:opacity-50 text-white font-semibold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2 border-none shadow-xs"
               >
                 {submitting ? (
                   <div className="flex items-center gap-1.5">
@@ -1060,95 +1052,61 @@ export default function StudentPortal({
             />
           ) : (
             <>
-              {/* Document Previews Card */}
-              {activeFileName && activeFile && previewUrls[activeFileName] && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 animate-fadeIn">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-[10px] font-extrabold uppercase bg-slate-100 border border-slate-200 text-slate-600 px-2 py-0.5 rounded-full tracking-wider font-mono">
-                      📄 PREVIEW CANVAS
+              {/* Document Metadata Grid Card */}
+              {activeFileName && activeFile && (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-xl shadow-2xs">
+                  <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-805 pb-3 mb-4">
+                    <span className="text-[10px] font-extrabold uppercase text-slate-450 dark:text-slate-400 tracking-wider font-mono">
+                      📄 File Specifications
                     </span>
-                    <span className="text-[10px] font-bold text-slate-400 truncate max-w-[240px]" title={activeFileName}>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 truncate max-w-[200px]" title={activeFileName}>
                       {activeFileName}
                     </span>
                   </div>
-                  
-                  <div className="relative rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center p-2 min-h-[220px]">
-                    {activeFile.type === 'application/pdf' ? (
-                      <div className="w-full relative">
-                        {/* Mobile Fallback - Iframe PDFs don't render natively on iOS/mobile browsers */}
-                        <div className="md:hidden w-full h-[280px] rounded-lg border border-slate-200 bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
-                          <div className="w-16 h-16 rounded-2xl bg-red-50/80 flex items-center justify-center text-3xl mb-3 shadow-inner animate-pulse">
-                            📄
-                          </div>
-                          <h4 className="text-sm font-bold text-slate-800 truncate max-w-[200px]">{activeFile.name}</h4>
-                          <p className="text-xs text-slate-500 mt-1 font-mono mb-4">PDF Document</p>
-                          <a 
-                            href={previewUrls[activeFileName]} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-sm active:scale-95 transition-all flex items-center gap-2"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                            Open PDF
-                          </a>
-                        </div>
-                        
-                        {/* Desktop Iframe */}
-                        <iframe
-                          src={`${previewUrls[activeFileName]}#toolbar=0&navpanes=0&scrollbar=0`}
-                          className="hidden md:block w-full h-[280px] rounded-lg border border-slate-200 bg-white"
-                          title={`PDF Preview of ${activeFileName}`}
-                        />
-                      </div>
-                    ) : activeFile.type.includes('word') || activeFile.type.includes('msword') || activeFile.name.endsWith('.doc') || activeFile.name.endsWith('.docx') || activeFile.type.includes('presentation') || activeFile.type.includes('powerpoint') || activeFile.name.endsWith('.ppt') || activeFile.name.endsWith('.pptx') ? (
-                      <div className="w-full h-[280px] rounded-lg border border-slate-200 bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
-                        <div className="w-16 h-16 rounded-2xl bg-indigo-50/80 flex items-center justify-center text-3xl mb-3 shadow-inner animate-pulse">
-                          {activeFile.name.endsWith('.ppt') || activeFile.name.endsWith('.pptx') ? '📊' : '📝'}
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-800 truncate max-w-xs">{activeFile.name}</h4>
-                        <p className="text-xs text-slate-500 mt-1 font-mono">
-                          {activeFile.name.endsWith('.ppt') || activeFile.name.endsWith('.pptx') ? 'PowerPoint Presentation' : 'Word Document'}
-                        </p>
-                      </div>
-                    ) : (
-                      <img
-                        src={previewUrls[activeFileName]}
-                        alt={`Preview of ${activeFileName}`}
-                        className="max-h-[280px] w-auto object-contain rounded-lg shadow-sm"
-                      />
-                    )}
-                  </div>
-                  
-                  <div className="mt-3 flex justify-between items-center bg-slate-50/50 px-3 py-2 rounded-xl border border-slate-100 font-mono text-[10px] text-slate-500">
-                    <span>
-                      FORMAT: {
-                        activeFile.name.endsWith('.docx') ? 'DOCX' :
-                        activeFile.name.endsWith('.doc') ? 'DOC' :
-                        activeFile.name.endsWith('.pptx') ? 'PPTX' :
-                        activeFile.name.endsWith('.ppt') ? 'PPT' :
-                        activeFile.name.endsWith('.pdf') ? 'PDF' : 'IMAGE'
-                      }
-                    </span>
-                    <span>SIZE: {formatFileSize(activeFile.size)}</span>
-                    <span>PAGES: {activeConf?.pageCount}</span>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
+                    <div className="p-3 bg-slate-50 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-850 rounded-lg">
+                      <span className="block text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono mb-1">Format</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
+                        {activeFile.name.substring(activeFile.name.lastIndexOf('.')).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-850 rounded-lg">
+                      <span className="block text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono mb-1">Size</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
+                        {formatFileSize(activeFile.size)}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-850 rounded-lg">
+                      <span className="block text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono mb-1">Pages</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
+                        {activeConf?.pageCount || 1}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 dark:bg-slate-955/20 border border-slate-150 dark:border-slate-850 rounded-lg">
+                      <span className="block text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono mb-1">Validation</span>
+                      <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-250 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400 font-mono">
+                        ✓ Ready
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Slider Config Console */}
+              {/* Print Configurations Console */}
               {activeConf && activeFileName && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 animate-fadeIn space-y-6">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                    <h3 className="text-sm font-black text-slate-800 tracking-wider font-mono">
-                      🎛️ PRINTER CHANNELS CONSOLE
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-xl shadow-2xs space-y-5">
+                  <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 tracking-widest font-mono">
+                      🎛️ PRINT SETUP CONSOLE
                     </h3>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="space-y-4 font-sans text-xs">
                     {/* Copies adjustment */}
                     <div className="flex items-center justify-between">
-                      <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Copies</span>
-                      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1">
+                      <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-500 uppercase tracking-wider font-mono">Copies</span>
+                      <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-1">
                         <button
                           type="button"
                           disabled={activeConf.copies <= 1}
@@ -1158,7 +1116,7 @@ export default function StudentPortal({
                               [activeFileName]: { ...prev[activeFileName], copies: Math.max(1, activeConf.copies - 1) }
                             }));
                           }}
-                          className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 flex items-center justify-center cursor-pointer select-none disabled:opacity-50 border-none shadow-sm"
+                          className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-850 flex items-center justify-center cursor-pointer select-none disabled:opacity-50 shadow-2xs"
                         >
                           -
                         </button>
@@ -1174,7 +1132,7 @@ export default function StudentPortal({
                               [activeFileName]: { ...prev[activeFileName], copies: val }
                             }));
                           }}
-                          className="w-10 text-center font-bold text-sm bg-transparent border-none outline-none focus:ring-0 p-0"
+                          className="w-10 text-center font-bold text-sm bg-transparent border-none outline-none focus:ring-0 p-0 text-slate-900 dark:text-white"
                         />
                         <button
                           type="button"
@@ -1185,7 +1143,7 @@ export default function StudentPortal({
                               [activeFileName]: { ...prev[activeFileName], copies: Math.min(10, activeConf.copies + 1) }
                             }));
                           }}
-                          className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 flex items-center justify-center cursor-pointer select-none disabled:opacity-50 border-none shadow-sm"
+                          className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-850 flex items-center justify-center cursor-pointer select-none disabled:opacity-50 shadow-2xs"
                         >
                           +
                         </button>
@@ -1197,8 +1155,8 @@ export default function StudentPortal({
                       <>
                         {/* Simplex / Duplex Sides */}
                         <div className="space-y-1.5">
-                          <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Printing Sides</span>
-                          <div className="grid grid-cols-2 gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1">
+                          <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-500 uppercase tracking-wider font-mono">Printing Sides</span>
+                          <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl p-1">
                             <button
                               type="button"
                               onClick={() => {
@@ -1209,8 +1167,8 @@ export default function StudentPortal({
                               }}
                               className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
                                 activeConf.sides === 'single'
-                                  ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                                  : 'bg-transparent text-slate-400 hover:text-slate-600'
+                                  ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
+                                  : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
                               }`}
                             >
                               Simplex (1-Sided)
@@ -1225,8 +1183,8 @@ export default function StudentPortal({
                               }}
                               className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
                                 activeConf.sides === 'double'
-                                  ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                                  : 'bg-transparent text-slate-400 hover:text-slate-600'
+                                  ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
+                                  : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
                               }`}
                             >
                               Duplex (2-Sided)
@@ -1236,8 +1194,8 @@ export default function StudentPortal({
 
                         {/* Pages Range Selector */}
                         <div className="space-y-1.5">
-                          <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Page Range</span>
-                          <div className="grid grid-cols-2 gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1">
+                          <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Page Range</span>
+                          <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl p-1">
                             <button
                               type="button"
                               onClick={() => {
@@ -1248,8 +1206,8 @@ export default function StudentPortal({
                               }}
                               className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
                                 activeConf.choosePagesType === 'all'
-                                  ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                                  : 'bg-transparent text-slate-400 hover:text-slate-600'
+                                  ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
+                                  : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
                               }`}
                             >
                               All Pages ({activeConf.pageCount})
@@ -1264,15 +1222,15 @@ export default function StudentPortal({
                               }}
                               className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
                                 activeConf.choosePagesType === 'custom'
-                                  ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                                  : 'bg-transparent text-slate-400 hover:text-slate-600'
+                                  ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
+                                  : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
                               }`}
                             >
                               Custom Range
                             </button>
                           </div>
                           {activeConf.choosePagesType === 'custom' && (
-                            <div className="animate-fadeIn mt-2 space-y-1">
+                            <div className="mt-2 space-y-1">
                               <input
                                 type="text"
                                 placeholder="e.g. 1-3, 5, 7-9"
@@ -1283,10 +1241,10 @@ export default function StudentPortal({
                                     [activeFileName]: { ...prev[activeFileName], customPages: e.target.value }
                                   }));
                                 }}
-                                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold"
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/50 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:focus:ring-indigo-500/40 text-slate-900 dark:text-white font-bold"
                               />
-                              <p className="text-[10px] text-slate-400 font-semibold leading-normal pl-1">
-                                Specify page numbers and/or ranges separated by commas (e.g. 1, 3-5, 8). Total document pages: {activeConf.pageCount}.
+                              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold leading-normal pl-1">
+                                Specify page numbers/ranges separated by commas. Total document pages: {activeConf.pageCount}.
                               </p>
                             </div>
                           )}
@@ -1296,8 +1254,8 @@ export default function StudentPortal({
 
                     {/* Print Type Selector */}
                     <div className="space-y-1.5">
-                      <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Print Type</span>
-                      <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
+                      <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Print Type</span>
+                      <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl p-1">
                         <button
                           type="button"
                           disabled={!!shopInfo.bwMaintenanceMode}
@@ -1310,8 +1268,8 @@ export default function StudentPortal({
                           }}
                           className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
                             activeConf.printType === 'bw'
-                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                              : 'bg-transparent text-slate-400 hover:text-slate-600'
+                              ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
+                              : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
                           } ${shopInfo.bwMaintenanceMode ? 'opacity-40 cursor-not-allowed' : ''}`}
                         >
                           Black & White
@@ -1328,24 +1286,21 @@ export default function StudentPortal({
                           }}
                           className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
                             activeConf.printType === 'color'
-                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                              : 'bg-transparent text-slate-400 hover:text-slate-600'
+                              ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
+                              : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
                           } ${shopInfo.colorMaintenanceMode ? 'opacity-40 cursor-not-allowed' : ''}`}
                         >
                           Color
                         </button>
                       </div>
-                      <p className="text-[9px] text-slate-400 font-semibold leading-normal pl-1">
-                        Select whether you want this document printed in Black & White or in full Color.
-                      </p>
                     </div>
                   </div>
 
                   {/* Costing summary */}
-                  <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 flex items-center justify-between text-left">
+                  <div className="p-4 bg-indigo-50/30 dark:bg-indigo-950/10 rounded-xl border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between text-left font-sans">
                     <div>
-                      <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-widest font-mono">Fare Estimate</span>
-                      <p className="text-lg font-black text-slate-800 mt-1">
+                      <span className="text-[10px] font-extrabold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest font-mono">Fare Estimate</span>
+                      <p className="text-lg font-black text-slate-800 dark:text-white mt-1 font-mono">
                         ₹{activeConf.copies * (
                           activeConf.sides === 'double'
                             ? Math.ceil(countPagesFromRange(activeConf.choosePagesType === 'custom' ? activeConf.customPages : '', activeConf.pageCount) / 2) * (shopInfo.duplexPrice || 3)
@@ -1353,7 +1308,7 @@ export default function StudentPortal({
                         )}
                       </p>
                     </div>
-                    <span className="text-[10px] font-semibold text-slate-400 font-mono">
+                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 font-mono">
                       {activeConf.sides === 'double'
                         ? `₹${shopInfo.duplexPrice || 3}/sheet`
                         : activeConf.printType === 'color'
@@ -1372,17 +1327,7 @@ export default function StudentPortal({
   );
 }
 
-// ─── simplified Queue Summary view component ─────────────────────
-interface QueueSummaryProps {
-  waitingCount: number;
-  waitMinutes: number;
-  currentlyPrinting: string;
-  recentJobs: PrintJob[];
-  studentActiveJobs: PrintJob[];
-  getQueueDetails: (jobId: string) => any;
-}
-
-function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recentJobs, studentActiveJobs, getQueueDetails }: QueueSummaryProps) {
+// ─── simplified Queuefunction QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recentJobs, studentActiveJobs, getQueueDetails }: QueueSummaryProps) {
   const [activeTabJobId, setActiveTabJobId] = useState<string | null>(null);
 
   // Auto select first active job to show queue details
@@ -1400,10 +1345,10 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
   const selectedJob = activeTabJobId ? studentActiveJobs.find(j => j.id === activeTabJobId) : null;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full text-left font-sans">
-      <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50">
-        <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-          <Clock className="w-4.5 h-4.5 text-indigo-500" />
+    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col h-full text-left font-sans shadow-2xs">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 font-mono uppercase tracking-wider">
+          <Clock className="w-4 h-4 text-indigo-500" />
           <span>Print Hub Activity</span>
         </h3>
       </div>
@@ -1411,13 +1356,13 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
       <div className="p-6 space-y-6">
         {/* Waiting widgets */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-150">
-            <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Current Waiting Jobs</span>
-            <p className="text-2xl font-black text-slate-800 mt-1.5">{waitingCount}</p>
+          <div className="p-4 rounded-xl bg-slate-50/50 dark:bg-slate-955/20 border border-slate-150 dark:border-slate-800">
+            <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-500 uppercase tracking-wider font-mono">Current Waiting Jobs</span>
+            <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">{waitingCount}</p>
           </div>
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-150">
-            <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Estimated Wait</span>
-            <p className="text-2xl font-black text-slate-800 mt-1.5">
+          <div className="p-4 rounded-xl bg-slate-50/50 dark:bg-slate-955/20 border border-slate-150 dark:border-slate-800">
+            <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Estimated Wait</span>
+            <p className="text-2xl font-black text-slate-800 dark:text-white mt-1 font-mono">
               {waitingCount === 0 ? '0 Min' : `${waitMinutes} Min`}
             </p>
           </div>
@@ -1425,59 +1370,59 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
 
         {/* Real Queue Visibility details */}
         {selectedJob && (selectedDetails || selectedJob.status === 'pending_approval') && (
-          <div className="p-5 rounded-xl border border-indigo-150 bg-indigo-50/20 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-indigo-100/50">
-              <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-widest font-mono">
+          <div className="p-5 rounded-xl border border-indigo-200/50 dark:border-indigo-900 bg-indigo-50/15 dark:bg-indigo-950/10 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-indigo-100/50 dark:border-indigo-900/30">
+              <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest font-mono">
                 {selectedJob.status === 'pending_approval' ? '⏳ APPROVAL TRACKER' : '🔍 LIVE QUEUE TRACKER'}
               </span>
-              <span className="text-xs font-mono font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">
+              <span className="text-xs font-mono font-bold bg-indigo-100/60 dark:bg-indigo-955/40 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded border border-indigo-200/40 dark:border-indigo-900/40">
                 Token: {selectedJob.token}
               </span>
             </div>
 
             {selectedJob.status === 'pending_approval' ? (
-              <div className="p-4 bg-amber-50/60 border border-amber-200 text-amber-850 rounded-xl space-y-2 text-xs font-medium">
-                <p className="font-bold text-amber-900">⏳ Awaiting Operator Release</p>
-                <p className="leading-relaxed">
+              <div className="p-4 bg-amber-50/10 dark:bg-amber-950/10 border border-amber-250 dark:border-amber-900/60 text-slate-700 dark:text-slate-350 rounded-xl space-y-2.5 text-xs font-medium">
+                <p className="font-bold text-amber-800 dark:text-amber-400">⏳ Awaiting Operator Release</p>
+                <p className="leading-relaxed text-[11px] text-slate-500 dark:text-slate-400">
                   Your document is currently pending shop approval. Please show the following Approval Token to the shop operator to release your print job:
                 </p>
-                <div className="p-2.5 bg-white border border-amber-200 rounded-lg text-center font-mono font-bold text-amber-700 text-sm animate-pulse">
+                <div className="p-2.5 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 rounded-lg text-center font-mono font-bold text-amber-700 dark:text-amber-400 text-sm animate-pulse">
                   {selectedJob.tokenId || 'N/A'}
                 </div>
               </div>
             ) : selectedDetails && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs font-sans">
                   <div className="space-y-1">
-                    <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Currently Printing</span>
-                    <p className="font-bold text-slate-800 truncate" title={selectedDetails.currentlyPrinting}>
+                    <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Currently Printing</span>
+                    <p className="font-bold text-slate-800 dark:text-slate-200 truncate" title={selectedDetails.currentlyPrinting}>
                       {selectedDetails.currentlyPrinting}
                     </p>
                   </div>
 
                   <div className="space-y-1">
-                    <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Queue Position</span>
-                    <p className="font-bold text-slate-800">
-                      #{selectedDetails.position} <span className="text-[10px] text-slate-450 font-normal">({selectedDetails.jobsAhead} ahead)</span>
+                    <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Queue Position</span>
+                    <p className="font-bold text-slate-800 dark:text-slate-200">
+                      #{selectedDetails.position} <span className="text-[10px] text-slate-450 dark:text-slate-555 font-normal">({selectedDetails.jobsAhead} ahead)</span>
                     </p>
                   </div>
 
                   <div className="space-y-1">
-                    <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Estimated Start</span>
-                    <p className="font-bold text-indigo-650 font-mono">
+                    <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Estimated Start</span>
+                    <p className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">
                       {selectedJob.status === 'printing' ? 'Now Printing' : selectedDetails.estimatedStart}
                     </p>
                   </div>
 
                   <div className="space-y-1">
-                    <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Estimated Completion</span>
-                    <p className="font-bold text-indigo-650 font-mono">
+                    <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Estimated Completion</span>
+                    <p className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">
                       {selectedDetails.estimatedCompletion}
                     </p>
                   </div>
                 </div>
                 
-                <div className="bg-indigo-50 border border-indigo-100/70 p-3 rounded-lg flex items-center justify-between text-xs text-indigo-750 font-semibold font-mono">
+                <div className="bg-indigo-50/30 dark:bg-indigo-950/20 border border-indigo-100/40 dark:border-indigo-900/30 p-3 rounded-lg flex items-center justify-between text-xs text-indigo-700 dark:text-indigo-400 font-semibold font-mono">
                   <span>ESTIMATED WAITING TIME:</span>
                   <span className="text-sm font-black">{selectedDetails.waitingMinutes} MINUTES</span>
                 </div>
@@ -1487,14 +1432,14 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
         )}
 
         {/* Student's recent jobs */}
-        <div className="space-y-3">
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Your Recent Print Jobs</h4>
+        <div className="space-y-3 text-left">
+          <h4 className="text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Your Recent Print Jobs</h4>
           {recentJobs.length === 0 ? (
-            <div className="p-8 text-center text-slate-350 border border-dashed border-slate-200 rounded-xl bg-slate-50/30 text-xs">
+            <div className="p-8 text-center text-slate-400 dark:text-slate-500 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/20 dark:bg-slate-950/10 text-xs font-mono">
               No print jobs submitted from your account yet.
             </div>
           ) : (
-            <div className="space-y-2.5 max-h-80 overflow-y-auto">
+            <div className="space-y-2 max-h-80 overflow-y-auto">
               {recentJobs.map(job => {
                 const isActive = job.status === 'pending_approval' || job.status === 'queued' || job.status === 'printing';
                 const statusLabels: { [key: string]: string } = {
@@ -1512,30 +1457,30 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
                     key={job.id} 
                     onClick={() => isActive && setActiveTabJobId(job.id)}
                     className={`p-3 border rounded-xl flex items-center justify-between text-xs transition-all ${
-                      isActive ? 'cursor-pointer hover:border-indigo-300' : ''
+                      isActive ? 'cursor-pointer' : ''
                     } ${
                       activeTabJobId === job.id
-                        ? 'border-indigo-400 bg-indigo-50/10 shadow-sm'
-                        : 'bg-slate-50/50 border-slate-150 hover:bg-slate-50'
+                        ? 'border-indigo-500 dark:border-indigo-550 bg-indigo-50/10 dark:bg-indigo-950/20 shadow-2xs'
+                        : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850/50'
                     }`}
                   >
                     <div className="min-w-0 flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="font-mono font-bold text-indigo-600">{job.token}</span>
+                        <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">{job.token}</span>
                         {activeTabJobId === job.id && (
-                          <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1 rounded font-bold font-mono">TRACKING</span>
+                          <span className="text-[9px] bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-bold font-mono border border-indigo-200/30 dark:border-indigo-800/40">TRACKING</span>
                         )}
                       </div>
-                      <p className="font-semibold text-slate-800 truncate" title={job.fileName}>{job.fileName}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{job.pageCount} pgs · {timeAgo(job.createdAt)}</p>
+                      <p className="font-bold text-slate-800 dark:text-slate-200 truncate" title={job.fileName}>{job.fileName}</p>
+                      <p className="text-[10px] text-slate-455 dark:text-slate-500 font-mono mt-0.5">{job.pageCount} pgs · {timeAgo(job.createdAt)}</p>
                     </div>
                     
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                      job.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                      job.status === 'printing' ? 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse' :
-                      job.status === 'queued' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                      job.status === 'pending_approval' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                      'bg-red-50 text-red-700 border-red-200'
+                    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider font-mono ${
+                      job.status === 'completed' ? 'bg-emerald-50/20 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-900/40' :
+                      job.status === 'printing' ? 'bg-indigo-50/20 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 border-indigo-200/50 dark:border-indigo-900/40 animate-pulse' :
+                      job.status === 'queued' ? 'bg-amber-50/20 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200/50 dark:border-amber-900/40' :
+                      job.status === 'pending_approval' ? 'bg-orange-50/20 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border-orange-200/50 dark:border-orange-900/40' :
+                      'bg-rose-50/20 dark:bg-rose-955/30 text-rose-700 dark:text-rose-455 border-rose-200/50 dark:border-rose-900/40'
                     }`}>
                       {statusLabels[job.status] || job.status}
                     </span>

@@ -1,8 +1,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
+:root {
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --border-card: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --bg-input: #ffffff;
+  --border-input: #e2e8f0;
+  --bg-subtle: #f8fafc;
+  --border-subtle: #f1f5f9;
+  --focus-ring: rgba(79, 70, 229, 0.15);
+}
+
+.dark {
+  --bg-app: #0b0f19;
+  --bg-card: #131926;
+  --border-card: #1f293d;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --bg-input: #0b0f19;
+  --border-input: #1f293d;
+  --bg-subtle: #192033;
+  --border-subtle: #1f293d;
+  --focus-ring: rgba(99, 102, 241, 0.25);
+}
+
 * {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  box-sizing: border-box;
 }
 
 code, pre, .font-mono {
@@ -10,10 +37,36 @@ code, pre, .font-mono {
 }
 
 body {
-  background-color: #f8fafc;
-  color: #0f172a;
+  background-color: var(--bg-app);
+  color: var(--text-main);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
+
+/* Productivity Custom Classes */
+.portal-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 0.75rem; /* 12px */
+}
+
+.portal-input {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-input);
+  color: var(--text-main);
+}
+
+.portal-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.portal-subtle {
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+}
+
 
 /* ==========================================
    BUTTON MICRO-INTERACTIONS & MOTION SYSTEM
