@@ -13,7 +13,9 @@ import {
   ArrowRight,
   LogOut,
   MapPin,
-  Phone
+  Phone,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 import { PrintJob } from '../types';
@@ -141,6 +143,19 @@ export default function StudentPortal({
   const [success, setSuccess] = useState<{ jobs: { token: string; fileName: string; tokenId?: string }[] } | null>(null);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [showShopDropdown, setShowShopDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowShopDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const getFileCost = (fileName: string): number => {
     const conf = fileConfigs[fileName];
@@ -795,15 +810,38 @@ export default function StudentPortal({
           {shops.length > 1 ? (
             <div className="flex items-center gap-2">
               <span className="text-xs font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono">Shop:</span>
-              <select
-                value={selectedShopId}
-                onChange={(e) => onSelectShop(e.target.value)}
-                className="py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              >
-                {shops.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowShopDropdown(!showShopDropdown)}
+                  className="flex items-center justify-between gap-1.5 py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-350 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                >
+                  <span>{shops.find(s => s.id === selectedShopId)?.name || 'Select Shop'}</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+                </button>
+                {showShopDropdown && (
+                  <div className="absolute left-0 mt-1.5 w-56 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-md py-1 z-50 animate-fadeIn">
+                    {shops.map(s => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectShop(s.id);
+                          setShowShopDropdown(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-xs font-semibold transition-colors border-none cursor-pointer flex items-center justify-between ${
+                          s.id === selectedShopId 
+                            ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400' 
+                            : 'text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-900'
+                        }`}
+                      >
+                        <span>{s.name}</span>
+                        {s.id === selectedShopId && <Check className="w-3.5 h-3.5 text-indigo-500" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-55/40 dark:bg-indigo-950/30 border border-indigo-150 dark:border-indigo-900 text-indigo-700 dark:text-indigo-300 w-fit">
