@@ -700,7 +700,11 @@ export default function StudentPortal({
             </div>
           </div>
         )}
-      <  if (success) {
+      </div>
+    );
+  }
+
+  if (success) {
     return (
       <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn font-sans text-left">
         <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
@@ -1327,7 +1331,17 @@ export default function StudentPortal({
   );
 }
 
-// ─── simplified Queuefunction QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recentJobs, studentActiveJobs, getQueueDetails }: QueueSummaryProps) {
+// ─── simplified Queue Summary view component ─────────────────────
+interface QueueSummaryProps {
+  waitingCount: number;
+  waitMinutes: number;
+  currentlyPrinting: string;
+  recentJobs: PrintJob[];
+  studentActiveJobs: PrintJob[];
+  getQueueDetails: (jobId: string) => any;
+}
+
+function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recentJobs, studentActiveJobs, getQueueDetails }: QueueSummaryProps) {
   const [activeTabJobId, setActiveTabJobId] = useState<string | null>(null);
 
   // Auto select first active job to show queue details
