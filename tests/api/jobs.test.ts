@@ -1,8 +1,9 @@
-import { describe, test, expect, beforeEach, afterAll, beforeAll } from 'vitest';
+import { describe, test, expect, beforeEach, afterAll, beforeAll, vi } from 'vitest';
 import request from 'supertest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import { app } from '../../server/index.js';
 import { readDb, writeDb } from '../../server/db.js';
 
@@ -214,6 +215,95 @@ describe('Jobs API Supertest Coverage', () => {
       // Assert upload cleanup
       const uploadedFiles = fs.readdirSync(UPLOADS_TEST_DIR);
       expect(uploadedFiles.length).toBe(0);
+    });
+
+    test('should reject request using fileFilter before saving to disk when extension/mime is invalid', async () => {
+      const badBuffer = Buffer.from('%PDF-1.4\nmock content');
+      const res = await request(app)
+        .post('/api/jobs')
+        .field('studentName', 'Basav')
+        .field('shopId', 'alliance_print')
+        .attach('files', badBuffer, 'test.txt');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Only PDF, images, Word (.doc/.docx), and PowerPoint (.ppt/.pptx) are supported.');
+
+      // Assert no files are written to the uploads directory
+      const uploadedFiles = fs.readdirSync(UPLOADS_TEST_DIR);
+      expect(uploadedFiles.length).toBe(0);
+    });
+
+    test('should generate secure tokens in the format PRNT-XXXXXXXX and prevent collisions', async () => {
+      const configs = JSON.stringify({
+        'homework.pdf': { pageCount: 1, printType: 'bw', copies: 2, sides: 'single' }
+      });
+      const res = await request(app)
+        .post('/api/jobs')
+        .field('studentName', 'Basav')
+        .field('studentEmail', 'basav@gmail.com')
+        .field('shopId', 'alliance_print')
+        .field('configs', configs)
+        .attach('files', mockPdfBuffer, 'homework.pdf');
+      
+      expect(res.status).toBe(201);
+      const token = res.body[0].token;
+      expect(token).toMatch(/^PRNT-[0-9A-F]{8}$/);
+    });
+
+    test('should retry token generation on collision', async () => {
+      // 1. Setup a job in the database with a known token
+      const db = readDb();
+      db.jobs.push({
+        id: 'job-collision-test',
+        token: 'PRNT-11223344',
+        fileName: 'existing.pdf',
+        fileSize: 100,
+        pageCount: 1,
+        copies: 1,
+        printMode: 'mono',
+        sides: 'single',
+        status: 'pending_approval',
+        createdAt: new Date().toISOString(),
+        shopId: 'alliance_print',
+        studentName: 'Test Student',
+        studentEmail: 'test@student.com'
+      });
+      writeDb(db);
+
+      // 2. Spy on crypto.randomBytes to return 11223344 on first call, and 55667788 on second call
+      let callCount = 0;
+      const originalRandomBytes = crypto.randomBytes;
+      const spy = vi.spyOn(crypto, 'randomBytes').mockImplementation(((size: number) => {
+        if (size === 4) {
+          callCount++;
+          if (callCount === 1) {
+            return Buffer.from('11223344', 'hex');
+          }
+          return Buffer.from('55667788', 'hex');
+        }
+        return originalRandomBytes(size);
+      }) as any);
+
+      // 3. Post a new job
+      const configs = JSON.stringify({
+        'homework.pdf': { pageCount: 1, printType: 'bw', copies: 1, sides: 'single' }
+      });
+      const res = await request(app)
+        .post('/api/jobs')
+        .field('studentName', 'Basav')
+        .field('studentEmail', 'basav@gmail.com')
+        .field('shopId', 'alliance_print')
+        .field('configs', configs)
+        .attach('files', mockPdfBuffer, 'homework.pdf');
+
+      expect(res.status).toBe(201);
+      const token = res.body[0].token;
+      // Should have generated PRNT-55667788 because PRNT-11223344 was a collision!
+      expect(token).toBe('PRNT-55667788');
+      expect(callCount).toBe(2);
+
+      // Restore
+      spy.mockRestore();
     });
   });
 

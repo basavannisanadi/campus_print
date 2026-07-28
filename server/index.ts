@@ -3,6 +3,7 @@ dotenv.config();
 
 import express from 'express';
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import multer from 'multer';
 import cors from 'cors';
 import path from 'path';
@@ -11,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { PDFDocument } from 'pdf-lib';
 import { readDb as readDbRaw, writeDb as writeDbRaw, DbJob, Agent } from './db.js';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 
 const agentLastSeenMemory = new Map<string, string>();
 const shopLastHeartbeatMemory = new Map<string, string>();
@@ -186,6 +188,10 @@ interface AdminSession {
 const activeAdminSessions = new Map<string, AdminSession>();
 const ADMIN_SESSION_TIMEOUT_MS = 30000; // 30s timeout for unexpected disconnects
 
+// In-memory active owner sessions mapping token -> expiresAt (epoch timestamp in ms)
+const activeOwnerSessions = new Map<string, number>();
+const OWNER_SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
 function signShopId(shopId: string): string {
   const hmac = crypto.createHmac('sha256', ADMIN_API_KEY);
   hmac.update(shopId);
@@ -225,8 +231,19 @@ const requireAdmin = (req: express.Request, res: express.Response, next: express
   }
   const token = auth.replace('Bearer ', '');
   
-  if (token === ADMIN_API_KEY || token === AGENT_TOKEN) {
-    // Owner or Print Agent has full access
+  // Verify owner session token
+  if (activeOwnerSessions.has(token)) {
+    const expiresAt = activeOwnerSessions.get(token)!;
+    if (Date.now() < expiresAt) {
+      return next();
+    } else {
+      activeOwnerSessions.delete(token); // Cleanup expired session
+      return res.status(401).json({ error: 'Unauthorized: Owner session expired.' });
+    }
+  }
+
+  if (token === AGENT_TOKEN) {
+    // Print Agent has full access
     return next();
   }
 
@@ -272,6 +289,7 @@ const requireAdmin = (req: express.Request, res: express.Response, next: express
         }
       }
 
+      (req as any).db = db;
       (req as any).tokenShopId = tokenShopId;
       return next();
     }
@@ -331,26 +349,34 @@ setInterval(() => {
 }, 10000);
 
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(o => o && o !== '*') 
   : [];
 
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, same-origin)
     if (!origin) return callback(null, true);
-    // Allow localhost, 127.0.0.1, and trycloudflare.com domains
-    if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('trycloudflare.com')) {
+    
+    // Allow localhost and 127.0.0.1 (any port) for development
+    const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    if (isLocalhost) {
       return callback(null, true);
     }
-    // Allow configured origins
-    if (ALLOWED_ORIGINS.includes('*') || ALLOWED_ORIGINS.includes(origin)) {
+
+    // Allow configured production origins
+    if (ALLOWED_ORIGINS.includes(origin)) {
       return callback(null, true);
     }
-    // Allow any vercel deployment
-    if (origin.endsWith('.vercel.app')) {
-      return callback(null, true);
+
+    callback(null, false);
+  }
+}));
+app.use(compression({
+  filter: (req, res) => {
+    if (res.getHeader('Content-Type') === 'text/event-stream' || req.headers.accept === 'text/event-stream') {
+      return false;
     }
-    callback(new Error('Not allowed by CORS'));
+    return compression.filter(req, res);
   }
 }));
 app.use(express.json());
@@ -370,12 +396,18 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    const auth = req.headers.authorization;
-    if (auth && auth.includes('Bearer token_')) return true;
     const ip = req.ip || req.socket.remoteAddress || '';
     if (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1')) return true;
     return false;
   }
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: process.env.NODE_ENV === 'test' ? 100 : 5,
+  message: { error: 'Too many login attempts. Please try again after a minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 if (process.env.NODE_ENV !== 'test') {
@@ -388,16 +420,18 @@ app.post('/api/admin/verify', requireAdmin, (req: express.Request, res: express.
 });
 
 // POST /api/auth/login - authenticate owner and shop admins
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', loginLimiter, (req, res) => {
   const { shopId, username, password } = req.body;
 
   // 1. Owner Login check
   if (username === 'owner' && password === ADMIN_API_KEY) {
+    const token = `owner_session_${crypto.randomBytes(24).toString('hex')}`;
+    activeOwnerSessions.set(token, Date.now() + OWNER_SESSION_TIMEOUT_MS);
     return res.json({
       role: 'owner',
       shopId: '',
       username: 'owner',
-      token: ADMIN_API_KEY
+      token
     });
   }
 
@@ -426,9 +460,38 @@ app.post('/api/auth/login', (req, res) => {
     }
   }
 
-  // Hash password using SHA-256 to match database
-  const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-  if (username === shop.adminUsername && passwordHash === shop.adminPasswordHash) {
+  let isAuthenticated = false;
+  let needsUpgrade = false;
+
+  const storedHash = shop.adminPasswordHash;
+  const isBcrypt = storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$');
+
+  if (isBcrypt) {
+    isAuthenticated = bcrypt.compareSync(password, storedHash);
+  } else {
+    // Legacy SHA-256 check
+    const legacyPasswordHash = crypto.createHash('sha256').update(password).digest('hex');
+    if (legacyPasswordHash === storedHash) {
+      isAuthenticated = true;
+      needsUpgrade = true;
+    }
+  }
+
+  if (username === shop.adminUsername && isAuthenticated) {
+    if (needsUpgrade) {
+      // Upgrade the hash to bcrypt in database
+      const newHash = bcrypt.hashSync(password, 10);
+      const dbInstance = readDb();
+      const dbShop = dbInstance.shops.find(s => s.id === shop.id);
+      if (dbShop) {
+        dbShop.adminPasswordHash = newHash;
+        writeDb(dbInstance);
+        console.log(`[AUTH] Upgraded password hash to bcrypt for shop: ${shop.id}`);
+      }
+      // Update the local variable representation for this session context
+      shop.adminPasswordHash = newHash;
+    }
+
     const token = signShopId(shop.id);
     // Track active admin session in memory
     activeAdminSessions.set(shop.id, {
@@ -454,10 +517,15 @@ app.post('/api/auth/logout', (req, res) => {
   const authHeader = req.headers.authorization;
   const token = authHeader?.replace('Bearer ', '');
 
+  const isOwner = token ? activeOwnerSessions.has(token) : false;
+  if (token && isOwner) {
+    activeOwnerSessions.delete(token);
+  }
+
   if (shopId) {
     if (activeAdminSessions.has(shopId)) {
       const session = activeAdminSessions.get(shopId);
-      if (!session || session.token === token || token === ADMIN_API_KEY) {
+      if (!session || session.token === token || isOwner) {
         activeAdminSessions.delete(shopId);
       }
     }
@@ -499,7 +567,7 @@ app.post('/api/auth/admin-ping', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Shop ID is required' });
   }
 
-  if (token === ADMIN_API_KEY) {
+  if (token && activeOwnerSessions.has(token)) {
     return res.json({ active: true });
   }
 
@@ -516,7 +584,7 @@ app.post('/api/auth/admin-ping', requireAdmin, (req, res) => {
 app.get('/api/owner/dashboard', requireAdmin, (req, res) => {
   const auth = req.headers.authorization;
   const token = auth?.replace('Bearer ', '');
-  if (token !== ADMIN_API_KEY) {
+  if (!token || !activeOwnerSessions.has(token)) {
     return res.status(403).json({ error: 'Forbidden: Owner only access.' });
   }
 
@@ -774,15 +842,51 @@ app.get('/CampusPrintInstaller.exe', serveInstaller);
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const unique = Date.now() + '-' + crypto.randomBytes(8).toString('hex');
     cb(null, unique + path.extname(file.originalname));
   }
 });
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({ 
+  storage, 
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mime = file.mimetype.toLowerCase();
+
+    const allowedExts = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.ppt', '.pptx'];
+    const allowedMimes = [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'image/pjpeg',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    ];
+
+    if (!allowedExts.includes(ext) || !allowedMimes.includes(mime)) {
+      return cb(new Error(`Invalid file type for "${file.originalname}". Only PDF, images, Word (.doc/.docx), and PowerPoint (.ppt/.pptx) are supported.`));
+    }
+
+    cb(null, true);
+  }
+});
 
 // Generate print token
-function genToken(): string {
-  return 'PRNT-' + String(Math.floor(100 + Math.random() * 900));
+function genToken(dbJobs: DbJob[]): string {
+  const existingTokens = new Set(dbJobs.map(j => j.token).filter(Boolean));
+  let attempts = 0;
+  while (attempts < 1000) {
+    const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
+    const token = `PRNT-${hex}`;
+    if (!existingTokens.has(token)) {
+      return token;
+    }
+    attempts++;
+  }
+  return `PRNT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 }
 
 // Generate unique approval token in CP-XXXX format
@@ -970,7 +1074,7 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
 
 // GET /api/printer/settings - fetch current printer settings and status
 app.get('/api/printer/settings', requireAdmin, (req, res) => {
-  const db = readDb();
+  const db = (req as any).db || readDb();
   const shopId = (req.query.shopId as string) || 'alliance_print';
   const resolved = getResolvedPrinterSettings(db, shopId);
   res.json(resolved);
@@ -1528,7 +1632,7 @@ app.post('/api/agent/register', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Missing agentId or shopId' });
   }
 
-  const db = readDb();
+  const db = (req as any).db || readDb();
   if (!db.agents) {
     db.agents = [];
   }
@@ -1633,7 +1737,7 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
   agentLastSeenMemory.set(agentId, now);
   shopLastHeartbeatMemory.set(shopId, now);
 
-  const db = readDb();
+  const db = (req as any).db || readDb();
   if (!db.agents) {
     db.agents = [];
   }
@@ -1892,7 +1996,7 @@ app.get('/api/jobs', (req, res) => {
   const safeJobs = jobsList.slice().reverse().map(j => ({
     id: j.id,
     token: j.token,
-    fileName: j.fileName,
+    fileName: 'Document' + (path.extname(j.fileName) || '.pdf'),
     fileSize: j.fileSize,
     pageCount: j.pageCount,
     copies: j.copies,
@@ -1908,7 +2012,14 @@ app.get('/api/jobs', (req, res) => {
   res.json(safeJobs);
 });
 
-app.post('/api/jobs', uploadLimiter, upload.array('files', 10), async (req, res) => {
+app.post('/api/jobs', uploadLimiter, (req, res, next) => {
+  upload.array('files', 10)(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const { studentName, studentEmail, configs, scheduledFor, shopId } = req.body;
     const targetShopId = shopId || 'alliance_print';
@@ -2129,7 +2240,7 @@ app.post('/api/jobs', uploadLimiter, upload.array('files', 10), async (req, res)
       const { file, pageCount, copiesNum, printType, printMode, sides, pageRange } = parsed;
       const job: DbJob = {
         id: 'job-' + Date.now() + '-' + Math.round(Math.random() * 1e5),
-        token: genToken(),
+        token: genToken(db.jobs),
         fileName: file.originalname,
         fileSize: file.size,
         pageCount,
@@ -2267,7 +2378,7 @@ app.get('/api/jobs/token/:tokenId', requireAdmin, (req, res) => {
 
 // POST /api/jobs/:id/status - update job status (used by print client)
 app.post('/api/jobs/:id/status', requireAdmin, (req, res) => {
-  const db = readDb();
+  const db = (req as any).db || readDb();
   const idx = db.jobs.findIndex(j => j.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Job not found' });
 
@@ -2467,7 +2578,7 @@ app.get('/api/admin/jobs/:id', requireAdmin, (req, res) => {
 // GET /api/admin/stats - get administrative dashboard statistics
 app.get('/api/admin/stats', requireAdmin, (req, res) => {
   const { shopId } = req.query;
-  const db = readDb();
+  const db = (req as any).db || readDb();
   let revenue = 0;
   let completedJobs = 0;
   let failedJobs = 0;
@@ -2562,14 +2673,27 @@ app.post('/api/reset', requireAdmin, (req, res) => {
 
 const distPath = path.resolve(__dirname, '../dist');
 
-// Serve static frontend files from Vite build output
-app.use(express.static(distPath));
+app.use(express.static(distPath, {
+  maxAge: '1y',
+  setHeaders: (res, filePath) => {
+    const isIndexHtml = path.basename(filePath) === 'index.html';
+    const isAsset = filePath.includes('/assets/') || filePath.includes('\\assets\\');
+    if (isIndexHtml) {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    } else if (isAsset) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    }
+  }
+}));
 
 // Fallback for single-page app (SPA) client-side routes (e.g. /admin, /download)
 app.get('*', (req: any, res: any, next: any) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
     return next();
   }
+  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
   res.sendFile(path.join(distPath, 'index.html'));
 });
 

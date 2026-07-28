@@ -599,101 +599,109 @@ export default function AdminPortal({
     try {
       const token = sessionStorage.getItem('adminToken') || '';
       
-      const shopRes = await fetch(getApiUrl(`/api/shops/${activeShopId}`));
-      if (shopRes.ok) {
-        const shopData = await shopRes.json();
-        setAvailablePrinters(shopData.printers || []);
-        setSelectedPrinter(shopData.activePrinterId || '');
-      }
-
-      const mappingRes = await fetch(getApiUrl(`/api/printers/mapping?shopId=${activeShopId}`), {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const shopPromise = fetch(getApiUrl(`/api/shops/${activeShopId}`)).then(async (shopRes) => {
+        if (shopRes.ok) {
+          const shopData = await shopRes.json();
+          setAvailablePrinters(shopData.printers || []);
+          setSelectedPrinter(shopData.activePrinterId || '');
+        }
       });
-      if (mappingRes.ok) {
-        const mapping = await mappingRes.json();
-        const nextBwId = mapping.bwPrinterId || '';
-        const nextColorId = mapping.colorPrinterId || '';
-        
-        setBaseBwPrinterId(prevBase => {
-          if (bwPrinterId === prevBase) {
-            setBwPrinterId(nextBwId);
-          }
-          return nextBwId;
-        });
-        setBwPrinterName(mapping.bwPrinterName || '');
-        
-        setBaseColorPrinterId(prevBase => {
-          if (colorPrinterId === prevBase) {
-            setColorPrinterId(nextColorId);
-          }
-          return nextColorId;
-        });
-        setColorPrinterName(mapping.colorPrinterName || '');
-      }
 
-      // Also retrieve live status settings to sync B&W/Color status cards
-      const settingsRes = await fetch(getApiUrl(`/api/printer/settings?shopId=${activeShopId}`), {
+      const mappingPromise = fetch(getApiUrl(`/api/printers/mapping?shopId=${activeShopId}`), {
         headers: { 'Authorization': `Bearer ${token}` }
+      }).then(async (mappingRes) => {
+        if (mappingRes.ok) {
+          const mapping = await mappingRes.json();
+          const nextBwId = mapping.bwPrinterId || '';
+          const nextColorId = mapping.colorPrinterId || '';
+          
+          setBaseBwPrinterId(prevBase => {
+            if (bwPrinterId === prevBase) {
+              setBwPrinterId(nextBwId);
+            }
+            return nextBwId;
+          });
+          setBwPrinterName(mapping.bwPrinterName || '');
+          
+          setBaseColorPrinterId(prevBase => {
+            if (colorPrinterId === prevBase) {
+              setColorPrinterId(nextColorId);
+            }
+            return nextColorId;
+          });
+          setColorPrinterName(mapping.colorPrinterName || '');
+        }
       });
-      if (settingsRes.ok) {
-        const settings = await settingsRes.json();
-        if (settings.bw) {
-          const nextBwM = settings.bw.underMaintenance || false;
-          setBaseBwMaintenance(prevBase => {
-            if (bwMaintenance === prevBase) {
-              setBwMaintenance(nextBwM);
-            }
-            return nextBwM;
-          });
-          setBwStatusMode(settings.bw.statusMode || 'auto');
-          setBwExpectedReturnTime(settings.bw.expectedReturnTime || '06:02 PM');
-          setBwStatus(settings.bw.status || 'offline');
-        }
-        if (settings.color) {
-          const nextColorM = settings.color.underMaintenance || false;
-          setBaseColorMaintenance(prevBase => {
-            if (colorMaintenance === prevBase) {
-              setColorMaintenance(nextColorM);
-            }
-            return nextColorM;
-          });
-          setColorStatusMode(settings.color.statusMode || 'auto');
-          setColorExpectedReturnTime(settings.color.expectedReturnTime || '06:02 PM');
-          setColorStatus(settings.color.status || 'offline');
-        }
-        if (settings.operationalState) {
-          setOperationalState(settings.operationalState);
-        }
-        if (settings.agentInstalled !== undefined) {
-          setAgentInstalled(settings.agentInstalled);
-        }
-        if (settings.agentDaemonVersion) {
-          setAgentVersionState(settings.agentDaemonVersion);
-        }
-        if (settings.latestAgentVersion) {
-          setLatestAgentVersion(settings.latestAgentVersion);
-        }
-        if (settings.agentOnlineStatus) {
-          setAgentOnlineStatusState(settings.agentOnlineStatus);
-        }
-        if (settings.startupProgress) {
-          setStartupProgress(settings.startupProgress);
-          const hasStarted = settings.startupProgress.some((s: any) => s.status !== 'waiting');
-          if (hasStarted) {
-            setWaitingForCheckin(false);
-            setActiveStartupId('');
+
+      const settingsPromise = fetch(getApiUrl(`/api/printer/settings?shopId=${activeShopId}`), {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(async (settingsRes) => {
+        if (settingsRes.ok) {
+          const settings = await settingsRes.json();
+          if (settings.bw) {
+            const nextBwM = settings.bw.underMaintenance || false;
+            setBaseBwMaintenance(prevBase => {
+              if (bwMaintenance === prevBase) {
+                setBwMaintenance(nextBwM);
+              }
+              return nextBwM;
+            });
+            setBwStatusMode(settings.bw.statusMode || 'auto');
+            setBwExpectedReturnTime(settings.bw.expectedReturnTime || '06:02 PM');
+            setBwStatus(settings.bw.status || 'offline');
           }
+          if (settings.color) {
+            const nextColorM = settings.color.underMaintenance || false;
+            setBaseColorMaintenance(prevBase => {
+              if (colorMaintenance === prevBase) {
+                setColorMaintenance(nextColorM);
+              }
+              return nextColorM;
+            });
+            setColorStatusMode(settings.color.statusMode || 'auto');
+            setColorExpectedReturnTime(settings.color.expectedReturnTime || '06:02 PM');
+            setColorStatus(settings.color.status || 'offline');
+          }
+          if (settings.operationalState) {
+            setOperationalState(settings.operationalState);
+          }
+          if (settings.agentInstalled !== undefined) {
+            setAgentInstalled(settings.agentInstalled);
+          }
+          if (settings.agentDaemonVersion) {
+            setAgentVersionState(settings.agentDaemonVersion);
+          }
+          if (settings.latestAgentVersion) {
+            setLatestAgentVersion(settings.latestAgentVersion);
+          }
+          if (settings.agentOnlineStatus) {
+            setAgentOnlineStatusState(settings.agentOnlineStatus);
+          }
+          if (settings.startupProgress) {
+            setStartupProgress(settings.startupProgress);
+            const hasStarted = settings.startupProgress.some((s: any) => s.status !== 'waiting');
+            if (hasStarted) {
+              setWaitingForCheckin(false);
+              setActiveStartupId('');
+            }
+          }
+          if (settings.connectionError !== undefined) {
+            setConnectionError(settings.connectionError);
+          }
+          setActivePrinterName(settings.selectedPrinter || '');
+          setPrintersCount(settings.printersCount || 0);
+          setAgentUptime(settings.uptime || 0);
+          setAgentWindowsVersion(settings.windowsVersion || '');
+          setLastHeartbeatTime(settings.lastHeartbeatTime || '');
+          setCurrentJobToken(settings.currentJobToken || '');
         }
-        if (settings.connectionError !== undefined) {
-          setConnectionError(settings.connectionError);
-        }
-        setActivePrinterName(settings.selectedPrinter || '');
-        setPrintersCount(settings.printersCount || 0);
-        setAgentUptime(settings.uptime || 0);
-        setAgentWindowsVersion(settings.windowsVersion || '');
-        setLastHeartbeatTime(settings.lastHeartbeatTime || '');
-        setCurrentJobToken(settings.currentJobToken || '');
-      }
+      });
+
+      await Promise.all([
+        shopPromise.catch(err => console.error('Failed to fetch shop details:', err)),
+        mappingPromise.catch(err => console.error('Failed to fetch printer mapping:', err)),
+        settingsPromise.catch(err => console.error('Failed to fetch printer settings:', err))
+      ]);
     } catch (err) {
       console.error('Failed to fetch printer configurations:', err);
     }

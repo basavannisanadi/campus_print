@@ -10,6 +10,10 @@ const DB_PATH = process.env.NODE_ENV === 'test'
   : path.resolve(__dirname, './data/db.json');
 const DATA_DIR = path.dirname(DB_PATH);
 
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
 export interface TimelineEntry {
   stage: string;
   at: string;
@@ -219,12 +223,7 @@ const DEFAULT_PRINTER_SETTINGS: PrinterSettings = {
   adminOverrideStatus: 'none'
 };
 
-function ensureDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
 export function readDb(): Db {
-  ensureDir();
   if (!fs.existsSync(DB_PATH)) return { jobs: [], shops: DEFAULT_SHOPS, printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [] };
   try {
     const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
@@ -292,7 +291,6 @@ export function readDb(): Db {
 }
 
 export function writeDb(db: Db): void {
-  ensureDir();
   const tempPath = DB_PATH + '.tmp';
   try {
     fs.writeFileSync(tempPath, JSON.stringify(db, null, 2));

@@ -120,7 +120,6 @@ export default function App() {
           setSystemHealth(settings.systemHealth);
         }
       }
-      await fetchShops();
     } catch (err) {
       console.error('Failed to fetch printer settings:', err);
     }
@@ -130,6 +129,10 @@ export default function App() {
     setSelectedShopId(shopId);
     localStorage.setItem('selectedShopId', shopId);
   };
+
+  useEffect(() => {
+    fetchShops();
+  }, []);
 
   useEffect(() => {
     fetchJobs();

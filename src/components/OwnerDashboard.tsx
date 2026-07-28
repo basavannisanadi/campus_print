@@ -63,6 +63,15 @@ export default function OwnerDashboard({ navigate }: Props) {
   };
 
   const handleSignOut = () => {
+    const token = sessionStorage.getItem('adminToken');
+    if (token) {
+      fetch(getApiUrl('/api/auth/logout'), {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      }).catch(err => console.error('Failed to logout on server:', err));
+    }
     sessionStorage.removeItem('adminToken');
     sessionStorage.removeItem('adminRole');
     sessionStorage.removeItem('username');
