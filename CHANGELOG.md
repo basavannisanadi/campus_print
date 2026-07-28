@@ -2,6 +2,17 @@
 
 All notable changes to the Campus Print project will be documented in this file.
 
+## [1.0.0-rc2] - 2026-07-28
+
+### Added
+- **Global Dark Theme Support:** Integrated a theme switcher into the portal header with custom slate/gray styling and `localStorage` state persistence.
+- **File Specifications Grid:** Replaced visual document preview thumbnails with a high-density metadata grid showing file size, format, page count, and validation status.
+
+### Changed
+- **UX/UI Redesign (Phase 9):** Replaced visual bento grid layouts and glassmorphism styling with a flat, high-contrast, linear two-column layout (Progressive Setup on Left, Queue Activity & History on Right).
+- **Settings configuration panel:** Refactored copies selector to use a numeric stepper with button clamping at boundary values (1 to 10 copies).
+- **Request Pipeline Optimization (Phase 4):** Implemented request-scoped database caching middleware to eliminate redundant `readDb()` file I/O operations on polled route handlers (`/api/printer/settings`, `/api/admin/stats`, etc.).
+
 ## [1.0.0-rc1] - 2026-06-25
 
 ### Added
