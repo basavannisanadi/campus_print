@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Printer, 
   Trash2, 
@@ -123,6 +123,7 @@ export default function AdminPortal({
   systemHealth
 }: Props) {
   const activeShopId = selectedShopId;
+  const isShopAdmin = sessionStorage.getItem('role') === 'shop_admin';
   const qrUrl = `${window.location.origin}/?shopId=${activeShopId}`;
 
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
@@ -457,27 +458,119 @@ export default function AdminPortal({
 
   // Token Search & Approval States
   const [searchTokenQuery, setSearchTokenQuery] = useState('');
-  const [searchResultJob, setSearchResultJob] = useState<PrintJob | null>(null);
+  const [searchResultOrder, setSearchResultOrder] = useState<any | null>(null);
   const [searchError, setSearchError] = useState('');
   const [isSearchingToken, setIsSearchingToken] = useState(false);
   const [approvingJobId, setApprovingJobId] = useState<string | null>(null);
+  const [isApprovingAll, setIsApprovingAll] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const prevPendingOrdersRef = useRef<any[]>([]);
 
-  const isShopAdmin = sessionStorage.getItem('role') === 'shop_admin';
+  // Derive pendingOrders list grouped by order
+  const pendingJobs = jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId);
+  const ordersMap = new Map<string, { orderId: string; token: string; jobs: any[] }>();
+  pendingJobs.forEach(j => {
+    const oid = j.orderId || 'unknown';
+    if (!ordersMap.has(oid)) {
+      ordersMap.set(oid, { orderId: oid, token: j.tokenId || 'UNKNOWN', jobs: [] });
+    }
+    ordersMap.get(oid)!.jobs.push(j);
+  });
+  const pendingOrders = Array.from(ordersMap.values()).map(order => {
+    const totalPages = order.jobs.reduce((sum, j) => sum + ((j.pageCount || 0) * (j.copies || 1)), 0);
+    const totalCost = order.jobs.reduce((sum, j) => {
+      const shop = shops.find(s => s.id === activeShopId);
+      const bw = shop ? shop.bwPrice : 2;
+      const color = shop ? shop.colorPrice : 5;
+      const rate = j.printMode === 'color' ? color : bw;
+      const billedPgs = j.sides === 'double' ? Math.ceil(j.pageCount / 2) : j.pageCount;
+      return sum + (j.chargedAmount !== undefined ? j.chargedAmount : (j.copies * billedPgs * rate));
+    }, 0);
 
-  const handleSearchToken = async (e?: React.FormEvent) => {
+    return {
+      id: order.orderId,
+      token: order.token,
+      studentName: order.jobs[0]?.studentName || 'Unknown Student',
+      studentEmail: order.jobs[0]?.studentEmail || '',
+      jobs: order.jobs,
+      totalPages,
+      totalCost
+    };
+  });
+
+  // Auto-select next pending order when the current one is removed from the pending queue
+  useEffect(() => {
+    if (searchResultOrder) {
+      const isStillPending = pendingOrders.some(o => o.id === searchResultOrder.id);
+      if (!isStillPending) {
+        // Clear search input
+        setSearchTokenQuery('');
+        
+        // Find index of the removed order in the previous pending orders list
+        const prevIndex = prevPendingOrdersRef.current.findIndex(o => o.id === searchResultOrder.id);
+        if (prevIndex !== -1 && pendingOrders.length > 0) {
+          const nextSelectIndex = Math.min(prevIndex, pendingOrders.length - 1);
+          setSearchResultOrder(pendingOrders[nextSelectIndex]);
+        } else {
+          setSearchResultOrder(null);
+        }
+      }
+    }
+    prevPendingOrdersRef.current = pendingOrders;
+  }, [jobs, activeShopId]);
+
+  // Click outside suggestions container to close it
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.search-container')) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
+
+  const handleSearchChange = (val: string) => {
+    setSearchTokenQuery(val);
+    if (val.trim().length >= 3) {
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleSelectSuggestion = (order: any) => {
+    setSearchResultOrder(order);
+    setSearchTokenQuery(order.token);
+    setShowSuggestions(false);
+  };
+
+  const handleSearchSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!searchTokenQuery.trim()) return;
+    const query = searchTokenQuery.trim();
+    if (!query) return;
+
+    // First try to match locally in pendingOrders
+    const matched = pendingOrders.find(o => o.token.toLowerCase() === query.toLowerCase());
+    if (matched) {
+      handleSelectSuggestion(matched);
+      return;
+    }
+
+    // Otherwise fall back to backend database search
+    setShowSuggestions(false);
     setSearchError('');
-    setSearchResultJob(null);
+    setSearchResultOrder(null);
     setIsSearchingToken(true);
     try {
       const token = sessionStorage.getItem('adminToken');
-      const res = await fetch(getApiUrl(`/api/jobs/token/${searchTokenQuery.trim()}`), {
+      const res = await fetch(getApiUrl(`/api/orders/token/${query}`), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        const job = await res.json();
-        setSearchResultJob(job);
+        const order = await res.json();
+        setSearchResultOrder(order);
       } else {
         const errData = await res.json();
         setSearchError(errData.error || 'Token not found or invalid.');
@@ -490,34 +583,70 @@ export default function AdminPortal({
     }
   };
 
-  const handleApproveJob = async (jobId: string) => {
+  const handleApproveOrder = async (orderId: string) => {
     if (systemHealth && !systemHealth.systemReady) {
-      alert(`Cannot approve job. System is not ready: ${systemHealth.blockers.join(', ')}`);
+      alert(`Cannot approve order. System is not ready: ${systemHealth.blockers.join(', ')}`);
       return;
     }
-    setApprovingJobId(jobId);
+    const token = sessionStorage.getItem('adminToken');
+    setApprovingJobId(orderId);
     try {
-      const token = sessionStorage.getItem('adminToken');
-      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/approve`), {
+      await fetch(getApiUrl(`/api/orders/${orderId}/approve`), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) {
-        fetchStats();
-        onRefreshJobs();
-        if (searchResultJob && searchResultJob.id === jobId) {
-          setSearchResultJob(null);
-          setSearchTokenQuery('');
-        }
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed to approve job.');
-      }
+      fetchStats();
+      onRefreshJobs();
     } catch (err) {
-      alert('Network error approving job.');
+      alert('Network error approving order.');
       console.error(err);
     } finally {
       setApprovingJobId(null);
+    }
+  };
+
+  const handleRejectOrder = async (orderId: string) => {
+    if (!window.confirm('Are you sure you want to reject this order?')) return;
+    const token = sessionStorage.getItem('adminToken');
+    setApprovingJobId(orderId + '_reject');
+    try {
+      await fetch(getApiUrl(`/api/orders/${orderId}/reject`), {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      fetchStats();
+      onRefreshJobs();
+    } catch (err) {
+      alert('Network error rejecting order.');
+      console.error(err);
+    } finally {
+      setApprovingJobId(null);
+    }
+  };
+
+  const handleApproveAllJobs = async () => {
+    if (systemHealth && !systemHealth.systemReady) {
+      alert(`Cannot approve order. System is not ready: ${systemHealth.blockers.join(', ')}`);
+      return;
+    }
+    if (!searchResultOrder) return;
+
+    const token = sessionStorage.getItem('adminToken');
+    setIsApprovingAll(true);
+    try {
+      await fetch(getApiUrl(`/api/orders/${searchResultOrder.id}/approve`), {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      fetchStats();
+      onRefreshJobs();
+      setSearchResultOrder(null);
+      setSearchTokenQuery('');
+    } catch (err) {
+      alert('Network error releasing batch.');
+      console.error(err);
+    } finally {
+      setIsApprovingAll(false);
     }
   };
 
@@ -1573,80 +1702,149 @@ export default function AdminPortal({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left Side: Token Search */}
-              <div className="space-y-4 pr-0 md:pr-4 md:border-r border-slate-100">
+              {/* Left Side: Token Search & Details */}
+              <div className="space-y-4 pr-0 md:pr-4 md:border-r border-slate-100 relative search-container">
                 <div>
                   <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-mono">
                     Token Search
                   </h4>
-                  <form onSubmit={handleSearchToken} className="flex gap-2">
+                  <form onSubmit={handleSearchSubmit} className="relative flex gap-2">
                     <div className="relative flex-1">
                       <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                       <input
                         type="text"
-                        placeholder="Enter Token (e.g. CP-4578)"
+                        placeholder="Type token to search (e.g. CP-7528)"
                         value={searchTokenQuery}
-                        onChange={(e) => setSearchTokenQuery(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-bold uppercase"
+                        onChange={(e) => handleSearchChange(e.target.value)}
+                        onFocus={() => {
+                          if (searchTokenQuery.trim().length >= 3) {
+                            setShowSuggestions(true);
+                          }
+                        }}
+                        className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-bold uppercase font-mono"
                       />
                     </div>
-                    <button
-                      type="submit"
-                      disabled={isSearchingToken}
-                      className="px-4.5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 text-white font-bold text-xs rounded-2xl shadow-sm border-none cursor-pointer flex items-center gap-1.5 btn-primary-action"
-                    >
-                      Search
-                    </button>
                   </form>
+
+                  {/* Autocomplete Suggestions */}
+                  {showSuggestions && searchTokenQuery.trim().length >= 3 && (
+                    <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto font-mono text-xs text-left">
+                      {pendingOrders.filter(o => o.token.toLowerCase().includes(searchTokenQuery.toLowerCase())).length === 0 ? (
+                        <div className="p-3 text-slate-400 text-center font-sans">No matching pending orders</div>
+                      ) : (
+                        pendingOrders
+                          .filter(o => o.token.toLowerCase().includes(searchTokenQuery.toLowerCase()))
+                          .map(order => (
+                            <div
+                              key={order.id}
+                              onClick={() => handleSelectSuggestion(order)}
+                              className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-105 last:border-none flex justify-between items-center transition-all"
+                            >
+                              <span className="font-extrabold text-indigo-600">{order.token}</span>
+                              <span className="text-[10px] text-slate-400 font-sans">{order.jobs.length} Docs · ₹{order.totalCost}</span>
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {searchError && (
-                  <div className="p-3 bg-red-50 border border-red-155 text-red-600 text-[11px] font-semibold rounded-xl leading-relaxed animate-fadeIn">
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-[11px] font-semibold rounded-xl leading-relaxed animate-fadeIn">
                     ⚠️ {searchError}
                   </div>
                 )}
 
-                {searchResultJob && (
-                  <div className="p-4 bg-slate-50/55 border border-slate-205 rounded-xl space-y-3 animate-fadeIn text-xs">
-                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-200/60 font-mono">
-                      <span className="font-extrabold text-indigo-600 text-sm">
-                        {searchResultJob.tokenId || 'N/A'}
-                      </span>
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">
-                        {searchResultJob.token}
-                      </span>
-                    </div>
-                    <div className="space-y-1.5 font-medium text-slate-600">
-                      <p className="truncate font-bold text-slate-800" title={searchResultJob.fileName}>
-                        📄 {searchResultJob.fileName}
-                      </p>
-                      <p>📄 {searchResultJob.pageCount} Pages ({searchResultJob.sides === 'double' ? 'Duplex' : 'Simplex'})</p>
-                      <p>🎨 Type: {searchResultJob.printMode === 'color' ? 'Color' : 'B&W'}</p>
-                      <p>⏰ Time: {new Date(searchResultJob.createdAt).toLocaleString()}</p>
-                      <p>👤 Student: {searchResultJob.studentName}</p>
-                      <p className="flex items-center gap-1.5">
-                        ⏳ Status: 
-                        <span className="bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-extrabold uppercase text-[9px] tracking-wider font-mono">
-                          Pending Approval
+                {/* Details Panel / Selection Panel */}
+                {searchResultOrder ? (
+                  <div className="p-5 bg-slate-50/50 border border-slate-200 rounded-xl space-y-4 animate-fadeIn text-xs text-left">
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-mono font-bold uppercase tracking-wider block">Student Token</span>
+                        <span className="font-extrabold text-indigo-600 text-base font-mono">
+                          {searchResultOrder.token}
                         </span>
-                      </p>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-50 text-orange-700 border border-orange-200 uppercase tracking-widest font-mono">
+                        PENDING
+                      </span>
                     </div>
 
+                    {/* Document List */}
+                    <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                      {searchResultOrder.jobs?.map((job: any) => (
+                        <div key={job.id} className="p-2.5 bg-white border border-slate-200 rounded-lg space-y-1 relative text-left shadow-sm">
+                          <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono">
+                            <span>{job.token}</span>
+                            <span>{new Date(job.createdAt).toLocaleTimeString()}</span>
+                          </div>
+                          <p className="truncate font-bold text-slate-800 text-xs" title={job.fileName}>
+                            📄 {job.fileName}
+                          </p>
+                          <div className="text-[10px] text-slate-500 font-sans space-y-0.5">
+                            <p className="font-medium">📄 {job.pageCount} Pages ({job.sides === 'double' ? 'Duplex' : 'Simplex'}) · 🎨 {job.printMode === 'color' ? 'Color' : 'B&W'}</p>
+                            <p className="text-slate-400 text-[9px]">👤 Student: {searchResultOrder.studentName || 'Unknown Student'} ({searchResultOrder.studentEmail || 'N/A'})</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Summary Stats */}
+                    {(() => {
+                      const totalPages = searchResultOrder.jobs?.reduce((sum: number, j: any) => sum + ((j.pageCount || 0) * (j.copies || 1)), 0) || 0;
+                      const totalCost = searchResultOrder.jobs?.reduce((sum: number, j: any) => {
+                        const shop = shops.find(s => s.id === activeShopId);
+                        const bw = shop ? shop.bwPrice : 2;
+                        const color = shop ? shop.colorPrice : 5;
+                        const rate = j.printMode === 'color' ? color : bw;
+                        const billedPgs = j.sides === 'double' ? Math.ceil(j.pageCount / 2) : j.pageCount;
+                        return sum + (j.chargedAmount !== undefined ? j.chargedAmount : (j.copies * billedPgs * rate));
+                      }, 0) || 0;
+
+                      return (
+                        <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-lg border border-slate-200 text-center font-sans">
+                          <div className="border-r border-slate-100 last:border-none">
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total Pages</p>
+                            <p className="font-mono font-extrabold text-slate-800 text-sm mt-0.5">{totalPages}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total Cost</p>
+                            <p className="font-mono font-extrabold text-slate-800 text-sm mt-0.5">₹{totalCost}</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {isShopAdmin ? (
-                      <button
-                        type="button"
-                        onClick={() => handleApproveJob(searchResultJob.id)}
-                        disabled={approvingJobId === searchResultJob.id}
-                        className="w-full mt-2 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-bold text-xs rounded-2xl shadow-sm flex items-center justify-center gap-1.5 border-none cursor-pointer btn-success-action"
-                      >
-                        <Play className="w-3.5 h-3.5" />
-                        {approvingJobId === searchResultJob.id ? 'Releasing...' : 'Release To Queue'}
-                      </button>
+                      <div className="flex gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => handleApproveOrder(searchResultOrder.id)}
+                          disabled={approvingJobId === searchResultOrder.id}
+                          className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-1.5 border-none cursor-pointer"
+                        >
+                          <Play className="w-3.5 h-3.5" />
+                          {approvingJobId === searchResultOrder.id ? 'Approving...' : 'Approve Order'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRejectOrder(searchResultOrder.id)}
+                          disabled={approvingJobId === searchResultOrder.id + '_reject'}
+                          className="flex-1 py-2.5 px-4 bg-rose-100 hover:bg-rose-200 disabled:opacity-50 text-rose-700 font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-1.5 border-none cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          {approvingJobId === searchResultOrder.id + '_reject' ? 'Rejecting...' : 'Reject Order'}
+                        </button>
+                      </div>
                     ) : (
-                      <div className="text-[10px] text-rose-500 font-semibold text-center mt-2 p-1.5 bg-rose-50 border border-rose-100 rounded-lg">
-                        🔒 Only Shop Admin may approve.
+                      <div className="text-[10px] text-rose-500 font-semibold text-center mt-2 p-2 bg-rose-50 border border-rose-100 rounded-xl">
+                        🔒 Only Shop Admin may approve or reject.
                       </div>
                     )}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 text-xs">
+                    Select a pending order from the queue or search by token to view details.
                   </div>
                 )}
               </div>
@@ -1656,43 +1854,59 @@ export default function AdminPortal({
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">
                   Pending Approval Queue
                 </h4>
-                {jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId).length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 text-xs">
-                    No jobs currently pending approval.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId).map(job => (
-                      <div key={job.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs transition-all hover:border-slate-350">
-                        <div className="min-w-0 flex-1 pr-3 text-left">
-                          <p className="font-mono font-extrabold text-orange-600 text-sm">
-                            {job.tokenId || 'N/A'}
-                          </p>
-                          <p className="font-bold text-slate-800 truncate leading-tight mt-0.5" title={job.fileName}>
-                            {job.fileName}
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            {job.pageCount} pgs · {job.printMode === 'color' ? 'Color' : 'B&W'} · {job.studentName}
-                          </p>
-                        </div>
-                        {isShopAdmin ? (
-                          <button
-                            onClick={() => handleApproveJob(job.id)}
-                            disabled={approvingJobId === job.id}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[10px] rounded-lg shadow-sm border-none cursor-pointer flex items-center gap-1 transition-all"
-                          >
-                            <Play className="w-3 h-3" />
-                            Approve
-                          </button>
-                        ) : (
-                          <span className="text-[9px] text-slate-400 bg-slate-100 border border-slate-200 px-2 py-1 rounded">
-                            Awaiting
-                          </span>
-                        )}
+                {(() => {
+                  if (pendingOrders.length === 0) {
+                    return (
+                      <div className="p-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 text-xs">
+                        No orders currently pending approval.
                       </div>
-                    ))}
-                  </div>
-                )}
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                      {pendingOrders.map(order => {
+                        const isSelected = searchResultOrder && searchResultOrder.id === order.id;
+                        return (
+                          <div
+                            key={order.id}
+                            onClick={() => handleSelectSuggestion(order)}
+                            className={`px-4 py-2.5 rounded-xl border cursor-pointer transition-all flex items-center gap-4 ${
+                              isSelected
+                                ? 'bg-indigo-50/60 border-indigo-200 shadow-sm'
+                                : 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-slate-100/40'
+                            }`}
+                          >
+                            {/* Token */}
+                            <span className="font-mono font-extrabold text-slate-800 text-xs min-w-[80px]">
+                              {order.token}
+                            </span>
+
+                            {/* Total price — pushes to right */}
+                            <span className="ml-auto font-mono font-semibold text-slate-600 text-xs">
+                              ₹{order.totalCost}
+                            </span>
+
+                            {/* Approve button — always visible, rightmost */}
+                            {isShopAdmin && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleApproveOrder(order.id);
+                                }}
+                                disabled={approvingJobId === order.id}
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[11px] rounded-lg border-none cursor-pointer flex items-center gap-1 transition-colors shrink-0"
+                              >
+                                <Check className="w-3 h-3" />
+                                Approve
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -1791,26 +2005,8 @@ export default function AdminPortal({
 
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              {job.status === 'pending_approval' && isShopAdmin && (
-                                <button
-                                  onClick={() => handleApproveJob(job.id)}
-                                  disabled={approvingJobId === job.id}
-                                  className="p-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer font-bold flex items-center gap-1 text-[10px] border-none"
-                                >
-                                  <Play className="w-3.5 h-3.5" />
-                                  Approve Job
-                                </button>
-                              )}
 
-                              {['pending_approval', 'queued', 'paused'].includes(job.status) && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRejectJob(job.id)}
-                                  className="p-2 rounded-xl bg-rose-50 border border-rose-200/80 hover:bg-rose-100 text-rose-600 font-bold flex items-center gap-1 text-[10px] cursor-pointer btn-danger-action"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" /> Reject
-                                </button>
-                              )}
+
 
                               {(isFailedState || job.status === 'paused') && (
                                 <button

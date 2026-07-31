@@ -159,17 +159,18 @@ test.describe('Admin Force Complete Workflow E2E Integration', () => {
     // Reload so fetchPrinterSettings runs with the admin token
     await page.reload();
 
-    // Perform student login
-    await page.fill('input[placeholder="e.g. basav"]', 'basav');
-    await page.fill('input[placeholder="••••••••"]', 'password101');
-    await page.click('button:has-text("Sign In & Connect")');
+    // Perform student login via mock Google SSO flow
+    await page.click('button:has-text("Continue with Google")');
+    await page.click('button:has-text("basav@university.edu")');
 
     // Verify transition into main Student Dashboard
     await expect(page.locator('button:has-text("Sign Out")')).toBeVisible();
 
-    // Select Alliance Print Center from the dropdown
-    await expect(page.locator('select')).toBeVisible({ timeout: 10000 });
-    await page.selectOption('select', 'alliance_print');
+    // Select Alliance Print Center from the custom dropdown component
+    const shopPillBtn = page.locator('button:has(svg.text-purple-500)');
+    await expect(shopPillBtn).toBeVisible({ timeout: 10000 });
+    await shopPillBtn.click();
+    await page.click('button:has-text("Alliance Print Center")');
 
     // Wait for system health to update (submit button should not say "System Not Ready")
     await expect(page.locator('button:has-text("System Not Ready")')).toBeHidden({ timeout: 10000 });
@@ -198,7 +199,7 @@ test.describe('Admin Force Complete Workflow E2E Integration', () => {
     expect(db.jobs.length).toBe(1);
     const submittedJob = db.jobs[0];
     expect(submittedJob.status).toBe('pending_approval');
-    expect(submittedJob.studentName).toBe('basav');
+    expect(submittedJob.studentName).toBe('Basav');
     expect(submittedJob.studentEmail).toBe('basav@university.edu');
     expect(submittedJob.shopId).toBe('alliance_print');
     expect(submittedJob.tokenId).toBe(tokenId);
@@ -321,7 +322,7 @@ test.describe('Admin Force Complete Workflow E2E Integration', () => {
     expect(finalJob.printMode).toBe('mono');
     expect(finalJob.printType).toBe('bw');
     expect(finalJob.shopId).toBe('alliance_print');
-    expect(finalJob.studentName).toBe('basav');
+    expect(finalJob.studentName).toBe('Basav');
     expect(finalJob.studentEmail).toBe('basav@university.edu');
 
     // Verify uploaded file is deleted from server disk

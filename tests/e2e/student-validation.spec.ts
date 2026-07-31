@@ -103,11 +103,23 @@ const DEFAULT_AGENTS = [
 ];
 
 function resetDb() {
+  const currentIso = new Date().toISOString();
+  
+  const shops = JSON.parse(JSON.stringify(DEFAULT_SHOPS));
+  shops.forEach((s: any) => {
+    s.lastHeartbeat = currentIso;
+  });
+
+  const agents = JSON.parse(JSON.stringify(DEFAULT_AGENTS));
+  agents.forEach((a: any) => {
+    a.lastSeen = currentIso;
+  });
+
   const db = {
     jobs: [],
-    shops: JSON.parse(JSON.stringify(DEFAULT_SHOPS)),
+    shops,
     printerSettings: JSON.parse(JSON.stringify(DEFAULT_PRINTER_SETTINGS)),
-    agents: JSON.parse(JSON.stringify(DEFAULT_AGENTS)),
+    agents,
     printers: []
   };
   const dir = path.dirname(DB_TEST_PATH);
@@ -174,15 +186,16 @@ async function loginAsStudent(page: import('@playwright/test').Page) {
 
   await page.reload();
 
-  // Student login
-  await page.fill('input[placeholder="e.g. basav"]', 'testuser');
-  await page.fill('input[placeholder="••••••••"]', 'password101');
-  await page.click('button:has-text("Sign In & Connect")');
+  // Student login via mock Google SSO flow
+  await page.click('button:has-text("Continue with Google")');
+  await page.click('button:has-text("basav@university.edu")');
   await expect(page.locator('button:has-text("Sign Out")')).toBeVisible();
 
-  // Select alliance shop and wait for system readiness
-  await expect(page.locator('select')).toBeVisible({ timeout: 10000 });
-  await page.selectOption('select', 'alliance_print');
+  // Select alliance shop and wait for system readiness from custom dropdown component
+  const shopPillBtn = page.locator('button:has(svg.text-purple-500)');
+  await expect(shopPillBtn).toBeVisible({ timeout: 10000 });
+  await shopPillBtn.click();
+  await page.click('button:has-text("Alliance Print Center")');
   await expect(page.locator('button:has-text("System Not Ready")')).toBeHidden({ timeout: 10000 });
 }
 
@@ -328,40 +341,27 @@ test.describe('Student Validation & Error Handling', () => {
   // ─────────────────────────────────────────────────────────────────────────
   // Scenario 5 — Missing Student Information
   // ─────────────────────────────────────────────────────────────────────────
-  test('Scenario 5: should prevent login without username or password, auto-populates identity after login', async ({ page }) => {
+  test('Scenario 5: should protect routes and redirect to login, then authenticate and populate student details via Google SSO', async ({ page }) => {
+    // Attempt to access student portal home
     await page.goto('/');
 
-    // --- Sub-case A: Attempt login with empty username ---
-    await page.fill('input[placeholder="••••••••"]', 'password101');
-    await page.click('button:has-text("Sign In & Connect")');
-
-    // Login validation should display error
-    await expect(page.locator('text=Please enter a username or email')).toBeVisible({ timeout: 3000 });
-
-    // Should still be on the login form (Sign Out not visible)
+    // Check we are on the login view and Continue with Google button is visible
+    await expect(page.locator('button:has-text("Continue with Google")')).toBeVisible();
     await expect(page.locator('button:has-text("Sign Out")')).toBeHidden();
 
-    // --- Sub-case B: Attempt login with empty password ---
-    await page.fill('input[placeholder="e.g. basav"]', 'testuser');
-    await page.fill('input[placeholder="••••••••"]', '');
-    await page.click('button:has-text("Sign In & Connect")');
+    // Click Continue with Google
+    await page.click('button:has-text("Continue with Google")');
 
-    await expect(page.locator('text=Please enter a password')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('button:has-text("Sign Out")')).toBeHidden();
+    // Select the basav account in mock selector
+    await page.click('button:has-text("basav@university.edu")');
 
-    // --- Sub-case C: Successful login auto-populates identity ---
-    // After login, studentName and studentEmail are automatically set from the
-    // username, so "missing student info" can't occur during submission.
-    await page.fill('input[placeholder="e.g. basav"]', 'testuser');
-    await page.fill('input[placeholder="••••••••"]', 'password101');
-    await page.click('button:has-text("Sign In & Connect")');
+    // Verify redirected to Dashboard and Sign Out button is visible
+    await expect(page.locator('button:has-text("Sign Out")')).toBeVisible({ timeout: 5000 });
 
-    await expect(page.locator('button:has-text("Sign Out")')).toBeVisible();
+    // Verify that the logged in student name 'Basav' appears in the top navbar profile display
+    await expect(page.locator('header').getByText('Basav', { exact: true }).first()).toBeVisible();
 
-    // Verify that identity is populated (the student's name should appear in the UI)
-    await expect(page.getByText('testuser', { exact: true })).toBeVisible();
-
-    // Verify database is clean (no jobs created during login validation)
+    // Verify database is clean (no jobs created during login)
     assertCleanState();
   });
 });

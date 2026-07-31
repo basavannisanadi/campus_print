@@ -825,6 +825,7 @@ function startRecoveryLoop() {
 }
 
 async function processJob(job) {
+  logToFile(`[DIAG][processJob] Started | jobId=${job.id} token=${job.token} fileName=${job.fileName}`);
   try {
     currentJobPrintType = job.printType || 'bw';
     activeJobToken = job.token;
@@ -962,9 +963,11 @@ async function processJob(job) {
     }
     
     lastPrintTime = new Date().toISOString();
+    logToFile(`[DIAG][processJob] Finished successfully | jobId=${job.id} token=${job.token}`);
     console.log(`  ✓ JOB COMPLETE: Token ${job.token} is ready.\n`);
     showNotification('Campus Print Hub', `Done: Job ${job.token} is ready!`);
   } catch (err) {
+    logToFile(`[DIAG][processJob] Failed | jobId=${job.id} token=${job.token} error=${err.message}`);
     console.error(`\n  ❌ JOB FAILED: Token ${job.token} | Error: ${err.message}\n`);
     
     const isHardwareError = err.message.includes('Printer Offline') || err.message.includes('Paper Empty');
@@ -979,6 +982,7 @@ async function processJob(job) {
     }
   } finally {
     activeJobToken = null;
+    logToFile(`[DIAG][processJob] finally — busy will be cleared by .finally() chain or poll()`);
   }
 }
 
@@ -1020,10 +1024,13 @@ function connectSSE() {
   }
 
   const streamUrl = new URL('/api/jobs/stream', config.serverUrl);
+  streamUrl.searchParams.set('agentId', config.agentId);
+  streamUrl.searchParams.set('shopId', config.shopId);
+  streamUrl.searchParams.set('protocolVersion', 'v2');
   logToFile(`\n[DIAGNOSTIC REQUEST]`);
   logToFile(`SERVER URL = ${config.serverUrl}`);
   logToFile(`GET = ${streamUrl.href}`);
-  logToFile(`HTTP METHOD = GET (SSE Stream)`);
+  logToFile(`HTTP METHOD = GET (SSE Stream v2)`);
   
   const client = getHttpClient(streamUrl);
   
@@ -1066,7 +1073,21 @@ function connectSSE() {
         if (line.startsWith('data:')) {
           try {
             const data = JSON.parse(line.substring(5).trim());
-            if (data.type === 'new_job') {
+            if (data.type === 'dispatch_job' && data.job) {
+              // Server-push dispatch: backend has pre-claimed this job
+              logToFile(`[DISPATCH] Received job: ${data.job.token} — ${data.job.fileName}`);
+              logToFile(`[DIAG][SSE] dispatch_job received | jobId=${data.job.id} token=${data.job.token}`);
+              logToFile(`[DIAG][SSE] Agent state | busy=${busy} paused=${isQueuePaused}`);
+              if (!busy && !isQueuePaused) {
+                busy = true;
+                logToFile(`[DIAG][SSE] processJob starting for jobId=${data.job.id}`);
+                processJob(data.job)
+                  .catch(err => logToFile(`[JOB ERROR] ${err.message}`))
+                  .finally(() => { busy = false; });
+              } else {
+                logToFile(`[DISPATCH] Ignored (busy=${busy}, paused=${isQueuePaused})`);
+              }
+            } else if (data.type === 'new_job') {
               poll();
             } else if (data.type === 'scan_printers' && data.shopId === config.shopId) {
               activeScanRequested = true;
@@ -1333,10 +1354,9 @@ async function main() {
     logToFile(`SSE stream connection disabled via test flag`);
   }
   
-  // Backlog poll checks
+  // One-time backlog drain on startup (no recurring poll — dispatch is push-based)
   if (process.env.CP_TEST_DISABLE_POLLING !== 'true') {
     poll();
-    pollTimer = setInterval(poll, 15000);
   } else {
     logToFile(`Backlog polling disabled via test flag`);
   }

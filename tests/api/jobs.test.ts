@@ -83,6 +83,30 @@ const DEFAULT_AGENTS = [
 let adminToken = '';
 let otherShopToken = '';
 
+function getTestAuthToken(studentId: string): string {
+  const STUDENT_SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+  const expiresAt = Date.now() + STUDENT_SESSION_TIMEOUT_MS;
+  const payload = JSON.stringify({ studentId, expiresAt });
+  const base64Payload = Buffer.from(payload).toString('base64url');
+  const signature = crypto.createHmac('sha256', 'campusprint_admin_123').update(base64Payload).digest('base64url');
+  return `${base64Payload}.${signature}`;
+}
+
+const testStudent = {
+  id: 'student_basav_123',
+  googleId: 'google_id_basav_123',
+  name: 'Basav',
+  email: 'basav@gmail.com',
+  picture: 'https://lh3.googleusercontent.com/a/default-user=s96-c',
+  role: 'student' as const,
+  createdAt: new Date().toISOString(),
+  lastLogin: new Date().toISOString(),
+  isActive: true,
+  lastSeen: new Date().toISOString()
+};
+
+const testStudentToken = getTestAuthToken('student_basav_123');
+
 beforeAll(async () => {
   // Clear any existing db state and login to retrieve test auth tokens
   writeDb({
@@ -90,7 +114,8 @@ beforeAll(async () => {
     shops: JSON.parse(JSON.stringify(DEFAULT_SHOPS)),
     printerSettings: JSON.parse(JSON.stringify(DEFAULT_PRINTER_SETTINGS)),
     agents: JSON.parse(JSON.stringify(DEFAULT_AGENTS)),
-    printers: []
+    printers: [],
+    students: [testStudent]
   });
 
   const res1 = await request(app)
@@ -134,7 +159,8 @@ beforeEach(() => {
     shops: JSON.parse(JSON.stringify(DEFAULT_SHOPS)),
     printerSettings: JSON.parse(JSON.stringify(DEFAULT_PRINTER_SETTINGS)),
     agents,
-    printers: []
+    printers: [],
+    students: [testStudent]
   });
 });
 
@@ -150,6 +176,7 @@ describe('Jobs API Supertest Coverage', () => {
       const configs = JSON.stringify([{ copies: 2, printType: 'bw', sides: 'single' }]);
       const res = await request(app)
         .post('/api/jobs')
+        .set('Authorization', `Bearer ${testStudentToken}`)
         .field('studentName', 'Basav')
         .field('studentEmail', 'basav@gmail.com')
         .field('shopId', 'alliance_print')
@@ -176,6 +203,7 @@ describe('Jobs API Supertest Coverage', () => {
     test('should reject request when no files are uploaded', async () => {
       const res = await request(app)
         .post('/api/jobs')
+        .set('Authorization', `Bearer ${testStudentToken}`)
         .field('studentName', 'Basav')
         .field('shopId', 'alliance_print');
 
@@ -187,6 +215,7 @@ describe('Jobs API Supertest Coverage', () => {
       const configs = JSON.stringify([{ copies: 1, printType: 'bw', sides: 'single', pageRange: '1-3,foo' }]);
       const res = await request(app)
         .post('/api/jobs')
+        .set('Authorization', `Bearer ${testStudentToken}`)
         .field('studentName', 'Basav')
         .field('studentEmail', 'basav@gmail.com')
         .field('shopId', 'alliance_print')
@@ -205,6 +234,7 @@ describe('Jobs API Supertest Coverage', () => {
       const badBuffer = Buffer.from('hello world not a pdf');
       const res = await request(app)
         .post('/api/jobs')
+        .set('Authorization', `Bearer ${testStudentToken}`)
         .field('studentName', 'Basav')
         .field('shopId', 'alliance_print')
         .attach('files', badBuffer, 'homework.pdf');
@@ -221,6 +251,7 @@ describe('Jobs API Supertest Coverage', () => {
       const badBuffer = Buffer.from('%PDF-1.4\nmock content');
       const res = await request(app)
         .post('/api/jobs')
+        .set('Authorization', `Bearer ${testStudentToken}`)
         .field('studentName', 'Basav')
         .field('shopId', 'alliance_print')
         .attach('files', badBuffer, 'test.txt');
@@ -239,6 +270,7 @@ describe('Jobs API Supertest Coverage', () => {
       });
       const res = await request(app)
         .post('/api/jobs')
+        .set('Authorization', `Bearer ${testStudentToken}`)
         .field('studentName', 'Basav')
         .field('studentEmail', 'basav@gmail.com')
         .field('shopId', 'alliance_print')
@@ -290,6 +322,7 @@ describe('Jobs API Supertest Coverage', () => {
       });
       const res = await request(app)
         .post('/api/jobs')
+        .set('Authorization', `Bearer ${testStudentToken}`)
         .field('studentName', 'Basav')
         .field('studentEmail', 'basav@gmail.com')
         .field('shopId', 'alliance_print')
@@ -461,8 +494,9 @@ describe('Jobs API Supertest Coverage', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.id).toBe('job-token-1');
-      expect(res.body.tokenId).toBe('APPR123');
+      expect(res.body).toBeInstanceOf(Array);
+      expect(res.body[0].id).toBe('job-token-1');
+      expect(res.body[0].tokenId).toBe('APPR123');
     });
 
     test('should return 404 if tokenId does not exist', async () => {

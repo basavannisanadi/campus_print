@@ -26,28 +26,43 @@ export interface JobMetrics {
 
 export interface PrintJob {
   id: string;
+  orderId?: string;
   token: string;
   fileName: string;
   fileSize: number;
   pageCount: number;
   copies: number;
-  printMode: 'mono' | 'color';
-  printType?: 'bw' | 'color';
-  sides: 'single' | 'double';
+  printMode: 'mono' | 'color' | string;
+  printType?: 'bw' | 'color' | string;
+  sides: 'single' | 'double' | string;
   pageRange?: string;
-  status: 'uploading' | 'pending_approval' | 'queued' | 'printing' | 'completed' | 'failed' | 'paused' | 'printer_offline' | 'paper_empty';
+  status: 'uploading' | 'pending_approval' | 'queued' | 'printing' | 'completed' | 'failed' | 'paused' | 'printer_offline' | 'paper_empty' | string;
   createdAt: string;
-  progressPercent: number;
+  progressPercent?: number;
   reason?: string;
   scheduledFor?: string;
-  chargedAmount: number;
-  studentName: string;
-  studentEmail: string;
+  chargedAmount?: number;
+  studentName?: string;
+  studentEmail?: string;
+  studentId?: string;
   shopId: string;
   tokenId?: string;
   timeline?: TimelineEntry[];
   failureSnapshot?: FailureSnapshot;
   metrics?: JobMetrics;
+}
+
+export interface Student {
+  id: string;
+  googleId: string;
+  name: string;
+  email: string;
+  picture: string;
+  role: 'student';
+  createdAt: string;
+  lastLogin: string;
+  isActive: boolean;
+  lastSeen: string;
 }
 export interface Shop {
   id: string;

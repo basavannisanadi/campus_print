@@ -1,0 +1,431 @@
+================================================================
+         CAMPUS PRINT AGENT — CONSOLIDATED DIAGNOSTIC REPORT     
+================================================================
+Generated At            : 2026-07-31T17:36:15.020Z
+Agent Version           : 1.0.0
+Node.js Version         : v24.11.1
+Windows OS Version      : Windows_NT 10.0.26200 (x64)
+Machine Name (Hostname) : VICTUS
+Target Server URL       : http://127.0.0.1:3001
+Shop ID                 : alliance_print
+Daemon PID              : 26000
+Parent PID (PPID)       : 15444
+----------------------------------------------------------------
+1. CONFIGURATION & RUNTIME FILES:
+  runtime.json: {
+  "serverUrl": "http://127.0.0.1:3001",
+  "shopId": "alliance_print"
+}
+  config.json : {
+  "serverUrl": "http://127.0.0.1:3001",
+  "pollIntervalMs": 2000,
+  "mockPrinter": false,
+  "printerName": "",
+  "shopId": "alliance_print",
+  "agentId": "CP-AGENT-E2E-TEST",
+  "machineName": "TEST-MACHINE",
+  "daemonVersion": "1.0.0",
+  "protocolVersion": "1.0.0",
+  "token": "token_alli...[MASKED]"
+}
+----------------------------------------------------------------
+2. 10-STAGE STARTUP PROGRESSION:
+  [11:02:26 pm] [1/10] Agent launched
+  [11:02:26 pm] [DIAGNOSTIC] runtime.json read. runtime.token exists: true
+  [11:02:26 pm] [DIAGNOSTIC] runtime.token: "token_alliance_print"
+  [11:02:26 pm] [2/10] runtime.json loaded
+  [11:02:26 pm] [3/10] Configuration validated
+  [11:02:26 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:26 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:26 pm] [DIAGNOSTIC RESPONSE]
+  [11:02:26 pm] RESPONSE BODY = {"id":"alliance_print","name":"Alliance Print Center","ownerName":"Alliance Staff","phoneNumber":"9876543211","phone":"9876543211","address":"Alliance Main Block","maintenanceMode":false,"bwPrice":2,"colorPrice":5,"duplexPrice":3,"isOpen":true,"openingTime":"08:00 AM","closingTime":"08:00 PM","printerStatus":"offline","lastHeartbeat":"2026-07-31T17:32:15.063Z","bwStatusMode":"online","colorStatusMode":"online","bwMaintenanceMode":false,"colorMaintenanceMode":false,"bwPrinterName":"HP Officejet J4500 series","colorPrinterName":"HP Officejet J4500 series","printerName":"UNKNOWN","daemonVersion":"1.0.0","printers":[],"activePrinter":null}
+  [11:02:26 pm] [4/10] Backend reachable
+  [11:02:26 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:27 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:27 pm] [DIAGNOSTIC RESPONSE]
+  [11:02:27 pm] [5/10] Authentication successful
+  [11:02:27 pm] [6/10] Registration request sent
+  [11:02:34 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:35 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","machineName":"VICTUS","printerName":"HP Officejet J4500 series","daemonVersion":"1.0.0","printers":["EPSON L4360 Series","HP Ink Tank 310 series","HP Officejet J4500 series"]}
+  [11:02:35 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:35 pm] [DIAGNOSTIC RESPONSE]
+  [11:02:35 pm] [7/10] Registration acknowledged
+  [11:02:35 pm] [8/10] Initial heartbeat sent
+  [11:02:35 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:35 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:36 pm] [DIAGNOSTIC RESPONSE]
+  [11:02:43 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:43 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"HP Officejet J4500 series","printerCount":3,"printers":["EPSON L4360 Series","HP Ink Tank 310 series","HP Officejet J4500 series"],"printerStatus":"online","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":18,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-07-31T17:32:43.719Z"}
+  [11:02:43 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:43 pm] [DIAGNOSTIC RESPONSE]
+  [11:02:43 pm] [9/10] Heartbeat acknowledged by backend
+  [11:02:43 pm] [10/10] Agent ready
+  [11:02:43 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:43 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:44 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:44 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:44 pm] [DIAGNOSTIC RESPONSE]
+  [11:02:44 pm] [DIAGNOSTIC RESPONSE]
+  [11:02:53 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:53 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:53 pm] [DIAGNOSTIC RESPONSE]
+  [11:02:56 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:56 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:56 pm] [DIAGNOSTIC RESPONSE]
+  [11:02:56 pm] [HEARTBEAT] Backend acknowledged
+  [11:02:56 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:02:56 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:02:56 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:03 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:04 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:04 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:12 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:13 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:13 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:13 pm] [HEARTBEAT] Backend acknowledged
+  [11:03:13 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:14 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:14 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:14 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:24 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:24 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:24 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:25 pm] [HEARTBEAT] Backend acknowledged
+  [11:03:25 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:26 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:26 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:26 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:27 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:27 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:36 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:37 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:37 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:42 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:43 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:44 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:44 pm] [HEARTBEAT] Backend acknowledged
+  [11:03:44 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:44 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:45 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:47 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:48 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:49 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:49 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:50 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:50 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:51 pm] [HEARTBEAT] Backend acknowledged
+  [11:03:51 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:03:51 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:03:52 pm] [DIAGNOSTIC RESPONSE]
+  [11:03:59 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:00 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:00 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:01 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:01 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:02 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:02 pm] [HEARTBEAT] Backend acknowledged
+  [11:04:02 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:03 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:03 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:10 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:10 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:10 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:10 pm] [HEARTBEAT] Backend acknowledged
+  [11:04:10 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:11 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:11 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:11 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:11 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:11 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:19 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:19 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:19 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:20 pm] [HEARTBEAT] Backend acknowledged
+  [11:04:20 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:21 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:21 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:21 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:21 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:22 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:30 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:31 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:31 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:32 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:32 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:32 pm] [HEARTBEAT] Backend acknowledged
+  [11:04:32 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:33 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:33 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:33 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:42 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:42 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:43 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:43 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:43 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:44 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:44 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:44 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:44 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:44 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:44 pm] [HEARTBEAT] Backend acknowledged
+  [11:04:44 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:44 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:52 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:53 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:53 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:57 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:58 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:58 pm] [DIAGNOSTIC RESPONSE]
+  [11:04:58 pm] [HEARTBEAT] Backend acknowledged
+  [11:04:58 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:04:59 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:04:59 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:00 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:01 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:01 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:02 pm] [HEARTBEAT] Backend acknowledged
+  [11:05:02 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:04 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:04 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:04 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:04 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:05 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:12 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:13 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:13 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:13 pm] [HEARTBEAT] Backend acknowledged
+  [11:05:13 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:13 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:13 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:14 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:14 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:20 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:20 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:20 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:20 pm] [HEARTBEAT] Backend acknowledged
+  [11:05:20 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:21 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:21 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:24 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:25 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:25 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:29 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:29 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:29 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:29 pm] [HEARTBEAT] Backend acknowledged
+  [11:05:29 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:30 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:30 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:35 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:35 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:36 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:45 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:46 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:46 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:47 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:47 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:47 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:47 pm] [HEARTBEAT] Backend acknowledged
+  [11:05:47 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:47 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:47 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:52 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:52 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:53 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:56 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:57 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:57 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:57 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:57 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:57 pm] [DIAGNOSTIC RESPONSE]
+  [11:05:57 pm] [HEARTBEAT] Backend acknowledged
+  [11:05:57 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:05:57 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:05:58 pm] [DIAGNOSTIC RESPONSE]
+  [11:06:03 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:06:03 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:06:03 pm] [DIAGNOSTIC RESPONSE]
+  [11:06:04 pm] [HEARTBEAT] Backend acknowledged
+  [11:06:04 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:06:04 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:06:04 pm] [DIAGNOSTIC RESPONSE]
+  [11:06:07 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:06:07 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:06:07 pm] [DIAGNOSTIC RESPONSE]
+  [11:06:14 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:06:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:06:14 pm] [DIAGNOSTIC RESPONSE]
+  [11:06:14 pm] [HEARTBEAT] Backend acknowledged
+  [11:06:14 pm] 
+[DIAGNOSTIC REQUEST]
+  [11:06:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [11:06:14 pm] [DIAGNOSTIC RESPONSE]
+----------------------------------------------------------------
+3. REGISTRATION STATUS:
+  Request Sent        : false
+  HTTP Status Code    : N/A
+  Response Payload    : {}
+----------------------------------------------------------------
+4. HEARTBEAT SYSTEM STATUS:
+  Heartbeat Loop Started : false
+  First Heartbeat Sent   : false
+  HTTP Status Code       : N/A
+  Response Payload       : {}
+----------------------------------------------------------------
+5. REAL-TIME STREAM (SSE) STATUS:
+  SSE Stream Connected   : false
+  SSE Stream Status      : Not Connected
+----------------------------------------------------------------
+6. PRINTER DISCOVERY BENCHMARKS:
+  refreshPrinterMapping() Total Time : 0 ms
+----------------------------------------------------------------
+7. NETWORK & PROTOCOL ERRORS:
+  None recorded.
+----------------------------------------------------------------
+8. UNCAUGHT EXCEPTIONS & UNHANDLED REJECTIONS:
+  None recorded.
+----------------------------------------------------------------
+9. LAUNCHER LOG (TAIL 30 LINES):
+  [2026-07-30 4:56:03 pm] Stop signal written successfully.
+  [2026-07-30 4:56:03 pm] Attempting process termination for PID 26276...
+  [2026-07-30 4:56:03 pm] Print Agent shutdown completed.
+  [2026-07-30 4:58:17 pm] Invoked: "stop" -> Action: STOP
+  [2026-07-30 4:58:17 pm] Stopping Print Agent: Writing stop signal to shutdown.signal...
+  [2026-07-30 4:58:17 pm] Stop signal written successfully.
+  [2026-07-30 4:58:17 pm] Print Agent shutdown completed.
+  [2026-07-30 4:58:19 pm] Parsed serverUrl: http://127.0.0.1:3001
+  [2026-07-30 4:58:19 pm] Parsed shopId: alliance_print
+  [2026-07-30 4:58:19 pm] Parsed token: [HIDDEN]
+  [2026-07-30 4:58:19 pm] Invoked: "campusprint://start?serverUrl=http://127.0.0.1:3001&shopId=alliance_print&token=token_alliance_print_f36bdec457d02fdc20b2fef1195b2900f89853e2c7247d9529830ae8e9156187" -> Action: START
+  [2026-07-30 4:58:19 pm] Runtime configuration updated atomically: http://127.0.0.1:3001 / alliance_print
+  [2026-07-30 4:58:19 pm] Starting Print Agent daemon (client.cjs) in Taskbar window...
+  [2026-07-30 5:02:16 pm] Invoked: "stop" -> Action: STOP
+  [2026-07-30 5:02:16 pm] Stopping Print Agent: Writing stop signal to shutdown.signal...
+  [2026-07-30 5:02:16 pm] Stop signal written successfully.
+  [2026-07-30 5:02:16 pm] Attempting process termination for PID 23916...
+  [2026-07-30 5:02:17 pm] Print Agent shutdown completed.
+  [2026-07-31 11:02:20 pm] Invoked: "stop" -> Action: STOP
+  [2026-07-31 11:02:20 pm] Stopping Print Agent: Writing stop signal to shutdown.signal...
+  [2026-07-31 11:02:20 pm] Stop signal written successfully.
+  [2026-07-31 11:02:20 pm] Attempting process termination for PID 18752...
+  [2026-07-31 11:02:20 pm] daemon.lock removed.
+  [2026-07-31 11:02:20 pm] Print Agent shutdown completed.
+  [2026-07-31 11:02:26 pm] Parsed serverUrl: http://127.0.0.1:3001
+  [2026-07-31 11:02:26 pm] Parsed shopId: alliance_print
+  [2026-07-31 11:02:26 pm] Parsed token: [HIDDEN]
+  [2026-07-31 11:02:26 pm] Invoked: "campusprint://start?serverUrl=http://127.0.0.1:3001&shopId=alliance_print&token=token_alliance_print_f36bdec457d02fdc20b2fef1195b2900f89853e2c7247d9529830ae8e9156187" -> Action: START
+  [2026-07-31 11:02:26 pm] Runtime configuration updated atomically: http://127.0.0.1:3001 / alliance_print
+  [2026-07-31 11:02:26 pm] Starting Print Agent daemon (client.cjs) in Taskbar window...
+----------------------------------------------------------------
+10. CLIENT LOG (TAIL 40 LINES):
+  [Client] [2026-07-31T17:36:04.078Z] 
+  [DIAGNOSTIC REQUEST]
+  [Client] [2026-07-31T17:36:04.151Z] SERVER URL = http://127.0.0.1:3001
+  [Client] [2026-07-31T17:36:04.183Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-07-31T17:36:04.219Z] HTTP METHOD = GET
+  [Client] [2026-07-31T17:36:04.257Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [Client] [2026-07-31T17:36:04.341Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-07-31T17:36:04.400Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-07-31T17:36:04.459Z] STATUS CODE = 200
+  [Client] [2026-07-31T17:36:04.499Z] RESPONSE BODY = {"bwPrinterId":"","bwPrinterName":"HP Officejet J4500 series","colorPrinterId":"","colorPrinterName":"HP Officejet J4500 series"}
+  [Client] [2026-07-31T17:36:07.189Z] 
+  [DIAGNOSTIC REQUEST]
+  [Client] [2026-07-31T17:36:07.385Z] SERVER URL = http://127.0.0.1:3001
+  [Client] [2026-07-31T17:36:07.508Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-07-31T17:36:07.592Z] HTTP METHOD = GET
+  [Client] [2026-07-31T17:36:07.670Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [Client] [2026-07-31T17:36:07.877Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-07-31T17:36:07.980Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-07-31T17:36:08.207Z] STATUS CODE = 200
+  [Client] [2026-07-31T17:36:08.285Z] RESPONSE BODY = {"bwPrinterId":"","bwPrinterName":"HP Officejet J4500 series","colorPrinterId":"","colorPrinterName":"HP Officejet J4500 series"}
+  [Client] [2026-07-31T17:36:14.439Z] 
+  [DIAGNOSTIC REQUEST]
+  [Client] [2026-07-31T17:36:14.473Z] SERVER URL = http://127.0.0.1:3001
+  [Client] [2026-07-31T17:36:14.498Z] POST = http://127.0.0.1:3001/api/agent/heartbeat
+  [Client] [2026-07-31T17:36:14.524Z] HTTP METHOD = POST
+  [Client] [2026-07-31T17:36:14.550Z] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"HP Officejet J4500 series","printerCount":0,"printerStatus":"online","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":229,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-07-31T17:36:14.436Z"}
+  [Client] [2026-07-31T17:36:14.577Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [Client] [2026-07-31T17:36:14.665Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-07-31T17:36:14.699Z] POST = http://127.0.0.1:3001/api/agent/heartbeat
+  [Client] [2026-07-31T17:36:14.729Z] STATUS CODE = 200
+  [Client] [2026-07-31T17:36:14.754Z] RESPONSE BODY = {"success":true,"acknowledged":true,"serverTime":"2026-07-31T17:36:14.663Z","scanRequested":false}
+  [Client] [2026-07-31T17:36:14.781Z] [HEARTBEAT] Backend acknowledged
+  [Client] [2026-07-31T17:36:14.810Z] 
+  [DIAGNOSTIC REQUEST]
+  [Client] [2026-07-31T17:36:14.833Z] SERVER URL = http://127.0.0.1:3001
+  [Client] [2026-07-31T17:36:14.856Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-07-31T17:36:14.881Z] HTTP METHOD = GET
+  [Client] [2026-07-31T17:36:14.930Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [Client] [2026-07-31T17:36:14.977Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-07-31T17:36:15.019Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+================================================================
+                     END OF DIAGNOSTIC REPORT                   
+================================================================

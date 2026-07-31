@@ -1020,10 +1020,13 @@ function connectSSE() {
   }
 
   const streamUrl = new URL('/api/jobs/stream', config.serverUrl);
+  streamUrl.searchParams.set('agentId', config.agentId);
+  streamUrl.searchParams.set('shopId', config.shopId);
+  streamUrl.searchParams.set('protocolVersion', 'v2');
   logToFile(`\n[DIAGNOSTIC REQUEST]`);
   logToFile(`SERVER URL = ${config.serverUrl}`);
   logToFile(`GET = ${streamUrl.href}`);
-  logToFile(`HTTP METHOD = GET (SSE Stream)`);
+  logToFile(`HTTP METHOD = GET (SSE Stream v2)`);
   
   const client = getHttpClient(streamUrl);
   
@@ -1066,7 +1069,18 @@ function connectSSE() {
         if (line.startsWith('data:')) {
           try {
             const data = JSON.parse(line.substring(5).trim());
-            if (data.type === 'new_job') {
+            if (data.type === 'dispatch_job' && data.job) {
+              // Server-push dispatch: backend has pre-claimed this job
+              logToFile(`[DISPATCH] Received job: ${data.job.token} — ${data.job.fileName}`);
+              if (!busy && !isQueuePaused) {
+                busy = true;
+                processJob(data.job)
+                  .catch(err => logToFile(`[JOB ERROR] ${err.message}`))
+                  .finally(() => { busy = false; });
+              } else {
+                logToFile(`[DISPATCH] Ignored (busy=${busy}, paused=${isQueuePaused})`);
+              }
+            } else if (data.type === 'new_job') {
               poll();
             } else if (data.type === 'scan_printers' && data.shopId === config.shopId) {
               activeScanRequested = true;
@@ -1333,10 +1347,9 @@ async function main() {
     logToFile(`SSE stream connection disabled via test flag`);
   }
   
-  // Backlog poll checks
+  // One-time backlog drain on startup (no recurring poll — dispatch is push-based)
   if (process.env.CP_TEST_DISABLE_POLLING !== 'true') {
     poll();
-    pollTimer = setInterval(poll, 15000);
   } else {
     logToFile(`Backlog polling disabled via test flag`);
   }

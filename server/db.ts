@@ -47,24 +47,40 @@ export interface DbJob {
   fileSize: number;
   pageCount: number;
   copies: number;
-  printMode: 'mono' | 'color';
-  printType?: 'bw' | 'color';
-  sides: 'single' | 'double';
+  printMode: 'mono' | 'color' | string;
+  printType?: 'bw' | 'color' | string;
+  sides: 'single' | 'double' | string;
   pageRange?: string;
-  status: 'pending_approval' | 'queued' | 'printing' | 'completed' | 'failed' | 'paused' | 'printer_offline' | 'paper_empty';
-  chargedAmount: number;
-  studentName: string;
-  studentEmail: string;
+  status: 'pending_approval' | 'queued' | 'printing' | 'completed' | 'failed' | 'paused' | 'printer_offline' | 'paper_empty' | string;
+  chargedAmount?: number;
+  studentName?: string;
+  studentEmail?: string;
+  studentId?: string;
   createdAt: string;
-  progressPercent: number;
-  serverFilePath: string;
+  progressPercent?: number;
+  serverFilePath?: string;
   reason?: string;
   scheduledFor?: string;
   shopId: string;
   tokenId?: string;
+  orderId?: string;
   timeline?: TimelineEntry[];
   failureSnapshot?: FailureSnapshot;
   metrics?: JobMetrics;
+  retryCount?: number;
+}
+
+export interface DbPrintOrder {
+  id: string;
+  token: string;
+  studentId: string;
+  studentName?: string;
+  studentEmail?: string;
+  shopId: string;
+  status: 'pending_approval' | 'printing' | 'completed' | 'failed' | string;
+  totalChargedAmount: number;
+  jobIds: string[];
+  createdAt: string;
 }
 
 export interface Shop {
@@ -140,6 +156,19 @@ export interface Agent {
   } | null;
 }
 
+export interface Student {
+  id: string;
+  googleId: string;
+  name: string;
+  email: string;
+  picture: string;
+  role: 'student';
+  createdAt: string;
+  lastLogin: string;
+  isActive: boolean;
+  lastSeen: string;
+}
+
 export interface Printer {
   printerId: string;
   shopId: string;
@@ -149,8 +178,10 @@ export interface Printer {
 }
 
 interface Db {
+  orders?: DbPrintOrder[];
   jobs: DbJob[];
   shops: Shop[];
+  students?: Student[];
   printerSettings?: PrinterSettings;
   agents?: Agent[];
   printers?: Printer[];
@@ -224,7 +255,7 @@ const DEFAULT_PRINTER_SETTINGS: PrinterSettings = {
 };
 
 export function readDb(): Db {
-  if (!fs.existsSync(DB_PATH)) return { jobs: [], shops: DEFAULT_SHOPS, printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [] };
+  if (!fs.existsSync(DB_PATH)) return { jobs: [], shops: DEFAULT_SHOPS, students: [], printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [] };
   try {
     const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
     if (!data.shops) {
@@ -275,6 +306,14 @@ export function readDb(): Db {
         }
       }
     });
+    if (!data.students) {
+      data.students = [];
+    }
+    data.students.forEach((student: any) => {
+      if (student.isActive === undefined) {
+        student.isActive = true;
+      }
+    });
     if (!data.printerSettings) {
       data.printerSettings = DEFAULT_PRINTER_SETTINGS;
     }
@@ -284,9 +323,12 @@ export function readDb(): Db {
     if (!data.printers) {
       data.printers = [];
     }
+    if (!data.orders) {
+      data.orders = [];
+    }
     return data;
   } catch {
-    return { jobs: [], shops: DEFAULT_SHOPS, printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [] };
+    return { orders: [], jobs: [], shops: DEFAULT_SHOPS, students: [], printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [] };
   }
 }
 

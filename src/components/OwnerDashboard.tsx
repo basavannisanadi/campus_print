@@ -110,18 +110,18 @@ export default function OwnerDashboard({ navigate }: Props) {
   if (!isOwnerLoggedIn) {
     return (
       <div className="max-w-md mx-auto my-12 animate-fadeIn font-sans text-left">
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-          <div className="px-8 py-6 bg-gradient-to-r from-slate-800 to-slate-900 text-white text-center">
-            <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center mx-auto mb-3 border border-white/15">
-              <ShieldAlert className="w-6 h-6 text-white" />
+        <div className="portal-card overflow-hidden">
+          <div className="px-8 py-6 bg-[var(--bg-surface-secondary)] text-[var(--text-primary)] text-center border-b border-[var(--border-default)]">
+            <div className="w-12 h-12 rounded-xl bg-[var(--bg-card)] border border-[var(--border-default)] flex items-center justify-center mx-auto mb-3">
+              <ShieldAlert className="w-6 h-6 text-[var(--icon-primary)]" />
             </div>
-            <h2 className="text-xl font-bold">Platform Owner Console</h2>
-            <p className="text-xs text-slate-300 mt-1">Provide administrative owner credentials</p>
+            <h2 className="text-xl font-bold text-[var(--text-primary)]">Platform Owner Console</h2>
+            <p className="text-xs text-[var(--text-muted)] mt-1">Provide administrative owner credentials</p>
           </div>
 
           <form onSubmit={handleLogin} className="p-8 space-y-5">
             {loginError && (
-              <div className="flex items-center gap-2 p-3.5 rounded-xl bg-red-50 border border-red-100 text-xs text-red-600 animate-fadeIn font-semibold">
+              <div className="flex items-center gap-2 p-3.5 rounded-xl badge-offline text-xs font-semibold">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                 {loginError}
               </div>
@@ -129,35 +129,35 @@ export default function OwnerDashboard({ navigate }: Props) {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                <label className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-1.5 font-mono">
                   Owner Username
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                  <User className="absolute left-3.5 top-3 w-4 h-4 text-[var(--text-muted)]" />
                   <input
                     type="text"
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="owner"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-400 transition-all font-semibold"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl portal-input text-sm font-semibold"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">
+                <label className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-1.5 font-mono">
                   Password
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-[var(--text-muted)]" />
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-400 transition-all font-semibold"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl portal-input text-sm font-semibold"
                   />
                 </div>
               </div>
@@ -165,7 +165,7 @@ export default function OwnerDashboard({ navigate }: Props) {
 
             <button
               type="submit"
-              className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-900 hover:to-black text-white font-semibold text-sm transition-all duration-200 shadow-lg flex items-center justify-center gap-2 cursor-pointer border-none"
+              className="w-full py-3.5 px-6 rounded-xl btn-primary-action font-semibold text-sm cursor-pointer border-none flex items-center justify-center gap-2"
             >
               <LogIn className="w-4 h-4" />
               Sign In as Owner
@@ -174,7 +174,7 @@ export default function OwnerDashboard({ navigate }: Props) {
             <button
               type="button"
               onClick={() => navigate('/')}
-              className="w-full py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold transition-all cursor-pointer bg-white"
+              className="w-full py-2.5 rounded-xl btn-secondary-action text-xs font-bold transition-all cursor-pointer"
             >
               Back to Student Portal
             </button>
@@ -188,35 +188,35 @@ export default function OwnerDashboard({ navigate }: Props) {
   if (loading || !data) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <RefreshCw className="w-10 h-10 animate-spin text-slate-600" />
-        <p className="text-sm font-semibold text-slate-500 font-mono">Loading telemetry aggregates...</p>
+        <RefreshCw className="w-10 h-10 animate-spin text-[var(--color-primary)]" />
+        <p className="text-sm font-semibold text-[var(--text-muted)] font-mono">Loading telemetry aggregates...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 animate-fadeIn font-sans text-slate-700 text-left">
+    <div className="space-y-8 animate-fadeIn font-sans text-[var(--text-primary)] text-left">
       {/* Owner Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm text-left">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 portal-card-cream p-5 text-left">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
             <span>Platform Owner Dashboard</span>
-            <span className="text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-mono">
+            <span className="text-xs font-bold badge-neutral px-2.5 py-0.5 rounded-full flex items-center gap-1 font-mono">
               🛡️ Observation Mode
             </span>
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">Real-time status overview of all shop print lines</p>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">Real-time status overview of all shop print lines</p>
         </div>
         <div className="flex items-center gap-2.5">
           <button
             onClick={fetchDashboardData}
-            className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-all cursor-pointer bg-white"
+            className="p-2 rounded-xl btn-secondary-action transition-all cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
           <button
             onClick={handleSignOut}
-            className="py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer border-none"
+            className="py-2 px-4 rounded-xl btn-secondary-action text-xs font-bold transition-all cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5 inline mr-1" />
             Sign Out
@@ -226,28 +226,28 @@ export default function OwnerDashboard({ navigate }: Props) {
 
       {/* Aggregate Print Statistics Widget */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 flex-shrink-0">
+        <div className="portal-card-lavender p-6 flex items-center gap-4 text-left font-sans">
+          <div className="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] border border-[var(--color-primary-border)] flex items-center justify-center text-[var(--color-primary)] flex-shrink-0">
             <TrendingUp className="w-6 h-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Jobs Today</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1 font-mono">{data.stats.jobsToday}</h3>
+            <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Jobs Today</p>
+            <h3 className="text-2xl font-black text-[var(--text-primary)] mt-1 font-mono">{data.stats.jobsToday}</h3>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-500 flex-shrink-0">
+        <div className="portal-card-sage p-6 flex items-center gap-4 text-left font-sans">
+          <div className="w-12 h-12 rounded-xl badge-live flex items-center justify-center flex-shrink-0">
             <CheckCircle className="w-6 h-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Jobs This Week</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1 font-mono">{data.stats.jobsThisWeek}</h3>
+            <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Jobs This Week</p>
+            <h3 className="text-2xl font-black text-[var(--text-primary)] mt-1 font-mono">{data.stats.jobsThisWeek}</h3>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-center gap-4 text-left font-sans">
-          <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 flex-shrink-0">
+        <div className="portal-card-mist p-6 flex items-center gap-4 text-left font-sans">
+          <div className="w-12 h-12 rounded-xl badge-standby flex items-center justify-center flex-shrink-0">
             <Clock className="w-6 h-6" />
           </div>
           <div className="min-w-0">

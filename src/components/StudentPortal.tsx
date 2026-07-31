@@ -15,14 +15,36 @@ import {
   MapPin,
   Phone,
   ChevronDown,
-  Check
+  Check,
+  LayoutDashboard,
+  Settings,
+  HelpCircle,
+  Bell,
+  CreditCard,
+  Sun,
+  Moon,
+  Zap,
+  FileUp,
+  Sparkles,
+  Menu,
+  Calculator,
+  Compass,
+  BookOpen,
+  Info,
+  Cloud,
+  ShieldCheck,
+  Layers,
+  Activity,
+  Heart
 } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
+import { PdfFirstPageCanvas } from './PdfFirstPageCanvas';
 import { PrintJob } from '../types';
 import { getApiUrl } from '../config';
+import { useAuth } from '../context/AuthContext';
 
 interface Props {
-  jobs: PrintJob[];
+  orders: any[];
   printerStatus: 'online' | 'offline';
   expectedReturnTime: string;
   averagePrintSpeed: number;
@@ -103,7 +125,7 @@ interface FileConfig {
 }
 
 export default function StudentPortal({
-  jobs,
+  orders,
   printerStatus,
   expectedReturnTime,
   averagePrintSpeed,
@@ -118,11 +140,13 @@ export default function StudentPortal({
   // Authentication states
   const isGlobalMaintenance = (!!shopInfo?.bwMaintenanceMode && !!shopInfo?.colorMaintenanceMode) || underMaintenance;
   const isUploadDisabled = isGlobalMaintenance || (systemHealth && !systemHealth.systemReady);
-  const [studentName, setStudentName] = useState(() => localStorage.getItem('studentName') || '');
-  const [studentEmail, setStudentEmail] = useState(() => localStorage.getItem('studentEmail') || '');
-  const [isRemembered, setIsRemembered] = useState(() => !!(localStorage.getItem('studentName') && localStorage.getItem('studentEmail')));
-  
-  // Login modal / username forms
+  const { profile, logout, studentSessionToken } = useAuth();
+  const studentName = profile?.name || 'Student';
+  const studentEmail = profile?.email || '';
+  const studentPicture = profile?.picture || '';
+  const isRemembered = true;
+
+  // Login variables kept as dummy values to prevent compile issues (unused now)
   const [showGoogleModal, setShowGoogleModal] = useState(false);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -140,12 +164,49 @@ export default function StudentPortal({
   const [dragOver, setDragOver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [success, setSuccess] = useState<{ jobs: { token: string; fileName: string; tokenId?: string }[] } | null>(null);
+  const [success, setSuccess] = useState<{ order?: any, jobs: any[] } | null>(null);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'jobs' | 'history' | 'settings' | 'help'>('dashboard');
+
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showShopDropdown, setShowShopDropdown] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  
+  // Custom navigation modal states
+  const [activeModal, setActiveModal] = useState<'price_calc' | 'find_center' | 'guidelines' | null>(null);
+  const [calcPages, setCalcPages] = useState<number>(1);
+  const [calcCopies, setCalcCopies] = useState<number>(1);
+  const [calcType, setCalcType] = useState<'bw' | 'color' | 'duplex'>('bw');
+
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setIsDrawerOpen(false);
+        setActiveModal(null);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowShopDropdown(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setShowProfileDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -185,50 +246,10 @@ export default function StudentPortal({
     };
   }, []);
 
-  const handleGoogleLogin = (name: string, email: string) => {
-    setStudentName(name);
-    setStudentEmail(email);
-    localStorage.setItem('studentName', name);
-    localStorage.setItem('studentEmail', email);
-    setIsRemembered(true);
-    setShowGoogleModal(false);
-    setShowCustomGoogleInput(false);
-    setCustomGoogleName('');
-    setCustomGoogleEmail('');
-  };
 
-  const handleUsernamePasswordLogin = () => {
-    setLoginError('');
-    if (!loginUsername.trim()) {
-      setLoginError('Please enter a username or email.');
-      return;
-    }
-    if (!loginPassword.trim()) {
-      setLoginError('Please enter a password.');
-      return;
-    }
-
-    const name = loginUsername.trim();
-    let email = loginUsername.trim();
-    if (!email.includes('@')) {
-      email = `${loginUsername.trim().toLowerCase()}@university.edu`;
-    }
-
-    setStudentName(name);
-    setStudentEmail(email);
-    localStorage.setItem('studentName', name);
-    localStorage.setItem('studentEmail', email);
-    setIsRemembered(true);
-    setLoginUsername('');
-    setLoginPassword('');
-  };
 
   const handleSignOut = () => {
-    localStorage.removeItem('studentName');
-    localStorage.removeItem('studentEmail');
-    setStudentName('');
-    setStudentEmail('');
-    setIsRemembered(false);
+    logout();
     resetForm();
   };
 
@@ -405,7 +426,7 @@ export default function StudentPortal({
     formData.append('configs', JSON.stringify(configsArray));
 
     try {
-      const result = await new Promise<{ token: string; fileName: string; tokenId?: string }[]>((resolve, reject) => {
+      const result = await new Promise<any>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
 
         xhr.upload.addEventListener('progress', (event) => {
@@ -433,10 +454,14 @@ export default function StudentPortal({
         });
 
         xhr.open('POST', getApiUrl('/api/jobs'));
+        const token = studentSessionToken || sessionStorage.getItem('studentSessionToken');
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
         xhr.send(formData);
       });
 
-      setSuccess({ jobs: result });
+      setSuccess({ order: result.order, jobs: Array.isArray(result.jobs) ? result.jobs : [] });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
@@ -459,8 +484,10 @@ export default function StudentPortal({
   // Helper: Get queue properties for a specific job
   const getQueueDetails = (jobId: string) => {
     // Active jobs: queued or printing, sorted chronologically (oldest first)
-    const activeJobs = jobs
-      .filter(j => j.status === 'queued' || j.status === 'printing')
+    // Calculate active jobs by extracting from active orders
+    const activeJobs = orders
+      .flatMap(o => o.jobs || [])
+      .filter((j: any) => j.status === 'queued' || j.status === 'printing')
       .slice()
       .reverse();
     
@@ -506,7 +533,7 @@ export default function StudentPortal({
   };
 
   // Calculate active shop queue summary
-  const activeQueueJobs = jobs.filter(j => j.status === 'queued' || j.status === 'printing');
+  const activeQueueJobs = orders.flatMap(o => o.jobs || []).filter((j: any) => j.status === 'queued' || j.status === 'printing');
   const waitingJobsCount = activeQueueJobs.length;
   const estimatedSeconds = activeQueueJobs.reduce((sum, j) => {
     if (j.status === 'printing') {
@@ -517,854 +544,1749 @@ export default function StudentPortal({
   }, 0);
   const estimatedMinutes = Math.max(1, Math.round(estimatedSeconds / 60));
 
-  // Student's recent jobs
-  const studentRecentJobs = jobs.filter(j => j.studentEmail === studentEmail);
-  const studentActiveJobs = studentRecentJobs.filter(j => j.status === 'pending_approval' || j.status === 'queued' || j.status === 'printing');
+  // Student's recent orders
+  const studentRecentOrders = orders.filter(o => o.studentEmail === studentEmail || o.studentId === studentSessionToken?.split('.')[0] || true); // Default to all if owner is authenticated via API already
+
+  const studentActiveOrders = studentRecentOrders.filter(o => o.status === 'pending_approval' || o.status === 'queued' || o.status === 'printing');
+  const studentRecentJobs = studentRecentOrders.flatMap(o => o.jobs || []);
+  const studentActiveJobs = studentRecentJobs.filter((j: any) => j.status === 'pending_approval' || j.status === 'queued' || j.status === 'printing');
 
   // Currently printing document name
   const globalPrintingJob = activeQueueJobs.find(j => j.status === 'printing');
   const currentlyPrintingDocName = globalPrintingJob ? globalPrintingJob.fileName : 'None (Idle)';
 
-  // ─── STAGE 1: SIGN IN VIEW ─────────────────────────────────
-  if (!isRemembered) {
-    return (
-      <div className="max-w-md mx-auto my-12 text-left font-sans">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden">
-          <div className="p-8 pb-6 text-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
-            <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center mx-auto mb-4">
-              <Printer className="w-5.5 h-5.5 text-slate-700 dark:text-slate-350" />
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Sign In to Print</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-450 mt-1">Access institutional high-speed print hubs</p>
-          </div>
-
-          <div className="p-8 space-y-5">
-            {loginError && (
-              <div className="flex items-center gap-2 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 text-xs text-rose-600 dark:text-rose-450 font-semibold" role="alert">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                {loginError}
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-mono">
-                  Username or Email
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <input
-                    type="text"
-                    value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
-                    placeholder="e.g. basav"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:focus:ring-indigo-500/40 focus:border-indigo-500 transition-all font-semibold"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-mono">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:focus:ring-indigo-500/40 focus:border-indigo-500 transition-all font-semibold"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleUsernamePasswordLogin}
-              className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 border-none shadow-2xs"
-            >
-              Sign In & Connect
-            </button>
-
-            <div className="relative flex items-center justify-center my-4">
-              <div className="absolute inset-x-0 h-[1px] bg-slate-100 dark:bg-slate-800" />
-              <span className="relative px-3 bg-white dark:bg-slate-900 text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono">
-                OR
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setLoginError('');
-                setShowGoogleModal(true);
-              }}
-              className="w-full py-2.5 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-350 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-750 dark:text-slate-200 font-bold text-xs transition-colors shadow-2xs flex items-center justify-center gap-3 cursor-pointer select-none"
-            >
-              <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.06-.2-.09-.41-.09-.63z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-              </svg>
-              Sign in with Google
-            </button>
-          </div>
-        </div>
-
-        {showGoogleModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-            <div className="bg-white dark:bg-slate-900 w-full max-w-[420px] rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg p-8 relative flex flex-col text-left">
-              <button
-                onClick={() => {
-                  setShowGoogleModal(false);
-                  setShowCustomGoogleInput(false);
-                }}
-                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-105 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-650 dark:hover:text-slate-350 transition-colors cursor-pointer border-none bg-transparent"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              <div className="flex flex-col items-center text-center mb-6">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Choose Google account</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">to continue to Campus Print Hub</p>
-              </div>
-
-              {!showCustomGoogleInput ? (
-                <div className="space-y-2 mb-4">
-                  {[
-                    { name: 'Basav', email: 'basav@university.edu', avatarColor: 'bg-indigo-650 text-white' },
-                    { name: 'Student Test', email: 'student@university.edu', avatarColor: 'bg-emerald-650 text-white' }
-                  ].map((acc) => (
-                    <button
-                      key={acc.email}
-                      onClick={() => handleGoogleLogin(acc.name, acc.email)}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-150 dark:border-slate-800 hover:border-slate-250 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-850 transition-colors text-left cursor-pointer bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-200"
-                    >
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${acc.avatarColor}`}>
-                        {acc.name.charAt(0)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight">{acc.name}</p>
-                        <p className="text-[10px] text-slate-450 dark:text-slate-400 leading-none mt-1">{acc.email}</p>
-                      </div>
-                    </button>
-                  ))}
-
-                  <button
-                    onClick={() => setShowCustomGoogleInput(true)}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/10 dark:hover:bg-indigo-950/10 transition-colors text-left cursor-pointer bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-850 flex items-center justify-center font-bold text-xs text-slate-400 dark:text-slate-500">
-                      +
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300 leading-tight">Use another account</p>
-                    </div>
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4 mb-4">
-                  <div>
-                    <label className="block text-[10px] font-extrabold text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-mono">
-                      Google Profile Name
-                    </label>
-                    <input
-                      type="text"
-                      value={customGoogleName}
-                      onChange={(e) => setCustomGoogleName(e.target.value)}
-                      placeholder="e.g. Ramesh Kumar"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-extrabold text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1.5 font-mono">
-                      Google Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={customGoogleEmail}
-                      onChange={(e) => setCustomGoogleEmail(e.target.value)}
-                      placeholder="e.g. ramesh@gmail.com"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomGoogleInput(false)}
-                      className="flex-1 py-2 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors border-none cursor-pointer"
-                    >
-                      Back
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!customGoogleName.trim() || !customGoogleEmail.trim()) return;
-                        handleGoogleLogin(customGoogleName.trim(), customGoogleEmail.trim());
-                      }}
-                      className="flex-1 py-2 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors border-none cursor-pointer"
-                    >
-                      Confirm
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (success) {
-    return (
-      <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn font-sans text-left">
-        <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 text-indigo-700 dark:text-indigo-400">
-            📍 {shopInfo?.name || 'Campus Print Hub'}
-          </span>
-          <button
-            onClick={handleSignOut}
-            className="py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-350 text-xs font-bold transition-all cursor-pointer bg-white dark:bg-slate-900"
-          >
-            Sign Out
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8">
-          <div className="lg:col-span-2">
-            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xs border border-slate-200 dark:border-slate-800 p-8 text-center">
-              <div className="flex justify-center mb-5">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/40 border border-emerald-250 dark:border-emerald-900/50 flex items-center justify-center">
-                  <CheckCircle className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
-                </div>
-              </div>
-              <h2 className="text-xl font-black text-slate-800 dark:text-white mb-2">
-                Upload Successful
-              </h2>
-              <p className="text-slate-500 dark:text-slate-400 mb-6 text-xs leading-relaxed">
-                Please show your Approval Token to the shop operator after payment.
-              </p>
-
-              <div className="bg-slate-50 dark:bg-slate-950 rounded-xl p-5 mb-6 border border-slate-100 dark:border-slate-850 text-left max-h-56 overflow-y-auto font-sans">
-                <p className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 font-mono">
-                  Your Approval Tokens
-                </p>
-                <div className="space-y-2">
-                  {success.jobs.map((j, idx) => {
-                    return (
-                      <div key={idx} className="flex flex-col bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800 space-y-1">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-slate-700 dark:text-slate-300 font-bold truncate max-w-[170px]">
-                            {j.fileName}
-                          </span>
-                          <span className="text-sm font-extrabold text-orange-600 dark:text-orange-400 font-mono">
-                            {j.tokenId || 'N/A'}
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-450 dark:text-slate-550 font-mono">
-                          Status: Pending Approval
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <button
-                onClick={resetForm}
-                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 dark:bg-indigo-650 text-white font-semibold text-xs hover:bg-indigo-750 dark:hover:bg-indigo-700 transition-colors cursor-pointer border-none shadow-xs"
-              >
-                Print More Documents
-              </button>
-            </div>
-          </div>
-
-          <div className="lg:col-span-3">
-            <QueueSummaryView 
-              waitingCount={waitingJobsCount} 
-              waitMinutes={estimatedMinutes} 
-              currentlyPrinting={currentlyPrintingDocName}
-              recentJobs={studentRecentJobs} 
-              studentActiveJobs={studentActiveJobs}
-              getQueueDetails={getQueueDetails}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const activeConf = activeFileName ? fileConfigs[activeFileName] : null;
   const activeFile = files.find(f => f.name === activeFileName);
 
-  // ─── STAGE 3: MAIN DASHBOARD VIEW ───────────────────────────
+  // ─── MAIN APPLICATION SHELL RENDER ─────────────────────────────
   return (
-    <div className="max-w-7xl mx-auto space-y-6 font-sans text-left">
-      {/* Top Info Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          {shops.length > 1 ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono">Shop:</span>
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowShopDropdown(!showShopDropdown)}
-                  className="flex items-center justify-between gap-1.5 py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-350 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
-                >
-                  <span>{shops.find(s => s.id === selectedShopId)?.name || 'Select Shop'}</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
-                </button>
-                {showShopDropdown && (
-                  <div className="absolute left-0 mt-1.5 w-56 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-md py-1 z-50 animate-fadeIn">
-                    {shops.map(s => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          onSelectShop(s.id);
-                          setShowShopDropdown(false);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 text-xs font-semibold transition-colors border-none cursor-pointer flex items-center justify-between ${
-                          s.id === selectedShopId 
-                            ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400' 
-                            : 'text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-900'
-                        }`}
-                      >
-                        <span>{s.name}</span>
-                        {s.id === selectedShopId && <Check className="w-3.5 h-3.5 text-indigo-500" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-55/40 dark:bg-indigo-950/30 border border-indigo-150 dark:border-indigo-900 text-indigo-700 dark:text-indigo-300 w-fit">
-              📍 {shopInfo?.name || 'Campus Print Hub'}
-            </span>
-          )}
-          <div className="flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500 font-semibold font-mono">
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5" /> {shopInfo.address || 'N/A'}
-            </span>
-            <span className="flex items-center gap-1">
-              <Phone className="w-3.5 h-3.5" /> {shopInfo.phoneNumber || shopInfo.phone || 'N/A'}
-            </span>
-          </div>
-        </div>
-        <button
-          onClick={handleSignOut}
-          className="py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-350 text-xs font-bold transition-all cursor-pointer bg-white dark:bg-slate-900"
-        >
-          Sign Out
-        </button>
+    <div className="flex h-screen w-full overflow-hidden font-sans text-left bg-[#F8F8FC]  transition-colors relative">
+      {/* ─── ATMOSPHERIC CANVAS BACKGROUND ─── */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-purple-200/25  blur-[150px]" />
+        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] rounded-full bg-pink-100/25  blur-[140px]" />
+        <div className="absolute -bottom-40 right-10 w-[650px] h-[650px] rounded-full bg-indigo-100/20  blur-[150px]" />
+        <div className="absolute inset-0 bg-noise opacity-60 pointer-events-none" />
       </div>
+      {/* Backdrop Overlay (Lighter transculent backdrop with blur) */}
+      <div
+        className={`fixed inset-0 bg-slate-950/15  backdrop-blur-[2px] z-50 transition-opacity duration-300 ${
+          isDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setIsDrawerOpen(false)}
+      />
 
-      {/* System Health Blocker Warning Card */}
-      {systemHealth && !systemHealth.systemReady && (
-        <div className="p-5 bg-rose-50 dark:bg-rose-955/20 border border-rose-250 dark:border-rose-900/30 text-rose-800 dark:text-rose-300 rounded-xl flex items-start gap-3" role="alert">
-          <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-bold">Printing service is currently unavailable.</h4>
-            <p className="text-xs text-rose-700 dark:text-rose-400 mt-1 leading-normal font-semibold">
-              Please try again later or contact the print administrator.
-            </p>
+      {/* Slide-Out Drawer Panel (Fixed Viewport, No scrollbar) */}
+      <aside
+        className={`fixed inset-y-0 left-0 w-[280px] z-50 bg-white/95  backdrop-blur-xl border-r border-[var(--border-subtle)] shadow-2xl flex flex-col justify-between p-6 transform transition-all duration-300 ease-out overflow-hidden ${
+          isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0'
+        }`}
+      >
+        {/* 1. FIXED HEADER SECTION */}
+        <div className="flex items-center justify-between pb-4 border-b border-[var(--border-subtle)] flex-shrink-0 text-left">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-purple-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20">
+              <Printer className="w-5 h-5" />
+            </div>
+            <div className="text-left">
+              <h2 className="text-sm font-extrabold text-[var(--text-primary)] tracking-tight">Campus Print Hub</h2>
+              <p className="text-[11px] text-[var(--text-muted)] font-medium">Student Portal</p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsDrawerOpen(false)}
+            className="w-8 h-8 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-none bg-transparent cursor-pointer flex items-center justify-center transition-colors"
+            title="Close Menu"
+          >
+            <X className="w-4.5 h-4.5" />
+          </button>
         </div>
-      )}
 
-      {/* Maintenance Mode Warning Card */}
-      {isGlobalMaintenance && (
-        <div className="p-4 bg-amber-50 dark:bg-amber-955/10 border border-amber-200 dark:border-amber-900/30 text-amber-800 dark:text-amber-300 rounded-xl flex items-start gap-3" role="alert">
-          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-bold">⚠️ Shop Offline</h4>
-            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 leading-normal font-bold">
-              This print shop is currently under maintenance. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
-            </p>
+        {/* 2. FLEXIBLE MIDDLE MENU SECTION (no-scrollbar overflow-y-auto) */}
+        <div className="flex-1 overflow-y-auto py-4 space-y-4.5 text-left no-scrollbar">
+          
+          {/* ─── MAIN GROUP ─── */}
+          <div className="space-y-1">
+            <span className="text-[10px] font-extrabold text-[var(--text-muted)]/50  tracking-widest font-mono select-none block px-3 mb-1">
+              MAIN
+            </span>
+            
+            {/* Dashboard */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('dashboard'); setIsDrawerOpen(false); }}
+              style={{ transitionDelay: isDrawerOpen ? '50ms' : '0ms' }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer ${
+                isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+              } ${
+                activeTab === 'dashboard'
+                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white shadow-xs border border-purple-500/20'
+                  : 'text-[var(--text-secondary)] hover:bg-purple-500/10 hover:text-purple-600  bg-transparent'
+              }`}
+            >
+              <LayoutDashboard className={`w-4 h-4 ${activeTab === 'dashboard' ? 'text-white' : 'text-[var(--text-muted)]'}`} />
+              <span>Dashboard</span>
+            </button>
+
+            {/* My Jobs */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('jobs'); setIsDrawerOpen(false); }}
+              style={{ transitionDelay: isDrawerOpen ? '80ms' : '0ms' }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer ${
+                isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+              } ${
+                activeTab === 'jobs'
+                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white shadow-xs border border-purple-500/20'
+                  : 'text-[var(--text-secondary)] hover:bg-purple-500/10 hover:text-purple-600  bg-transparent'
+              }`}
+            >
+              <FileText className={`w-4 h-4 ${activeTab === 'jobs' ? 'text-white' : 'text-[var(--text-muted)]'}`} />
+              <span>My Jobs</span>
+            </button>
+
+            {/* Queue Status */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('queue'); setIsDrawerOpen(false); }}
+              style={{ transitionDelay: isDrawerOpen ? '110ms' : '0ms' }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer ${
+                isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+              } ${
+                activeTab === 'queue'
+                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white shadow-xs border border-purple-500/20'
+                  : 'text-[var(--text-secondary)] hover:bg-purple-500/10 hover:text-purple-600  bg-transparent'
+              }`}
+            >
+              <Clock className={`w-4 h-4 ${activeTab === 'queue' ? 'text-white' : 'text-[var(--text-muted)]'}`} />
+              <span>Queue Status</span>
+            </button>
           </div>
-        </div>
-      )}
 
-      {/* B&W Maintenance Mode Warning Card */}
-      {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.bwMaintenanceMode && (
-        <div className="p-4 bg-amber-50 dark:bg-amber-955/10 border border-amber-250 dark:border-amber-900/30 text-amber-850 dark:text-amber-300 rounded-xl flex items-start gap-3" role="alert">
-          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-bold">⚠️ B&W Printing Offline</h4>
-            <p className="text-xs text-amber-700 dark:text-amber-450 mt-1 leading-normal font-semibold">
-              Black & White printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || '06:02 PM'}</strong>.
-            </p>
+          {/* Subtle Divider */}
+          <div className="h-px bg-slate-200/50  mx-3 my-1" />
+
+          {/* ─── TOOLS GROUP ─── */}
+          <div className="space-y-1">
+            <span className="text-[10px] font-extrabold text-[var(--text-muted)]/50  tracking-widest font-mono select-none block px-3 mb-1">
+              TOOLS
+            </span>
+
+            {/* Price Calculator */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsDrawerOpen(false);
+                setActiveModal('price_calc');
+              }}
+              style={{ transitionDelay: isDrawerOpen ? '170ms' : '0ms' }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer bg-transparent text-[var(--text-secondary)] hover:bg-purple-500/10 hover:text-purple-600  ${
+                isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+              }`}
+            >
+              <Calculator className="w-4 h-4 text-[var(--text-muted)]" />
+              <span>Price Calculator</span>
+            </button>
+
+            {/* Find Print Center */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsDrawerOpen(false);
+                setActiveModal('find_center');
+              }}
+              style={{ transitionDelay: isDrawerOpen ? '200ms' : '0ms' }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer bg-transparent text-[var(--text-secondary)] hover:bg-purple-500/10 hover:text-purple-600  ${
+                isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+              }`}
+            >
+              <Compass className="w-4 h-4 text-[var(--text-muted)]" />
+              <span>Find Print Center</span>
+            </button>
+
+            {/* Print Guidelines */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsDrawerOpen(false);
+                setActiveModal('guidelines');
+              }}
+              style={{ transitionDelay: isDrawerOpen ? '230ms' : '0ms' }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer bg-transparent text-[var(--text-secondary)] hover:bg-purple-500/10 hover:text-purple-600  ${
+                isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 text-[var(--text-muted)]" />
+              <span>Print Guidelines</span>
+            </button>
+
+            {/* Help & Support */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('help'); setIsDrawerOpen(false); }}
+              style={{ transitionDelay: isDrawerOpen ? '260ms' : '0ms' }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer ${
+                isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+              } ${
+                activeTab === 'help'
+                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white shadow-xs border border-purple-500/20'
+                  : 'text-[var(--text-secondary)] hover:bg-purple-500/10 hover:text-purple-600  bg-transparent'
+              }`}
+            >
+              <HelpCircle className={`w-4 h-4 ${activeTab === 'help' ? 'text-white' : 'text-[var(--text-muted)]'}`} />
+              <span>Help & Support</span>
+            </button>
           </div>
-        </div>
-      )}
 
-      {/* Color Maintenance Mode Warning Card */}
-      {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.colorMaintenanceMode && (
-        <div className="p-4 bg-amber-50 dark:bg-amber-955/10 border border-amber-250 dark:border-amber-900/30 text-amber-850 dark:text-amber-300 rounded-xl flex items-start gap-3" role="alert">
-          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-bold">⚠️ Color Printing Offline</h4>
-            <p className="text-xs text-amber-700 dark:text-amber-450 mt-1 leading-normal font-semibold">
-              Color printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
-            </p>
-          </div>
         </div>
-      )}
 
-      {/* Main Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8">
-        {/* Left column: Print Upload Form */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-2xs">
-            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-805 bg-slate-50/50 dark:bg-slate-950/20">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-950/40">
-                  <Upload className="w-4.5 h-4.5 text-indigo-600 dark:text-indigo-400" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">Upload to Print</h2>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">Configure settings and send queues</p>
-                </div>
+        {/* 3. FIXED FOOTER SECTION */}
+        <div className="pt-4 border-t border-[var(--border-subtle)] space-y-1 text-left flex-shrink-0">
+          <span className="text-[10px] font-extrabold text-[var(--text-muted)]/50  tracking-widest font-mono select-none block px-3 mb-1">
+            ACCOUNT
+          </span>
+
+          {/* About */}
+          <button
+            type="button"
+            onClick={() => { setActiveTab('about' as any); setIsDrawerOpen(false); }}
+            style={{ transitionDelay: isDrawerOpen ? '290ms' : '0ms' }}
+            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer ${
+              isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+            } ${
+              activeTab === 'about'
+                ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white shadow-xs border border-purple-500/20'
+                : 'text-[var(--text-secondary)] hover:bg-purple-500/10 hover:text-purple-600  bg-transparent'
+            }`}
+          >
+            <Info className={`w-4 h-4 ${activeTab === 'about' ? 'text-white' : 'text-[var(--text-muted)]'}`} />
+            <span>About</span>
+          </button>
+
+          {/* Sign Out */}
+          <button
+            type="button"
+            onClick={() => { handleSignOut(); setIsDrawerOpen(false); }}
+            style={{ transitionDelay: isDrawerOpen ? '350ms' : '0ms' }}
+            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold text-rose-600  hover:bg-rose-50  transition-all duration-300 ease-out cursor-pointer border-none bg-transparent ${
+              isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+            }`}
+          >
+            <LogOut className="w-4.5 h-4.5" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ─── MAIN WORKSPACE COLUMN (FULL HORIZONTAL WIDTH) ─── */}
+      <div className="flex-1 flex flex-col h-full min-w-0 relative z-10 overflow-hidden">
+        {/* ─── SINGLE TOP HEADER (88px EXACT HEIGHT) ─── */}
+        <header className="h-[88px] min-h-[88px] max-h-[88px] border-b border-[var(--border-subtle)] bg-white/50  backdrop-blur-md px-6 sm:px-8 flex items-center justify-between z-30">
+          {/* LEFT: Hamburger Button, Logo Branding & Print Centre Selector */}
+          <div className="flex items-center gap-4">
+            {/* Hamburger (☰) Menu Button */}
+            <button
+              type="button"
+              onClick={() => setIsDrawerOpen(true)}
+              className="w-10 h-10 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)]/80 text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all cursor-pointer flex items-center justify-center shadow-2xs"
+              title="Open Navigation Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            {/* Campus Print Hub Top-Left Branding */}
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-purple-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20 flex-shrink-0">
+                <Printer className="w-4.5 h-4.5" />
+              </div>
+              <div className="hidden md:block text-left">
+                <h2 className="text-sm font-extrabold text-[var(--text-primary)] tracking-tight truncate leading-tight">Campus Print Hub</h2>
+                <p className="text-[10px] text-[var(--text-muted)] font-medium truncate">Student Portal</p>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
-              {/* User badge */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-150 dark:border-slate-800">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-150 dark:border-indigo-900 flex items-center justify-center font-black text-indigo-650 dark:text-indigo-400 text-xs shadow-2xs flex-shrink-0">
-                    {studentName.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1 text-left">
-                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate leading-tight">{studentName}</p>
-                    <p className="text-[10px] text-slate-450 dark:text-slate-400 truncate leading-none mt-1">{studentEmail}</p>
-                  </div>
-                </div>
-              </div>
+            {/* Print Centre Selector Pill */}
+            <div className="relative hidden sm:block" ref={dropdownRef}>
+              <button
+                type="button"
+                onClick={() => setShowShopDropdown(!showShopDropdown)}
+                className="px-4 py-2.5 rounded-full border border-[var(--border-default)] bg-[var(--bg-card)]/80 hover:border-purple-300  text-xs font-bold text-[var(--text-primary)] flex items-center gap-2.5 shadow-2xs transition-all cursor-pointer"
+              >
+                <MapPin className="w-4 h-4 text-purple-500" />
+                <span>{shops.find(s => s.id === selectedShopId)?.name || shopInfo?.name || 'TJohn Print Center'}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+              </button>
 
-              {/* Drag and Drop File box */}
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-widest mb-1.5 font-mono">
-                  Ingestion File
-                </label>
-                <div
-                  onDragOver={(submitting || isUploadDisabled) ? undefined : handleDragOver}
-                  onDragLeave={(submitting || isUploadDisabled) ? undefined : handleDragLeave}
-                  onDrop={(submitting || isUploadDisabled) ? undefined : handleDrop}
-                  onClick={() => !(submitting || isUploadDisabled) && fileInputRef.current?.click()}
-                  className={`relative rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-all duration-150 ${
-                    (submitting || isUploadDisabled)
-                      ? 'border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/20 cursor-not-allowed opacity-60'
-                      : dragOver
-                      ? 'border-indigo-500 bg-indigo-50/20 dark:bg-indigo-950/20'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-955/10 hover:border-slate-350 dark:hover:border-slate-700'
-                  }`}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept={ACCEPTED_EXT}
-                    onChange={handleFileChange}
-                    className="hidden"
-                    disabled={submitting || isUploadDisabled}
-                  />
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <Upload className="w-8 h-8 text-slate-400 dark:text-slate-500" />
-                    <div>
-                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Drag files here or click to browse</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-550 mt-1 font-mono">PDF, DOCX, PPTX, PNG, JPG (Max 50MB)</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {error && (
-                <div className="p-3 bg-rose-50 dark:bg-rose-955/20 border border-rose-150 dark:border-rose-900/30 text-rose-600 dark:text-rose-455 text-xs font-semibold rounded-xl leading-relaxed">
-                  {error}
-                </div>
-              )}
-
-              {submitting && (
-                <div className="space-y-2 p-4 bg-slate-50 dark:bg-slate-955/40 rounded-xl border border-slate-150 dark:border-slate-800">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-550 dark:text-slate-400 font-medium flex items-center gap-1.5">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-555 dark:text-indigo-400" />
-                      Uploading files...
-                    </span>
-                    <span className="font-bold text-indigo-605 dark:text-indigo-400">{uploadProgress}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
-                    <div 
-                      className="h-full rounded-full bg-indigo-600 dark:bg-indigo-500 transition-all duration-300" 
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Uploaded Files queue listing */}
-              {files.length > 0 && (
-                <div className="space-y-2 max-h-52 overflow-y-auto">
-                  {files.map((file) => (
-                    <div
-                      key={file.name}
-                      onClick={() => setActiveFileName(file.name)}
-                      className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
-                        activeFileName === file.name
-                          ? 'border-indigo-500 dark:border-indigo-550 bg-indigo-50/15 dark:bg-indigo-950/20 shadow-2xs'
-                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-850/50'
+              {showShopDropdown && (
+                <div className="portal-card-elevated absolute left-0 mt-2 w-64 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-xl py-2 z-50 animate-modal-pop">
+                  {shops.map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        onSelectShop(s.id);
+                        setShowShopDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-2.5 text-xs font-semibold transition-colors border-none cursor-pointer flex items-center justify-between ${
+                        s.id === selectedShopId 
+                          ? 'bg-purple-50  text-purple-600  font-bold' 
+                          : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <FileText className={`w-4 h-4 flex-shrink-0 ${activeFileName === file.name ? 'text-indigo-500' : 'text-slate-400 dark:text-slate-500'}`} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{file.name}</p>
-                          <p className="text-[10px] text-slate-455 dark:text-slate-550 font-mono mt-0.5">
-                            {formatFileSize(file.size)} · {fileConfigs[file.name]?.pageCount || 1} pgs
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-xs font-black text-slate-700 dark:text-slate-300 bg-slate-105/80 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200/40 dark:border-slate-700 font-mono font-bold">
-                          ₹{getFileCost(file.name)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); removeFile(file.name); }}
-                          className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-650 dark:hover:text-slate-350 border-none bg-transparent cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                      <span>{s.name}</span>
+                      {s.id === selectedShopId && <Check className="w-4 h-4 text-purple-600 " />}
+                    </button>
                   ))}
                 </div>
               )}
+            </div>
+          </div>
 
-              {files.length > 0 && (
-                <div className="p-4 bg-indigo-50/30 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/50 rounded-xl text-left flex justify-between items-center font-sans">
-                  <div>
-                    <span className="text-[10px] font-extrabold text-indigo-555 dark:text-indigo-400 uppercase tracking-widest font-mono">Batch Total Estimate</span>
-                    <p className="text-lg font-black text-slate-800 dark:text-white mt-1">₹{getBatchTotal()}</p>
-                  </div>
-                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-550 font-mono">
-                    {files.length} {files.length === 1 ? 'File' : 'Files'}
-                  </span>
-                </div>
-              )}
+          {/* RIGHT CONTROLS: Notification, Theme, Profile */}
+          <div className="flex items-center gap-3.5">
+            {/* Notification Button */}
+            <button
+              type="button"
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="w-10 h-10 rounded-full border border-[var(--border-default)] bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-all cursor-pointer flex items-center justify-center relative shadow-2xs"
+              title="Notifications"
+            >
+              <Bell className="w-4.5 h-4.5" />
+              <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white " />
+            </button>
 
+            {/* Student Profile Pill */}
+            <div className="relative" ref={profileRef}>
               <button
-                type="submit"
-                disabled={files.length === 0 || submitting || isUploadDisabled}
-                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-650 dark:hover:bg-indigo-750 disabled:opacity-50 text-white font-semibold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2 border-none shadow-xs"
+                type="button"
+                onClick={() => isRemembered && setShowProfileDropdown(!showProfileDropdown)}
+                className="flex items-center gap-3 px-3 py-1.5 rounded-full border border-[var(--border-default)] bg-[var(--bg-card)]/80 hover:bg-[var(--bg-hover)] transition-all cursor-pointer shadow-2xs"
               >
-                {submitting ? (
-                  <div className="flex items-center gap-1.5">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Sending to Printer...
-                  </div>
+                {studentPicture ? (
+                  <img
+                    src={studentPicture}
+                    alt={studentName}
+                    className="w-8 h-8 rounded-lg object-cover border border-purple-200/50 "
+                    referrerPolicy="no-referrer"
+                  />
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <Printer className="w-4 h-4" />
-                    {systemHealth && !systemHealth.systemReady ? 'System Not Ready' : (printerStatus === 'offline' ? 'Queue for Later' : 'Send Queue to Print')} ({files.length} {files.length === 1 ? 'file' : 'files'})
+                  <div className="w-8 h-8 rounded-lg bg-purple-100  text-purple-600  font-extrabold text-xs flex items-center justify-center border border-purple-200/50 ">
+                    {studentName ? studentName.charAt(0).toUpperCase() : 'S'}
                   </div>
                 )}
+                <div className="text-left hidden sm:block">
+                  <p className="text-xs font-bold text-[var(--text-primary)] leading-tight">{studentName || 'Student Test'}</p>
+                  <p className="text-[10px] text-[var(--text-muted)] font-medium leading-tight mt-0.5">{studentEmail || 'student@university.edu'}</p>
+                </div>
+                {isRemembered && <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] ml-0.5" />}
               </button>
-            </form>
-          </div>
-        </div>
-
-        {/* Right column: Previews & Simplified Queue metrics */}
-        <div className="lg:col-span-3 space-y-6">
-          {files.length === 0 ? (
-            <QueueSummaryView 
-              waitingCount={waitingJobsCount} 
-              waitMinutes={estimatedMinutes} 
-              currentlyPrinting={currentlyPrintingDocName}
-              recentJobs={studentRecentJobs} 
-              studentActiveJobs={studentActiveJobs}
-              getQueueDetails={getQueueDetails}
-            />
-          ) : (
-            <>
-              {/* Document Metadata Grid Card */}
-              {activeFileName && activeFile && (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-xl shadow-2xs">
-                  <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-805 pb-3 mb-4">
-                    <span className="text-[10px] font-extrabold uppercase text-slate-450 dark:text-slate-400 tracking-wider font-mono">
-                      📄 File Specifications
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 truncate max-w-[200px]" title={activeFileName}>
-                      {activeFileName}
-                    </span>
+              {isRemembered && showProfileDropdown && (
+                <div className="portal-card-elevated absolute right-0 mt-2 w-56 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-xl py-2 z-50 animate-modal-pop">
+                  <div className="px-4 py-2 border-b border-[var(--border-subtle)]">
+                    <p className="text-xs font-bold text-[var(--text-primary)]">{studentName || 'Student Test'}</p>
+                    <p className="text-[10px] text-[var(--text-muted)] truncate">{studentEmail || 'student@university.edu'}</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="w-full text-left px-4 py-2 text-xs font-semibold text-rose-600  hover:bg-rose-50  transition-colors flex items-center gap-2 border-none cursor-pointer mt-1"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-sans">
-                    <div className="p-3 bg-slate-50 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-850 rounded-lg">
-                      <span className="block text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono mb-1">Format</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
-                        {activeFile.name.substring(activeFile.name.lastIndexOf('.')).toUpperCase()}
+        {/* ─── MAIN CONTENT SCROLLABLE CANVAS ─── */}
+        <main className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-8 max-w-[1400px] w-full mx-auto">
+          {success ? (
+            /* STAGE 2: Success View inside App Shell */
+            <div className="space-y-6 animate-fadeIn font-sans text-left">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8">
+                <div className="lg:col-span-2">
+                  <div className="portal-card p-8 text-center rounded-2xl">
+                    <div className="flex justify-center mb-5">
+                      <div className="w-16 h-16 rounded-full bg-emerald-100  border border-emerald-250  flex items-center justify-center">
+                        <CheckCircle className="w-8 h-8 text-emerald-600 " />
+                      </div>
+                    </div>
+                    <h2 className="text-xl font-black text-[var(--text-primary)] mb-2">
+                      Upload Successful
+                    </h2>
+                    <p className="text-[var(--text-muted)] mb-5 text-xs leading-relaxed">
+                      Please show your Approval Token to the shop operator after payment.
+                    </p>
+
+                    {/* Prominent Single Token Display */}
+                    <div className="bg-orange-50  border border-orange-100  p-4 rounded-xl text-center mb-5">
+                      <p className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-1 font-mono">
+                        Your Approval Token
+                      </p>
+                      <span className="text-3xl font-black text-orange-600  font-mono block">
+                        {success.order?.token || 'N/A'}
                       </span>
                     </div>
-                    <div className="p-3 bg-slate-50 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-850 rounded-lg">
-                      <span className="block text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono mb-1">Size</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
-                        {formatFileSize(activeFile.size)}
-                      </span>
+
+                    <div className="bg-[var(--bg-surface-secondary)] rounded-xl p-5 mb-5 border border-[var(--border-subtle)] text-left max-h-56 overflow-y-auto font-sans">
+                      <p className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-2 font-mono">
+                        Uploaded Documents ({success.jobs.length})
+                      </p>
+                      <div className="space-y-1.5">
+                        {success.jobs.map((j, idx) => (
+                          <div key={idx} className="flex justify-between items-center bg-[var(--bg-card)] p-2.5 rounded-lg border border-[var(--border-default)] text-xs">
+                            <span className="text-[var(--text-primary)] font-bold truncate max-w-[200px]">
+                              📄 {j.fileName}
+                            </span>
+                            <div className="bg-orange-50  text-orange-600  px-2 py-0.5 rounded font-extrabold font-mono text-[9px] uppercase border border-orange-100 ">
+                              PENDING
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="p-3 bg-slate-50 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-850 rounded-lg">
-                      <span className="block text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono mb-1">Pages</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
-                        {activeConf?.pageCount || 1}
-                      </span>
-                    </div>
-                    <div className="p-3 bg-slate-50 dark:bg-slate-955/20 border border-slate-150 dark:border-slate-850 rounded-lg">
-                      <span className="block text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono mb-1">Validation</span>
-                      <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-250 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400 font-mono">
-                        ✓ Ready
-                      </span>
-                    </div>
+
+                    <button
+                      onClick={resetForm}
+                      className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-extrabold text-xs uppercase tracking-wider transition-colors cursor-pointer border-none shadow-md shadow-purple-500/20"
+                    >
+                      Print More Documents
+                    </button>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-3">
+                  <QueueSummaryView 
+                    waitingCount={waitingJobsCount} 
+                    waitMinutes={estimatedMinutes} 
+                    currentlyPrinting={currentlyPrintingDocName}
+                    recentJobs={studentRecentJobs} 
+                    studentActiveJobs={studentActiveJobs}
+                    getQueueDetails={getQueueDetails}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'dashboard' ? (
+            /* STAGE 3: Main Dashboard View inside App Shell */
+            <>
+              {/* System Health Blocker Warning Card */}
+              {systemHealth && !systemHealth.systemReady && (
+                <div className="p-5 bg-rose-50  border border-rose-250  text-rose-800  rounded-xl flex items-start gap-3" role="alert">
+                  <AlertTriangle className="w-5 h-5 text-rose-600  flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-bold">Printing service is currently unavailable.</h4>
+                    <p className="text-xs text-rose-700  mt-1 leading-normal font-semibold">
+                      Please try again later or contact the print administrator.
+                    </p>
                   </div>
                 </div>
               )}
 
-              {/* Print Configurations Console */}
-              {activeConf && activeFileName && (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-xl shadow-2xs space-y-5">
-                  <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
-                    <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 tracking-widest font-mono">
-                      🎛️ PRINT SETUP CONSOLE
-                    </h3>
+              {/* Maintenance Mode Warning Card */}
+              {isGlobalMaintenance && (
+                <div className="p-4 bg-amber-50  border border-amber-200  text-amber-800  rounded-xl flex items-start gap-3" role="alert">
+                  <AlertTriangle className="w-5 h-5 text-amber-600  flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-bold">⚠️ Shop Offline</h4>
+                    <p className="text-xs text-amber-700  mt-1 leading-normal font-bold">
+                      This print shop is currently under maintenance. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
+                    </p>
                   </div>
+                </div>
+              )}
 
-                  <div className="space-y-4 font-sans text-xs">
-                    {/* Copies adjustment */}
-                    <div className="flex items-center justify-between">
-                      <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-500 uppercase tracking-wider font-mono">Copies</span>
-                      <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-1">
-                        <button
-                          type="button"
-                          disabled={activeConf.copies <= 1}
-                          onClick={() => {
-                            setFileConfigs(prev => ({
-                              ...prev,
-                              [activeFileName]: { ...prev[activeFileName], copies: Math.max(1, activeConf.copies - 1) }
-                            }));
-                          }}
-                          className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-850 flex items-center justify-center cursor-pointer select-none disabled:opacity-50 shadow-2xs"
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={activeConf.copies}
-                          onChange={(e) => {
-                            const val = Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1));
-                            setFileConfigs(prev => ({
-                              ...prev,
-                              [activeFileName]: { ...prev[activeFileName], copies: val }
-                            }));
-                          }}
-                          className="w-10 text-center font-bold text-sm bg-transparent border-none outline-none focus:ring-0 p-0 text-slate-900 dark:text-white"
-                        />
-                        <button
-                          type="button"
-                          disabled={activeConf.copies >= 10}
-                          onClick={() => {
-                            setFileConfigs(prev => ({
-                              ...prev,
-                              [activeFileName]: { ...prev[activeFileName], copies: Math.min(10, activeConf.copies + 1) }
-                            }));
-                          }}
-                          className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-850 flex items-center justify-center cursor-pointer select-none disabled:opacity-50 shadow-2xs"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Simplex / Duplex Sides & Page Range (Only for PDF files) */}
-                    {(activeFile.type === 'application/pdf' || activeFile.name.toLowerCase().endsWith('.pdf')) && (
-                      <>
-                        {/* Simplex / Duplex Sides */}
-                        <div className="space-y-1.5">
-                          <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-500 uppercase tracking-wider font-mono">Printing Sides</span>
-                          <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl p-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFileConfigs(prev => ({
-                                  ...prev,
-                                  [activeFileName]: { ...prev[activeFileName], sides: 'single' }
-                                }));
-                              }}
-                              className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
-                                activeConf.sides === 'single'
-                                  ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
-                                  : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
-                              }`}
-                            >
-                              Simplex (1-Sided)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFileConfigs(prev => ({
-                                  ...prev,
-                                  [activeFileName]: { ...prev[activeFileName], sides: 'double' }
-                                }));
-                              }}
-                              className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
-                                activeConf.sides === 'double'
-                                  ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
-                                  : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
-                              }`}
-                            >
-                              Duplex (2-Sided)
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Pages Range Selector */}
-                        <div className="space-y-1.5">
-                          <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Page Range</span>
-                          <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl p-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFileConfigs(prev => ({
-                                  ...prev,
-                                  [activeFileName]: { ...prev[activeFileName], choosePagesType: 'all', customPages: '' }
-                                }));
-                              }}
-                              className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
-                                activeConf.choosePagesType === 'all'
-                                  ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
-                                  : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
-                              }`}
-                            >
-                              All Pages ({activeConf.pageCount})
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFileConfigs(prev => ({
-                                  ...prev,
-                                  [activeFileName]: { ...prev[activeFileName], choosePagesType: 'custom' }
-                                }));
-                              }}
-                              className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
-                                activeConf.choosePagesType === 'custom'
-                                  ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
-                                  : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
-                              }`}
-                            >
-                              Custom Range
-                            </button>
-                          </div>
-                          {activeConf.choosePagesType === 'custom' && (
-                            <div className="mt-2 space-y-1">
-                              <input
-                                type="text"
-                                placeholder="e.g. 1-3, 5, 7-9"
-                                value={activeConf.customPages}
-                                onChange={(e) => {
-                                  setFileConfigs(prev => ({
-                                    ...prev,
-                                    [activeFileName]: { ...prev[activeFileName], customPages: e.target.value }
-                                  }));
-                                }}
-                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/50 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:focus:ring-indigo-500/40 text-slate-900 dark:text-white font-bold"
-                              />
-                              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold leading-normal pl-1">
-                                Specify page numbers/ranges separated by commas. Total document pages: {activeConf.pageCount}.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-
-                    {/* Print Type Selector */}
-                    <div className="space-y-1.5">
-                      <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Print Type</span>
-                      <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl p-1">
-                        <button
-                          type="button"
-                          disabled={!!shopInfo.bwMaintenanceMode}
-                          onClick={() => {
-                            if (shopInfo.bwMaintenanceMode) return;
-                            setFileConfigs(prev => ({
-                              ...prev,
-                              [activeFileName]: { ...prev[activeFileName], printType: 'bw' }
-                            }));
-                          }}
-                          className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
-                            activeConf.printType === 'bw'
-                              ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
-                              : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
-                          } ${shopInfo.bwMaintenanceMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-                        >
-                          Black & White
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!!shopInfo.colorMaintenanceMode}
-                          onClick={() => {
-                            if (shopInfo.colorMaintenanceMode) return;
-                            setFileConfigs(prev => ({
-                              ...prev,
-                              [activeFileName]: { ...prev[activeFileName], printType: 'color' }
-                            }));
-                          }}
-                          className={`py-1.5 rounded-lg font-bold text-xs transition-all text-center cursor-pointer border-none ${
-                            activeConf.printType === 'color'
-                              ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-2xs border border-slate-200/50 dark:border-slate-700/50'
-                              : 'bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350'
-                          } ${shopInfo.colorMaintenanceMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-                        >
-                          Color
-                        </button>
-                      </div>
-                    </div>
+              {/* B&W Maintenance Mode Warning Card */}
+              {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.bwMaintenanceMode && (
+                <div className="p-4 bg-amber-50  border border-amber-250  text-amber-850  rounded-xl flex items-start gap-3" role="alert">
+                  <AlertTriangle className="w-5 h-5 text-amber-600  flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-bold">⚠️ B&W Printing Offline</h4>
+                    <p className="text-xs text-amber-700  mt-1 leading-normal font-semibold">
+                      Black & White printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || '06:02 PM'}</strong>.
+                    </p>
                   </div>
+                </div>
+              )}
 
-                  {/* Costing summary */}
-                  <div className="p-4 bg-indigo-50/30 dark:bg-indigo-950/10 rounded-xl border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between text-left font-sans">
-                    <div>
-                      <span className="text-[10px] font-extrabold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest font-mono">Fare Estimate</span>
-                      <p className="text-lg font-black text-slate-800 dark:text-white mt-1 font-mono">
-                        ₹{activeConf.copies * (
-                          activeConf.sides === 'double'
-                            ? Math.ceil(countPagesFromRange(activeConf.choosePagesType === 'custom' ? activeConf.customPages : '', activeConf.pageCount) / 2) * (shopInfo.duplexPrice || 3)
-                            : countPagesFromRange(activeConf.choosePagesType === 'custom' ? activeConf.customPages : '', activeConf.pageCount) * (activeConf.printType === 'color' ? (shopInfo.colorPrice || 5) : (shopInfo.bwPrice || 2))
-                        )}
+              {/* Color Maintenance Mode Warning Card */}
+              {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.colorMaintenanceMode && (
+                <div className="p-4 bg-amber-50  border border-amber-250  text-amber-850  rounded-xl flex items-start gap-3" role="alert">
+                  <AlertTriangle className="w-5 h-5 text-amber-600  flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-bold">⚠️ Color Printing Offline</h4>
+                    <p className="text-xs text-amber-700  mt-1 leading-normal font-semibold">
+                      Color printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ─── SPRINT 7: PREMIUM HERO SECTION (LANDING HERO + 4 INFO PILLS) ─── */}
+              <div className="space-y-3 text-left font-sans">
+                
+                {/* Premium Landing Hero Banner */}
+                <div className="px-5 py-3 sm:py-4 rounded-2xl border border-purple-200/70  bg-gradient-to-r from-purple-600/10 via-indigo-600/5 to-purple-600/10    backdrop-blur-xl relative overflow-hidden shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                  
+                  {/* Decorative Background Glows */}
+                  <div className="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-purple-500/15  blur-3xl pointer-events-none" />
+                  <div className="absolute -bottom-24 -left-24 w-64 h-64 rounded-full bg-indigo-500/15  blur-3xl pointer-events-none" />
+
+                  {/* LEFT SIDE: Greeting, Subtitle & 4 Compact Information Pills */}
+                  <div className="space-y-2 max-w-2xl relative z-10 w-full">
+                    <div className="space-y-0.5">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-purple-100  text-purple-600  text-[9px] font-extrabold uppercase tracking-widest font-mono border border-purple-200/50  mb-1">
+                        <Sparkles className="w-2.5 h-2.5" />
+                        <span>Campus High-Speed Spooler</span>
+                      </div>
+                      <h1 className="text-lg sm:text-xl lg:text-2xl font-black tracking-tight text-[var(--text-primary)] leading-none flex flex-wrap items-center gap-1.5">
+                        <span>Good Morning, {studentName || 'Student Test'}</span>
+                        <span className="text-xl">👋</span>
+                      </h1>
+                      <p className="text-[11px] sm:text-xs text-[var(--text-muted)] font-medium leading-tight pt-0.5">
+                        Let's get your documents printed and spooled for campus pickup.
                       </p>
                     </div>
-                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 font-mono">
-                      {activeConf.sides === 'double'
-                        ? `₹${shopInfo.duplexPrice || 3}/sheet`
-                        : activeConf.printType === 'color'
-                        ? `₹${shopInfo.colorPrice || 5}/page`
-                        : `₹${shopInfo.bwPrice || 2}/page`
-                      }
-                    </span>
+
+                    {/* 4 Compact Information Pills Grid */}
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {/* Pill 1: Current Print Center */}
+                      <div className="px-2 py-1 rounded-lg bg-white/70  border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
+                        <MapPin className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                        <span className="truncate max-w-[100px]">{shops.find(s => s.id === selectedShopId)?.name || shopInfo?.name || 'TJohn Print'}</span>
+                      </div>
+
+                      {/* Pill 2: Printer Status */}
+                      <div className="px-2 py-1 rounded-lg bg-white/70  border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${agentOnlineStatus === 'online' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        <span>{agentOnlineStatus === 'online' ? 'Operational' : 'Offline'}</span>
+                      </div>
+
+                      {/* Pill 3: Average Queue Time */}
+                      <div className="px-2 py-1 rounded-lg bg-white/70  border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
+                        <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                        <span>{waitingJobsCount === 0 ? '0 Mins' : `~${estimatedMinutes} Mins`}</span>
+                      </div>
+
+                      {/* Pill 4: Opening Hours */}
+                      <div className="px-2 py-1 rounded-lg bg-white/70  border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
+                        <Zap className="w-3 h-3 text-sky-500 flex-shrink-0" />
+                        <span>24/7 Service</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* RIGHT SIDE: Minimal Printer/Document Illustration */}
+                  <div className="relative z-10 hidden md:flex items-center justify-center flex-shrink-0 pr-1">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600/20 via-indigo-600/15 to-purple-500/20 border border-purple-200/50  backdrop-blur-xl flex items-center justify-center relative shadow-lg shadow-purple-500/10 group transition-transform duration-300 hover:scale-105">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-purple-500/30">
+                        <Printer className="w-4 h-4" />
+                      </div>
+                      <div className="absolute -top-1 -right-1 w-4 h-4 rounded-md bg-white  border border-purple-200  text-purple-600  flex items-center justify-center shadow-2xs">
+                        <FileText className="w-2 h-2" />
+                      </div>
+                      <div className="absolute -bottom-1 -left-1 w-4 h-4 rounded-md bg-white  border border-emerald-200  text-emerald-500 flex items-center justify-center shadow-2xs">
+                        <Check className="w-2 h-2 stroke-[3]" />
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Compact Linear/Stripe-style Progress Stepper Bar (DIRECTLY BELOW HERO) */}
+                <div className="portal-card py-3 px-4 sm:py-3.5 sm:px-6 rounded-xl border border-[var(--border-subtle)]/70 bg-white/60  backdrop-blur-md shadow-2xs">
+                  <div className="flex items-center justify-between gap-2 sm:gap-4">
+                    {[
+                      { num: 1, label: 'Upload', sub: 'Choose file' },
+                      { num: 2, label: 'Configure', sub: 'Print settings' },
+                      { num: 3, label: 'Review', sub: 'Check details' },
+                      { num: 4, label: 'Print', sub: 'We handle rest' }
+                    ].map((step, idx, arr) => {
+                      const currentStep = submitting ? 4 : activeFileName ? 3 : files.length > 0 ? 2 : 1;
+                      const state: 'completed' | 'active' | 'pending' = 
+                        step.num < currentStep ? 'completed' : step.num === currentStep ? 'active' : 'pending';
+
+                      const isLast = idx === arr.length - 1;
+                      const isLineActive = step.num < currentStep;
+
+                      return (
+                        <React.Fragment key={step.num}>
+                          {/* Compact Step Item */}
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {/* Circle Indicator (32px) */}
+                            <div
+                              className={`w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-xs transition-all flex-shrink-0 relative z-10 ${
+                                state === 'completed'
+                                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-2xs'
+                                  : state === 'active'
+                                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-2xs ring-3 ring-purple-100 '
+                                  : 'bg-[var(--bg-card)]  text-[var(--text-muted)] border border-[var(--border-subtle)]'
+                              }`}
+                            >
+                              {state === 'completed' ? (
+                                <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                              ) : (
+                                step.num
+                              )}
+                            </div>
+
+                            {/* Step Title & Subtitle */}
+                            <div className="text-left min-w-0">
+                              <p
+                                className={`text-[13px] font-bold tracking-tight leading-tight ${
+                                  state === 'active'
+                                    ? 'text-purple-600  font-extrabold'
+                                    : state === 'completed'
+                                    ? 'text-[var(--text-primary)]'
+                                    : 'text-[var(--text-secondary)]'
+                                }`}
+                              >
+                                {step.label}
+                              </p>
+                              <p className="text-[11px] text-[var(--text-muted)] font-medium truncate leading-tight mt-0.5 hidden sm:block">
+                                {step.sub}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Shortened Connecting Line Segment spanning ONLY between adjacent circles */}
+                          {!isLast && (
+                            <div className="flex-1 h-0.5 mx-1.5 sm:mx-3 rounded-full overflow-hidden bg-slate-200/70  min-w-[12px]">
+                              <div
+                                className={`h-full transition-all duration-300 ${
+                                  isLineActive ? 'bg-gradient-to-r from-purple-600 to-indigo-600' : 'w-0'
+                                }`}
+                                style={{ width: isLineActive ? '100%' : '0%' }}
+                              />
+                            </div>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* Main 2-Column Grid Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8">
+                {/* Left Column (Hero Upload Card - 3 Columns) */}
+                <div className="lg:col-span-3 space-y-6">
+                  {/* Hero Upload Card Shell */}
+                  <div className="portal-card-lavender p-6 sm:p-8 rounded-2xl shadow-xl shadow-purple-500/5 space-y-6 text-left border border-[var(--border-default)] relative overflow-hidden">
+                    {/* Ambient Glow Accent */}
+                    <div className="absolute -top-24 -right-24 w-72 h-72 bg-purple-500/5  rounded-full blur-3xl pointer-events-none" />
+
+                    {/* SECTION 1: Upload Header */}
+                    <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-4.5 relative z-10">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-10 h-10 rounded-xl bg-purple-600/10  border border-purple-200/80  flex items-center justify-center text-purple-600  shadow-xs">
+                          <FileUp className="w-5 h-5 stroke-[2.2]" />
+                        </div>
+                        <div>
+                          <h2 className="text-base sm:text-lg font-extrabold text-[var(--text-primary)] tracking-tight">Upload Your Document</h2>
+                          <p className="text-xs text-[var(--text-muted)] font-medium mt-0.5">Drag & drop your files or browse from your device</p>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-purple-50  text-purple-600  border border-purple-200/60  flex items-center gap-1.5 shadow-2xs font-mono">
+                        <Zap className="w-3.5 h-3.5 fill-purple-600 " />
+                        Institutional Spooler
+                      </span>
+                    </div>
+
+                    <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
+                      {/* SECTION 2: Student Information (Compact Horizontal Card) */}
+                      <div className="flex items-center justify-between p-3.5 sm:p-4 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] backdrop-blur-xs">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-8.5 h-8.5 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 text-white font-extrabold flex items-center justify-center text-xs flex-shrink-0 shadow-xs">
+                            {studentName ? studentName.charAt(0).toUpperCase() : 'S'}
+                          </div>
+                          <div className="min-w-0 flex-1 text-left">
+                            <p className="text-xs font-bold text-[var(--text-primary)] truncate leading-tight">{studentName || 'Student Test'}</p>
+                            <p className="text-[11px] text-[var(--text-muted)] font-medium truncate mt-0.5">{studentEmail || 'student@university.edu'}</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-600  bg-emerald-50  px-2.5 py-1 rounded-full border border-emerald-200/60  font-mono">
+                          Verified Student
+                        </span>
+                      </div>
+
+                      {/* SECTION 3: Drag & Drop Area (Height reduced by ~20%) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider font-mono">
+                            Document Dropzone
+                          </label>
+                          <span className="text-[11px] font-semibold text-[var(--text-muted)]">Max 50MB per file</span>
+                        </div>
+
+                        <div
+                          onDragOver={(submitting || isUploadDisabled) ? undefined : handleDragOver}
+                          onDragLeave={(submitting || isUploadDisabled) ? undefined : handleDragLeave}
+                          onDrop={(submitting || isUploadDisabled) ? undefined : handleDrop}
+                          onClick={() => !(submitting || isUploadDisabled) && fileInputRef.current?.click()}
+                          className={`relative rounded-2xl border-2 border-dashed p-7 sm:p-9 text-center cursor-pointer transition-all duration-300 group overflow-hidden ${
+                            (submitting || isUploadDisabled)
+                              ? 'border-[var(--border-subtle)] bg-[var(--bg-surface-secondary)]/40 cursor-not-allowed opacity-60'
+                              : dragOver
+                              ? 'border-purple-600 bg-purple-100/60  shadow-2xl shadow-purple-500/20 scale-[1.01]'
+                              : 'border-purple-300/80  bg-gradient-to-b from-purple-50/50 via-slate-50/20 to-transparent    hover:border-purple-500 hover:bg-purple-50/80  hover:shadow-lg hover:shadow-purple-500/10'
+                          }`}
+                        >
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            multiple
+                            accept={ACCEPTED_EXT}
+                            onChange={handleFileChange}
+                            className="hidden"
+                            disabled={submitting || isUploadDisabled}
+                          />
+
+                          <div className="flex flex-col items-center justify-center">
+                            {/* Upload Icon */}
+                            <div className="w-13 h-13 rounded-2xl bg-white  border border-purple-200/80  shadow-md shadow-purple-500/10 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:border-purple-500 transition-all duration-300">
+                              <FileUp className="w-6.5 h-6.5 text-purple-600  stroke-[2]" />
+                            </div>
+
+                            {/* Headline */}
+                            <p className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
+                              Drop your files here, or <span className="text-purple-600  underline underline-offset-4 decoration-purple-400/50 hover:decoration-purple-600 transition-all">browse files</span>
+                            </p>
+                            
+                            {/* Supported formats */}
+                            <p className="text-[11px] text-[var(--text-muted)] font-medium mt-1">
+                              PDF, DOCX, PPTX, XLSX & High-Res Images up to 50MB
+                            </p>
+
+                            {/* Choose Files button */}
+                            <button
+                              type="button"
+                              disabled={submitting || isUploadDisabled}
+                              className="mt-4 py-2.5 px-6 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white font-extrabold text-xs uppercase tracking-wider inline-flex items-center gap-2 border-none shadow-md shadow-purple-500/20 group-hover:shadow-purple-500/35 group-hover:scale-[1.02] transition-all cursor-pointer"
+                            >
+                              <FileUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                              Choose Files
+                            </button>
+
+                            {/* File format chips */}
+                            <div className="flex flex-wrap items-center justify-center gap-1.5 mt-4.5">
+                              {['📄 PDF', '📝 DOCX', '📊 PPTX', '🖼️ PNG / JPG'].map((type) => (
+                                <span
+                                  key={type}
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/80  text-[var(--text-secondary)] border border-[var(--border-subtle)] shadow-2xs"
+                                >
+                                  {type}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {error && (
+                        <div className="p-3.5 bg-rose-50 bg-red-50  border border-rose-150  text-rose-600  text-xs font-semibold rounded-xl leading-relaxed">
+                          {error}
+                        </div>
+                      )}
+
+                      {submitting && (
+                        <div className="space-y-2 p-4 bg-[var(--bg-surface-secondary)] rounded-xl border border-[var(--border-default)]">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-[var(--text-muted)] font-medium flex items-center gap-1.5">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600 " />
+                              Uploading & processing spool...
+                            </span>
+                            <span className="font-bold text-purple-600  font-mono">{uploadProgress}%</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-[var(--bg-input)] overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 transition-all duration-300" 
+                              style={{ width: `${uploadProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ─── JOURNEY 2: DOCUMENT-FIRST PREMIUM PDF PREVIEW EXPERIENCE ─── */}
+
+                      {/* 1. SELECTED FILE HEADER CARD */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider font-mono">
+                            Document Selection ({files.length})
+                          </label>
+                          {files.length > 0 && (
+                            <span className="text-[10px] text-purple-600  font-extrabold">
+                              Click to switch active preview
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Empty State when no files exist */}
+                        {files.length === 0 ? (
+                          <div className="p-8 rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface-secondary)]/30 text-center space-y-2.5">
+                            <FileText className="w-8 h-8 text-[var(--text-muted)] mx-auto opacity-40" />
+                            <p className="text-xs font-bold text-[var(--text-secondary)]">No documents loaded</p>
+                            <p className="text-[11px] text-[var(--text-muted)] font-medium max-w-sm mx-auto">
+                              Upload PDF, DOCX, or Image files in the dropzone above to view the first-page document preview & print setup.
+                            </p>
+                          </div>
+                        ) : (
+                          /* Selected Files Header Listing */
+                          <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
+                            {files.map((file) => {
+                              const isActive = activeFileName === file.name;
+                              const ext = file.name.split('.').pop()?.toUpperCase() || 'FILE';
+
+                              return (
+                                <div
+                                  key={file.name}
+                                  onClick={() => setActiveFileName(file.name)}
+                                  className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
+                                    isActive
+                                      ? 'border-purple-500 bg-purple-50/50  shadow-sm ring-1 ring-purple-500/30 scale-[1.005]'
+                                      : 'border-[var(--border-default)] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)]'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                                      isActive ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-xs' : 'bg-[var(--bg-surface-secondary)] text-[var(--text-muted)] border border-[var(--border-subtle)]'
+                                    }`}>
+                                      <FileText className="w-4.5 h-4.5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1 text-left">
+                                      <div className="flex items-center gap-2">
+                                        <span title={file.name} className="text-xs font-bold text-[var(--text-primary)] truncate">{file.name}</span>
+                                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-purple-100  text-purple-600  font-mono">
+                                          {ext}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] font-mono mt-1">
+                                        <span>{formatFileSize(file.size)}</span>
+                                        <span>•</span>
+                                        <span>{fileConfigs[file.name]?.pageCount || 1} pgs</span>
+                                        <span>•</span>
+                                        <span className="text-purple-600  font-extrabold uppercase">
+                                          ₹{getFileCost(file.name)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-3 flex-shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); removeFile(file.name); }}
+                                      className="p-1.5 rounded-lg hover:bg-rose-100  text-[var(--text-muted)] hover:text-rose-600 border-none bg-transparent cursor-pointer transition-colors"
+                                      title="Remove document"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 2. STATIC FIRST PAGE PREVIEW (PRINTED SHEET ON TABLE CONFIRMATION) */}
+                      {activeFileName && previewUrls[activeFileName] && (
+                        <div className="space-y-3 pt-2 transition-all duration-300">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-[11px] font-extrabold text-purple-600  uppercase tracking-wider font-mono">
+                              Visual Print Confirmation
+                            </label>
+                            <span className="text-[10px] text-[var(--text-muted)] font-mono font-bold bg-[var(--bg-surface-secondary)] px-2.5 py-1 rounded-md border border-[var(--border-subtle)]">
+                              A4 Portrait • Static Preview
+                            </span>
+                          </div>
+
+                          {/* Neutral Table Surface Container */}
+                          <div className="p-6 sm:p-8 bg-slate-100/90  rounded-2xl border border-slate-200/80  flex flex-col items-center justify-center shadow-inner relative overflow-hidden">
+                            
+                            {/* White Paper Sheet Placed on Table */}
+                            <div className="w-full max-w-[350px] sm:max-w-[390px] aspect-[1/1.414] bg-white rounded-xl shadow-2xl shadow-slate-900/25 border border-slate-200/90 flex items-center justify-center relative overflow-hidden pointer-events-none select-none transition-transform duration-300">
+                              {activeFileName.toLowerCase().endsWith('.pdf') ? (
+                                <PdfFirstPageCanvas url={previewUrls[activeFileName]} />
+                              ) : activeFileName.toLowerCase().match(/\.(png|jpg|jpeg)$/) ? (
+                                <img
+                                  src={previewUrls[activeFileName]}
+                                  alt={activeFileName}
+                                  className="w-full h-full object-contain p-2 bg-white select-none pointer-events-none"
+                                />
+                              ) : (
+                                /* Static Printed Sheet Representation for DOCX / PPTX */
+                                <div className="w-full h-full flex flex-col justify-between p-8 text-left bg-gradient-to-b from-white via-slate-50/50 to-white select-none">
+                                  <div className="space-y-4">
+                                    <div className="w-11 h-11 rounded-xl bg-purple-600/10 text-purple-600 flex items-center justify-center">
+                                      <FileText className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-purple-100 text-purple-700 font-mono">
+                                        {activeFileName.split('.').pop()?.toUpperCase()}
+                                      </span>
+                                      <h3 className="text-sm font-black text-slate-900 mt-2 leading-snug truncate">
+                                        {activeFileName}
+                                      </h3>
+                                      <p className="text-[11px] text-slate-500 mt-1 font-mono">
+                                        {formatFileSize(files.find(f => f.name === activeFileName)?.size || 0)} • {fileConfigs[activeFileName]?.pageCount || 1} Total Pages
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200/80 text-[10px] text-slate-500 font-mono font-medium">
+                                    📄 First-page spool output verified for print queue.
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Page 1 of X Label */}
+                            <p className="text-[11px] font-extrabold font-mono text-[var(--text-muted)] text-center tracking-wider uppercase mt-4">
+                              Page 1 of {fileConfigs[activeFileName]?.pageCount || 1}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. PRINT CONFIGURATION CARD (SLIDES UP) */}
+                      {activeConf && activeFileName && (
+                        <div className="p-5 sm:p-6 rounded-2xl border border-purple-200/80  bg-gradient-to-b from-purple-50/40 via-slate-50/20 to-transparent    space-y-5 text-left shadow-xs transition-all duration-300">
+                          <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3.5">
+                            <div className="flex items-center gap-2">
+                              <Settings className="w-4 h-4 text-purple-600 " />
+                              <h3 className="text-xs font-extrabold text-purple-600  tracking-wider font-mono uppercase">
+                                Print Configuration
+                              </h3>
+                            </div>
+                            <span className="text-[11px] font-bold text-[var(--text-primary)] bg-[var(--bg-card)] px-3 py-1 rounded-lg border border-[var(--border-subtle)] font-mono truncate max-w-[200px]">
+                              📄 {activeFileName}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-sans">
+                            {/* Copies adjustment */}
+                            <div className="p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-2">
+                              <span className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider font-mono">Copies</span>
+                              <div className="flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], copies: Math.max(1, prev[activeFileName].copies - 1) }
+                                    }));
+                                  }}
+                                  className="w-8 h-8 rounded-lg bg-[var(--bg-surface-secondary)] font-bold flex items-center justify-center cursor-pointer border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={activeConf.copies}
+                                  onChange={(e) => {
+                                    const val = Math.max(1, parseInt(e.target.value) || 1);
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], copies: val }
+                                    }));
+                                  }}
+                                  className="w-12 text-center bg-transparent border-none font-mono font-black text-sm text-[var(--text-primary)] focus:outline-none focus:ring-0"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], copies: prev[activeFileName].copies + 1 }
+                                    }));
+                                  }}
+                                  className="w-8 h-8 rounded-lg bg-[var(--bg-surface-secondary)] font-bold flex items-center justify-center cursor-pointer border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Single / Double Sided */}
+                            <div className="p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-2">
+                              <span className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider font-mono">Sides</span>
+                              <div className="grid grid-cols-2 gap-1 p-0.5 bg-[var(--bg-surface-secondary)] rounded-lg border border-[var(--border-subtle)]">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], sides: 'single' }
+                                    }));
+                                  }}
+                                  className={`py-1 rounded-md font-bold text-[10px] sm:text-[11px] transition-all text-center cursor-pointer border-none ${
+                                    activeConf.sides === 'single'
+                                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-2xs font-extrabold'
+                                      : 'bg-transparent text-[var(--text-muted)]'
+                                  }`}
+                                >
+                                  Simplex (1-Sided)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], sides: 'double' }
+                                    }));
+                                  }}
+                                  className={`py-1 rounded-md font-bold text-[10px] sm:text-[11px] transition-all text-center cursor-pointer border-none ${
+                                    activeConf.sides === 'double'
+                                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-2xs font-extrabold'
+                                      : 'bg-transparent text-[var(--text-muted)]'
+                                  }`}
+                                >
+                                  Duplex (2-Sided)
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Print Mode B&W / Color */}
+                            <div className="p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-2">
+                              <span className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider font-mono">Print Mode</span>
+                              <div className="grid grid-cols-2 gap-1 p-0.5 bg-[var(--bg-surface-secondary)] rounded-lg border border-[var(--border-subtle)]">
+                                <button
+                                  type="button"
+                                  disabled={shopInfo?.bwMaintenanceMode}
+                                  onClick={() => {
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], printType: 'bw', printMode: 'mono' }
+                                    }));
+                                  }}
+                                  className={`py-1 rounded-md font-bold text-[11px] transition-all text-center cursor-pointer border-none ${
+                                    activeConf.printType === 'bw'
+                                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-2xs font-extrabold'
+                                      : 'bg-transparent text-[var(--text-muted)]'
+                                  } ${shopInfo?.bwMaintenanceMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                >
+                                  B&W
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={shopInfo?.colorMaintenanceMode}
+                                  onClick={() => {
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], printType: 'color', printMode: 'color' }
+                                    }));
+                                  }}
+                                  className={`py-1 rounded-md font-bold text-[11px] transition-all text-center cursor-pointer border-none ${
+                                    activeConf.printType === 'color'
+                                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-2xs font-extrabold'
+                                      : 'bg-transparent text-[var(--text-muted)]'
+                                  } ${shopInfo?.colorMaintenanceMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                >
+                                  Color
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Paper Format */}
+                            <div className="p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-2">
+                              <span className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider font-mono">Paper Size</span>
+                              <div className="py-1 px-3 rounded-lg bg-[var(--bg-surface-secondary)] border border-[var(--border-subtle)] font-mono text-[11px] font-extrabold text-[var(--text-primary)] text-center">
+                                A4 Standard
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Page Range Config */}
+                          <div className="mt-4 p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                              <span className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider font-mono text-left">Page Range</span>
+                              <div className="grid grid-cols-2 gap-1 p-0.5 bg-[var(--bg-surface-secondary)] rounded-lg border border-[var(--border-subtle)] w-full sm:w-72">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], choosePagesType: 'all' }
+                                    }));
+                                  }}
+                                  className={`py-1 rounded-md font-bold text-[11px] transition-all text-center cursor-pointer border-none ${
+                                    activeConf.choosePagesType === 'all'
+                                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-2xs font-extrabold'
+                                      : 'bg-transparent text-[var(--text-muted)]'
+                                  }`}
+                                >
+                                  All Pages ({activeConf.pageCount})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], choosePagesType: 'custom' }
+                                    }));
+                                  }}
+                                  className={`py-1 rounded-md font-bold text-[11px] transition-all text-center cursor-pointer border-none ${
+                                    activeConf.choosePagesType === 'custom'
+                                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-2xs font-extrabold'
+                                      : 'bg-transparent text-[var(--text-muted)]'
+                                  }`}
+                                >
+                                  Custom Range
+                                </button>
+                              </div>
+                            </div>
+                            {activeConf.choosePagesType === 'custom' && (
+                              <div className="space-y-1.5 pt-1 text-left animate-fadeIn">
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 1-3, 5, 7-9"
+                                  value={activeConf.customPages || ''}
+                                  onChange={(e) => {
+                                    setFileConfigs(prev => ({
+                                      ...prev,
+                                      [activeFileName]: { ...prev[activeFileName], customPages: e.target.value }
+                                    }));
+                                  }}
+                                  className="w-full px-3 py-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-purple-500 font-bold"
+                                />
+                                <p className="text-[10px] text-[var(--text-muted)] font-semibold leading-normal pl-0.5">
+                                  Specify page numbers and/or ranges separated by commas (e.g. 1, 3-5, 8). Total document pages: {activeConf.pageCount}.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 4. LIVE PRINT SUMMARY CARD (FADES IN) */}
+                      {files.length > 0 && (
+                        <div className="p-5 sm:p-6 rounded-2xl bg-purple-50/70  border border-purple-200/80  flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 font-sans shadow-2xs transition-all duration-300">
+                          <div className="space-y-1 text-left">
+                            <span className="text-[11px] font-extrabold text-purple-600  uppercase tracking-widest font-mono block">
+                              Live Order Summary
+                            </span>
+                            <div className="flex items-baseline gap-2">
+                              <p className="text-2xl sm:text-3xl font-black text-[var(--text-primary)] font-mono tracking-tight">
+                                ₹{getBatchTotal()}
+                              </p>
+                              <span className="text-xs text-[var(--text-muted)] font-medium">Estimated Price</span>
+                            </div>
+                          </div>
+
+                          <div className="text-left sm:text-right font-mono space-y-1">
+                            <div className="flex flex-wrap sm:justify-end items-center gap-1.5">
+                              <span className="px-2.5 py-0.5 rounded-md text-[10px] font-extrabold bg-purple-100  text-purple-600 ">
+                                {files.length} {files.length === 1 ? 'File' : 'Files'}
+                              </span>
+                              <span className="px-2.5 py-0.5 rounded-md text-[10px] font-extrabold bg-purple-100  text-purple-600 ">
+                                {files.reduce((sum, f) => sum + ((fileConfigs[f.name]?.pageCount || 1) * (fileConfigs[f.name]?.copies || 1)), 0)} Total Pages
+                              </span>
+                              {activeConf && (
+                                <span className="px-2.5 py-0.5 rounded-md text-[10px] font-extrabold bg-purple-100  text-purple-600 ">
+                                  {activeConf.printType === 'color' ? 'Color' : 'B&W'} · {activeConf.sides === 'double' ? 'Duplex' : 'Simplex'}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-[var(--text-muted)] font-medium">
+                              Estimated Queue Time: ~2 Mins
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 5. SUBMIT BUTTON (LARGE FULL-WIDTH CTA) */}
+                      <button
+                        type="submit"
+                        disabled={files.length === 0 || submitting || isUploadDisabled}
+                        className="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 disabled:opacity-50 text-white font-extrabold text-sm uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2.5 border-none shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:scale-[1.01]"
+                      >
+                        {submitting ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Processing Print Job...
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2.5">
+                            <Printer className="w-5 h-5" />
+                            Submit & Send ({files.length} {files.length === 1 ? 'file' : 'files'})
+                          </div>
+                        )}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                {/* ─── SPRINT 6: PREMIUM RIGHT SIDEBAR COLUMN ─── */}
+                <div className="lg:col-span-2 space-y-5 text-left font-sans">
+
+                  {/* 1. REDESIGNED PREMIUM PRINT HUB STATUS PANEL */}
+                  <div className="p-6 rounded-2xl border border-purple-200/80  bg-white/80  backdrop-blur-xl shadow-sm space-y-5 hover:scale-[1.002] transition-all duration-200">
+                    <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-purple-600/10 text-purple-600  flex items-center justify-center">
+                          <Printer className="w-4.5 h-4.5" />
+                        </div>
+                        <div>
+                          <h3 className="text-xs font-extrabold text-[var(--text-primary)] tracking-tight uppercase font-mono">
+                            Print Hub Status
+                          </h3>
+                          <p className="text-[10px] text-[var(--text-muted)] font-medium">Real-time Telemetry</p>
+                        </div>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider font-mono ${
+                        agentOnlineStatus === 'online' ? 'bg-emerald-100 text-emerald-700  ' : 'bg-rose-100 text-rose-700  '
+                      }`}>
+                        {agentOnlineStatus === 'online' ? '🟢 Operational' : '🔴 Offline'}
+                      </span>
+                    </div>
+
+                    {/* 2. VERTICAL TELEMETRY STACK (APPLE SETTINGS + LINEAR STYLE) */}
+                    <div className="space-y-2.5">
+                      {/* Row 1: Printer Status */}
+                      <div className="p-3.5 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <Zap className="w-4 h-4 text-purple-600 " />
+                          <span className="text-xs font-bold text-[var(--text-primary)]">Printer Status</span>
+                        </div>
+                        <div className="flex items-center gap-2 font-mono text-xs font-extrabold">
+                          <span className={`w-2 h-2 rounded-full ${
+                            agentOnlineStatus === 'online' ? (currentlyPrintingDocName ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500') : 'bg-rose-500'
+                          }`} />
+                          <span className="text-[var(--text-primary)]">
+                            {agentOnlineStatus === 'online' ? (currentlyPrintingDocName ? 'Spooling' : 'Online / Idle') : 'Offline'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Queue */}
+                      <div className="p-3.5 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <User className="w-4 h-4 text-indigo-500" />
+                          <span className="text-xs font-bold text-[var(--text-primary)]">Jobs in Queue</span>
+                        </div>
+                        <span className="font-mono text-xs font-extrabold text-[var(--text-primary)]">
+                          {waitingJobsCount} {waitingJobsCount === 1 ? 'Job' : 'Jobs'} Waiting
+                        </span>
+                      </div>
+
+                      {/* Row 3: Estimated Wait */}
+                      <div className="p-3.5 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <Clock className="w-4 h-4 text-amber-500" />
+                          <span className="text-xs font-bold text-[var(--text-primary)]">Estimated Wait</span>
+                        </div>
+                        <span className="font-mono text-xs font-extrabold text-[var(--text-primary)]">
+                          {waitingJobsCount === 0 ? '0 Mins' : `~${estimatedMinutes} Mins`}
+                        </span>
+                      </div>
+
+                      {/* Row 4: Completed Jobs */}
+                      <div className="p-3.5 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <CheckCircle className="w-4 h-4 text-emerald-500" />
+                          <span className="text-xs font-bold text-[var(--text-primary)]">Completed Jobs</span>
+                        </div>
+                        <span className="font-mono text-xs font-extrabold text-[var(--text-primary)]">
+                          {studentRecentJobs.filter(j => j.status === 'completed').length} Total
+                        </span>
+                      </div>
+
+                      {/* Row 5: Service Availability */}
+                      <div className="p-3.5 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <Printer className="w-4 h-4 text-sky-500" />
+                          <span className="text-xs font-bold text-[var(--text-primary)]">Service Availability</span>
+                        </div>
+                        <span className="font-mono text-xs font-extrabold text-[var(--text-primary)]">
+                          {shopInfo?.bwMaintenanceMode && shopInfo?.colorMaintenanceMode
+                            ? 'Maintenance'
+                            : shopInfo?.bwMaintenanceMode
+                            ? 'Color Only'
+                            : shopInfo?.colorMaintenanceMode
+                            ? 'B&W Only'
+                            : '24/7 Operational'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
             </>
-          )}
-        </div>
+          ) : (activeTab === 'jobs' || activeTab === 'queue') ? (
+            <div className="max-w-4xl mx-auto w-full h-[calc(100vh-140px)] min-h-[600px] pb-8 animate-fadeIn">
+              <QueueSummaryView 
+                waitingCount={waitingJobsCount} 
+                waitMinutes={estimatedMinutes} 
+                currentlyPrinting={currentlyPrintingDocName}
+                recentJobs={studentRecentJobs} 
+                studentActiveJobs={studentActiveJobs}
+                getQueueDetails={getQueueDetails}
+              />
+            </div>
+          ) : activeTab === 'about' ? (
+            <div className="max-w-5xl mx-auto w-full pb-8 animate-fadeIn space-y-10 text-left font-sans">
+              
+              {/* 1. Hero Section */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-8 sm:p-10 rounded-3xl bg-gradient-to-br from-purple-600/10 via-indigo-600/5 to-purple-600/10    border border-purple-200/50  relative overflow-hidden">
+                <div className="absolute -top-24 -right-24 w-72 h-72 bg-purple-500/5  rounded-full blur-3xl pointer-events-none" />
+                <div className="relative z-10 space-y-3">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100  text-purple-700  text-[10px] font-extrabold uppercase tracking-widest font-mono border border-purple-200 ">
+                    <Sparkles className="w-3 h-3" />
+                    <span>Campus Print</span>
+                  </div>
+                  <h1 className="text-3xl sm:text-4xl font-black text-[var(--text-primary)] tracking-tight">The Future of <br className="hidden sm:block" />Campus Printing.</h1>
+                  <p className="text-sm sm:text-base text-[var(--text-secondary)] font-medium max-w-xl leading-relaxed">
+                    A premium, cloud-based print management system designed specifically for modern educational institutions. Upload anywhere, print everywhere.
+                  </p>
+                </div>
+                <div className="relative z-10 shrink-0 hidden md:block">
+                  <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-xl shadow-purple-500/20 rotate-3 transition-transform hover:rotate-6">
+                    <Printer className="w-16 h-16" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Why Campus Print */}
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] pb-3">
+                  <Zap className="w-5 h-5 text-amber-500" />
+                  <h3 className="text-lg font-extrabold text-[var(--text-primary)] tracking-tight">Why Campus Print</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[
+                    { icon: Zap, color: 'text-amber-500', title: 'Fast Printing', desc: 'Process documents in milliseconds with our optimized spooler.' },
+                    { icon: ShieldCheck, color: 'text-emerald-500', title: 'Secure Documents', desc: 'End-to-end encryption ensures your private files stay private.' },
+                    { icon: Cloud, color: 'text-sky-500', title: 'Cloud-Based Printing', desc: 'Send jobs from your dorm, pick them up at the library.' },
+                    { icon: Layers, color: 'text-indigo-500', title: 'Multiple File Support', desc: 'Native support for PDFs, DOCX, PPTX, and high-res images.' },
+                    { icon: Activity, color: 'text-purple-500', title: 'Live Queue Tracking', desc: 'Watch your document move through the print queue in real-time.' },
+                    { icon: CheckCircle, color: 'text-teal-500', title: 'Reliable Printing', desc: 'Robust architecture with automatic failover and load balancing.' }
+                  ].map((feature, idx) => (
+                    <div key={idx} className="p-5 rounded-2xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] hover:border-purple-300  transition-colors">
+                      <feature.icon className={`w-6 h-6 ${feature.color} mb-3`} />
+                      <h4 className="text-sm font-bold text-[var(--text-primary)]">{feature.title}</h4>
+                      <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">{feature.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. How It Works */}
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] pb-3">
+                  <Settings className="w-5 h-5 text-slate-500" />
+                  <h3 className="text-lg font-extrabold text-[var(--text-primary)] tracking-tight">How It Works</h3>
+                </div>
+                <div className="portal-card p-6 rounded-3xl border border-[var(--border-default)] shadow-xs relative overflow-hidden">
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-6 text-center relative z-10">
+                    {[
+                      { step: '1', title: 'Upload', icon: FileUp },
+                      { step: '2', title: 'Configure', icon: Settings },
+                      { step: '3', title: 'Approval', icon: ShieldCheck },
+                      { step: '4', title: 'Printing', icon: Printer },
+                      { step: '5', title: 'Collection', icon: MapPin }
+                    ].map((item, idx) => (
+                      <div key={idx} className="flex flex-col items-center gap-3 relative">
+                        <div className="w-12 h-12 rounded-full bg-slate-100  border-2 border-white  shadow-md flex items-center justify-center text-purple-600  z-10">
+                          <item.icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Step {item.step}</p>
+                          <p className="text-xs font-bold text-[var(--text-primary)] mt-0.5">{item.title}</p>
+                        </div>
+                        {idx !== 4 && (
+                          <div className="hidden sm:block absolute top-6 left-[50%] w-full h-[2px] bg-slate-200  -z-0" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Our Mission */}
+              <div className="p-8 sm:p-10 rounded-3xl bg-purple-600 text-white text-center shadow-lg relative overflow-hidden">
+                <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="relative z-10 space-y-4">
+                  <Heart className="w-8 h-8 mx-auto text-purple-200" />
+                  <h3 className="text-2xl font-black tracking-tight">Our Mission</h3>
+                  <p className="text-sm sm:text-base text-purple-100 font-medium max-w-2xl mx-auto leading-relaxed">
+                    To eliminate the friction of campus printing by providing a seamless, transparent, and highly reliable digital bridge between students and print centers.
+                  </p>
+                </div>
+              </div>
+
+              {/* 5. Help & Support */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="p-6 rounded-2xl border border-[var(--border-default)] shadow-xs bg-[var(--bg-card)] flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-purple-100  text-purple-600  flex items-center justify-center shrink-0">
+                    <HelpCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-[var(--text-primary)]">Need Assistance?</h4>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1 mb-3">Our support team is here to help with any technical issues.</p>
+                    <a href="mailto:support@campusprint.edu" className="text-xs font-bold text-purple-600  hover:underline">support@campusprint.edu</a>
+                  </div>
+                </div>
+                <div className="p-6 rounded-2xl border border-[var(--border-default)] shadow-xs bg-[var(--bg-card)] flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100  text-emerald-600  flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-[var(--text-primary)]">Print Center Hours</h4>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1 mb-1">Mon - Fri: 8:00 AM - 6:00 PM</p>
+                    <p className="text-xs text-[var(--text-secondary)]">Location: Main Block, Ground Floor</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 6. Footer */}
+              <div className="pt-8 pb-4 border-t border-[var(--border-subtle)] text-center space-y-2">
+                <div className="flex items-center justify-center gap-2 text-[var(--text-muted)]">
+                  <Printer className="w-4 h-4" />
+                  <span className="text-xs font-bold">Campus Print</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-surface-secondary)] border border-[var(--border-subtle)] font-mono">v1.2.0</span>
+                </div>
+                <p className="text-[10px] font-medium text-[var(--text-muted)]">Built for modern educational institutions.</p>
+              </div>
+
+            </div>
+          ) : activeTab === 'help' ? (
+            <div className="max-w-5xl mx-auto w-full pb-8 animate-fadeIn space-y-8 text-left font-sans">
+              
+              {/* Header */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 sm:p-8 rounded-2xl bg-gradient-to-r from-purple-600/10 via-indigo-600/5 to-purple-600/10    border border-purple-200/50 ">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-white  border border-purple-200/80  shadow-md shadow-purple-500/10 flex items-center justify-center text-purple-600 ">
+                    <HelpCircle className="w-6 h-6 stroke-[2.2]" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-black text-[var(--text-primary)] tracking-tight">Help & Support</h2>
+                    <p className="text-xs sm:text-sm text-[var(--text-muted)] font-medium mt-1">Get assistance, read guides, and contact support.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+                {/* Main Content Area */}
+                <div className="lg:col-span-2 space-y-6">
+                  
+                  {/* Quick Start Guide */}
+                  <div className="portal-card p-6 sm:p-8 rounded-2xl border border-[var(--border-default)] shadow-xs">
+                    <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+                      <Zap className="w-5 h-5 text-amber-500" />
+                      <h3 className="text-base font-extrabold text-[var(--text-primary)] uppercase tracking-wider font-mono">Quick Start Guide</h3>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="flex items-start gap-4">
+                        <div className="w-7 h-7 rounded-full bg-purple-100  text-purple-600  flex items-center justify-center font-black text-xs shrink-0 font-mono">1</div>
+                        <div>
+                          <h4 className="text-sm font-bold text-[var(--text-primary)]">Upload Your Document</h4>
+                          <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">Drag and drop your PDF, DOCX, or Image file into the dropzone on the Dashboard. Configure your print settings (copies, color, duplex) right there.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-4">
+                        <div className="w-7 h-7 rounded-full bg-purple-100  text-purple-600  flex items-center justify-center font-black text-xs shrink-0 font-mono">2</div>
+                        <div>
+                          <h4 className="text-sm font-bold text-[var(--text-primary)]">Get Your Token</h4>
+                          <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">After submission, you will receive a unique 4-character Approval Token. You can track its queue position in the 'Queue Status' tab.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-4">
+                        <div className="w-7 h-7 rounded-full bg-purple-100  text-purple-600  flex items-center justify-center font-black text-xs shrink-0 font-mono">3</div>
+                        <div>
+                          <h4 className="text-sm font-bold text-[var(--text-primary)]">Release at Print Center</h4>
+                          <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">Visit the Print Center and show your Approval Token to the operator after payment to physically release your print job.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* FAQ */}
+                  <div className="portal-card p-6 sm:p-8 rounded-2xl border border-[var(--border-default)] shadow-xs">
+                    <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+                      <BookOpen className="w-5 h-5 text-indigo-500" />
+                      <h3 className="text-base font-extrabold text-[var(--text-primary)] uppercase tracking-wider font-mono">Frequently Asked Questions</h3>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="p-4 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)]">
+                        <h4 className="text-sm font-bold text-[var(--text-primary)]">Why is my document 'Pending Approval'?</h4>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">Jobs wait in a secure holding queue until you arrive at the print center to pay and authenticate the release with your token.</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)]">
+                        <h4 className="text-sm font-bold text-[var(--text-primary)]">What is the maximum file size?</h4>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">Currently, you can upload files up to 50MB. If your document is larger, please try compressing the PDF before uploading.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Sidebar Cards Area */}
+                <div className="space-y-6">
+                  
+                  {/* Contact Information */}
+                  <div className="portal-card p-6 rounded-2xl border border-[var(--border-default)] shadow-xs space-y-5">
+                    <div className="flex items-center gap-3">
+                      <Phone className="w-5 h-5 text-emerald-500" />
+                      <h3 className="text-sm font-extrabold text-[var(--text-primary)] uppercase tracking-wider font-mono">Contact Info</h3>
+                    </div>
+                    <div className="space-y-3 text-xs">
+                      <div className="flex items-start gap-3">
+                        <MapPin className="w-4 h-4 text-[var(--text-muted)] mt-0.5" />
+                        <div>
+                          <p className="font-bold text-[var(--text-primary)]">TJohn Print Center</p>
+                          <p className="text-[var(--text-secondary)] mt-0.5 leading-relaxed">Ground Floor, Main Block<br/>Next to Campus Library</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <Clock className="w-4 h-4 text-[var(--text-muted)] mt-0.5" />
+                        <div>
+                          <p className="font-bold text-[var(--text-primary)]">Hours of Operation</p>
+                          <p className="text-[var(--text-secondary)] mt-0.5 leading-relaxed">Mon - Fri: 8:00 AM - 6:00 PM</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </main>
       </div>
+
+      {/* ─── CUSTOM DIALOG MODALS OVERLAYS ─── */}
+      {activeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Translucent Backdrop Overlay */}
+          <div 
+            className="absolute inset-0 bg-slate-950/65 backdrop-blur-xs transition-opacity duration-300"
+            onClick={() => setActiveModal(null)}
+          />
+
+          {/* Dialog Container */}
+          <div className="portal-card-elevated w-full max-w-md p-6 sm:p-7 relative z-10 bg-white  rounded-3xl border border-purple-200/80  shadow-2xl text-left font-sans animate-modal-pop">
+            {/* Close Icon Button */}
+            <button
+              type="button"
+              onClick={() => setActiveModal(null)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full border-none bg-transparent hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer flex items-center justify-center transition-colors"
+              title="Close Dialog"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Modal Content Switch */}
+            {activeModal === 'price_calc' && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-600/10 text-purple-600  flex items-center justify-center">
+                    <Calculator className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-[var(--text-primary)] tracking-tight">Price Calculator</h3>
+                    <p className="text-[10px] text-[var(--text-muted)] font-medium">Estimate print order costs dynamically</p>
+                  </div>
+                </div>
+
+                {/* Pricing Reference Grid */}
+                <div className="p-3.5 rounded-2xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-[var(--text-secondary)] font-medium">Single-sided B&W</span>
+                    <span className="font-mono font-extrabold text-purple-600 ">₹2.00 / page</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-[var(--text-secondary)] font-medium">Single-sided Color</span>
+                    <span className="font-mono font-extrabold text-purple-600 ">₹5.00 / page</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-[var(--text-secondary)] font-medium">Duplex (Double-sided)</span>
+                    <span className="font-mono font-extrabold text-purple-600 ">₹3.00 / sheet</span>
+                  </div>
+                </div>
+
+                {/* Inputs Grid */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-1.5 font-mono">
+                        Page Count
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={calcPages}
+                        onChange={(e) => setCalcPages(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full px-3.5 py-2 rounded-xl portal-input text-xs font-bold text-[var(--text-primary)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-1.5 font-mono">
+                        Copies
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={calcCopies}
+                        onChange={(e) => setCalcCopies(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full px-3.5 py-2 rounded-xl portal-input text-xs font-bold text-[var(--text-primary)]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest mb-2 font-mono">
+                      Print Specifications
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'bw', label: 'B&W' },
+                        { id: 'color', label: 'Color' },
+                        { id: 'duplex', label: 'Duplex' }
+                      ].map((spec) => (
+                        <button
+                          key={spec.id}
+                          type="button"
+                          onClick={() => setCalcType(spec.id as any)}
+                          className={`py-2 px-3 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
+                            calcType === spec.id
+                              ? 'bg-purple-600 border-purple-600 text-white shadow-xs'
+                              : 'bg-[var(--bg-card)] border-[var(--border-default)] text-[var(--text-secondary)] hover:border-purple-300 '
+                          }`}
+                        >
+                          {spec.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dynamic Price Display */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-600/10 via-indigo-600/5 to-purple-600/10    border border-purple-200/50  flex items-center justify-between">
+                  <span className="text-xs font-bold text-[var(--text-primary)]">Estimated Total</span>
+                  <span className="text-2xl font-black text-purple-600  font-mono">
+                    ₹{(() => {
+                      const rate = calcType === 'color' ? 5 : calcType === 'duplex' ? 3 : 2;
+                      const activePages = calcType === 'duplex' ? Math.ceil(calcPages / 2) : calcPages;
+                      return rate * activePages * calcCopies;
+                    })()}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {activeModal === 'find_center' && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-600/10 text-purple-600  flex items-center justify-center">
+                    <Compass className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-[var(--text-primary)] tracking-tight">Print Center Location</h3>
+                    <p className="text-[10px] text-[var(--text-muted)] font-medium">Physical coordinates & status</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3.5 text-xs">
+                  <div>
+                    <p className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Center Name</p>
+                    <p className="text-sm font-extrabold text-[var(--text-primary)] mt-0.5">TJohn Print Center</p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Physical Address</p>
+                    <p className="text-xs text-[var(--text-secondary)] font-semibold mt-0.5 leading-relaxed">
+                      📍 Ground Floor, Main Block (Right next to the Campus Library entrance)
+                    </p>
+                  </div>
+
+                  {/* Telemetry metrics rows */}
+                  <div className="grid grid-cols-3 gap-2.5 pt-1.5">
+                    <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] text-center">
+                      <p className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Status</p>
+                      <p className="text-xs font-black text-emerald-600  mt-1">Operational</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] text-center">
+                      <p className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Jobs in Queue</p>
+                      <p className="text-xs font-black text-[var(--text-primary)] mt-1 font-mono">{waitingJobsCount}</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] text-center">
+                      <p className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Est. Wait</p>
+                      <p className="text-xs font-black text-[var(--text-primary)] mt-1 font-mono">
+                        {waitingJobsCount === 0 ? '0 Min' : `~${estimatedMinutes} Min`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDrawerOpen(false);
+                    alert("Campus Map coordinates: Main Block, Ground Floor. Opening Google Maps is simulated.");
+                  }}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 border-none shadow-xs"
+                >
+                  <span>Open in Maps</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {activeModal === 'guidelines' && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-600/10 text-purple-600  flex items-center justify-center">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-[var(--text-primary)] tracking-tight">Print Guidelines</h3>
+                    <p className="text-[10px] text-[var(--text-muted)] font-medium">Standard parameters & recommendations</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3.5 text-xs text-[var(--text-secondary)]">
+                  <div className="p-3.5 rounded-2xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] space-y-2 font-semibold">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[var(--text-muted)]">Supported Formats</span>
+                      <span className="font-bold text-[var(--text-primary)]">Adobe PDF (.pdf)</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[var(--text-muted)]">File Size Limit</span>
+                      <span className="font-bold text-[var(--text-primary)]">50 MB max per upload</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[var(--text-muted)]">Standard Size</span>
+                      <span className="font-bold text-[var(--text-primary)]">A4 Paper size default</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 leading-relaxed font-medium">
+                    <p className="flex items-start gap-2">
+                      <span className="text-purple-500">✔</span>
+                      <span>LaTeX & Word exports: Ensure all font vectors are embedded to avoid print scaling issues.</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-purple-500">✔</span>
+                      <span>Scale options: Always print official campus forms at <strong>100% scale</strong> (do not use shrink or fit-to-page).</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-purple-500">✔</span>
+                      <span>Avoid screenshots: Upload vector documents directly to maintain razor-sharp text clarity.</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1397,10 +2319,10 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
   const selectedJob = activeTabJobId ? studentActiveJobs.find(j => j.id === activeTabJobId) : null;
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col h-full text-left font-sans shadow-2xs">
-      <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
-        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 font-mono uppercase tracking-wider">
-          <Clock className="w-4 h-4 text-indigo-500" />
+    <div className="portal-card-sage rounded-xl overflow-hidden flex flex-col h-full text-left font-sans shadow-sm">
+      <div className="px-6 py-5 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-secondary)]/50">
+        <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 font-mono uppercase tracking-wider">
+          <Clock className="w-4 h-4 text-[var(--color-primary)]" />
           <span>Print Hub Activity</span>
         </h3>
       </div>
@@ -1408,13 +2330,13 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
       <div className="p-6 space-y-6">
         {/* Waiting widgets */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 rounded-xl bg-slate-50/50 dark:bg-slate-955/20 border border-slate-150 dark:border-slate-800">
-            <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-500 uppercase tracking-wider font-mono">Current Waiting Jobs</span>
-            <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">{waitingCount}</p>
+          <div className="p-4 rounded-xl bg-slate-50/50  border border-slate-150 ">
+            <span className="block text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Current Waiting Jobs</span>
+            <p className="text-2xl font-black text-slate-800  mt-1">{waitingCount}</p>
           </div>
-          <div className="p-4 rounded-xl bg-slate-50/50 dark:bg-slate-955/20 border border-slate-150 dark:border-slate-800">
-            <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Estimated Wait</span>
-            <p className="text-2xl font-black text-slate-800 dark:text-white mt-1 font-mono">
+          <div className="p-4 rounded-xl bg-slate-50/50  border border-slate-150 ">
+            <span className="block text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Estimated Wait</span>
+            <p className="text-2xl font-black text-slate-800  mt-1 font-mono">
               {waitingCount === 0 ? '0 Min' : `${waitMinutes} Min`}
             </p>
           </div>
@@ -1422,23 +2344,23 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
 
         {/* Real Queue Visibility details */}
         {selectedJob && (selectedDetails || selectedJob.status === 'pending_approval') && (
-          <div className="p-5 rounded-xl border border-indigo-200/50 dark:border-indigo-900 bg-indigo-50/15 dark:bg-indigo-950/10 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-indigo-100/50 dark:border-indigo-900/30">
-              <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest font-mono">
+          <div className="p-5 rounded-xl border border-indigo-200/50  bg-indigo-50/15  space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-indigo-100/50 ">
+              <span className="text-[10px] font-extrabold text-indigo-600  uppercase tracking-widest font-mono">
                 {selectedJob.status === 'pending_approval' ? '⏳ APPROVAL TRACKER' : '🔍 LIVE QUEUE TRACKER'}
               </span>
-              <span className="text-xs font-mono font-bold bg-indigo-100/60 dark:bg-indigo-955/40 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded border border-indigo-200/40 dark:border-indigo-900/40">
+              <span className="text-xs font-mono font-bold bg-indigo-100/60  text-indigo-700  px-2 py-0.5 rounded border border-indigo-200/40 ">
                 Token: {selectedJob.token}
               </span>
             </div>
 
             {selectedJob.status === 'pending_approval' ? (
-              <div className="p-4 bg-amber-50/10 dark:bg-amber-950/10 border border-amber-250 dark:border-amber-900/60 text-slate-700 dark:text-slate-350 rounded-xl space-y-2.5 text-xs font-medium">
-                <p className="font-bold text-amber-800 dark:text-amber-400">⏳ Awaiting Operator Release</p>
-                <p className="leading-relaxed text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="p-4 bg-amber-50/10  border border-amber-250  text-slate-700  rounded-xl space-y-2.5 text-xs font-medium">
+                <p className="font-bold text-amber-800 ">⏳ Awaiting Operator Release</p>
+                <p className="leading-relaxed text-[11px] text-slate-500 ">
                   Your document is currently pending shop approval. Please show the following Approval Token to the shop operator to release your print job:
                 </p>
-                <div className="p-2.5 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 rounded-lg text-center font-mono font-bold text-amber-700 dark:text-amber-400 text-sm animate-pulse">
+                <div className="p-2.5 bg-white  border border-amber-200  rounded-lg text-center font-mono font-bold text-amber-700  text-sm animate-pulse">
                   {selectedJob.tokenId || 'N/A'}
                 </div>
               </div>
@@ -1446,35 +2368,35 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs font-sans">
                   <div className="space-y-1">
-                    <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Currently Printing</span>
-                    <p className="font-bold text-slate-800 dark:text-slate-200 truncate" title={selectedDetails.currentlyPrinting}>
+                    <span className="block text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Currently Printing</span>
+                    <p className="font-bold text-slate-800  truncate" title={selectedDetails.currentlyPrinting}>
                       {selectedDetails.currentlyPrinting}
                     </p>
                   </div>
 
                   <div className="space-y-1">
-                    <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Queue Position</span>
-                    <p className="font-bold text-slate-800 dark:text-slate-200">
-                      #{selectedDetails.position} <span className="text-[10px] text-slate-450 dark:text-slate-555 font-normal">({selectedDetails.jobsAhead} ahead)</span>
+                    <span className="block text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Queue Position</span>
+                    <p className="font-bold text-slate-800 ">
+                      #{selectedDetails.position} <span className="text-[10px] text-slate-450  font-normal">({selectedDetails.jobsAhead} ahead)</span>
                     </p>
                   </div>
 
                   <div className="space-y-1">
-                    <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Estimated Start</span>
-                    <p className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                    <span className="block text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Estimated Start</span>
+                    <p className="font-bold text-indigo-600  font-mono">
                       {selectedJob.status === 'printing' ? 'Now Printing' : selectedDetails.estimatedStart}
                     </p>
                   </div>
 
                   <div className="space-y-1">
-                    <span className="block text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Estimated Completion</span>
-                    <p className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                    <span className="block text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Estimated Completion</span>
+                    <p className="font-bold text-indigo-600  font-mono">
                       {selectedDetails.estimatedCompletion}
                     </p>
                   </div>
                 </div>
                 
-                <div className="bg-indigo-50/30 dark:bg-indigo-950/20 border border-indigo-100/40 dark:border-indigo-900/30 p-3 rounded-lg flex items-center justify-between text-xs text-indigo-700 dark:text-indigo-400 font-semibold font-mono">
+                <div className="bg-indigo-50/30  border border-indigo-100/40  p-3 rounded-lg flex items-center justify-between text-xs text-indigo-700  font-semibold font-mono">
                   <span>ESTIMATED WAITING TIME:</span>
                   <span className="text-sm font-black">{selectedDetails.waitingMinutes} MINUTES</span>
                 </div>
@@ -1485,9 +2407,9 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
 
         {/* Student's recent jobs */}
         <div className="space-y-3 text-left">
-          <h4 className="text-[10px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-wider font-mono">Your Recent Print Jobs</h4>
+          <h4 className="text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Your Recent Print Jobs</h4>
           {recentJobs.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 dark:text-slate-500 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/20 dark:bg-slate-950/10 text-xs font-mono">
+            <div className="p-8 text-center text-slate-400  border border-dashed border-slate-200  rounded-xl bg-slate-50/20  text-xs font-mono">
               No print jobs submitted from your account yet.
             </div>
           ) : (
@@ -1512,27 +2434,27 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
                       isActive ? 'cursor-pointer' : ''
                     } ${
                       activeTabJobId === job.id
-                        ? 'border-indigo-500 dark:border-indigo-550 bg-indigo-50/10 dark:bg-indigo-950/20 shadow-2xs'
-                        : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850/50'
+                        ? 'border-indigo-500  bg-indigo-50/10  shadow-2xs'
+                        : 'bg-white  border-slate-200  hover:bg-slate-50 '
                     }`}
                   >
                     <div className="min-w-0 flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">{job.token}</span>
+                        <span className="font-mono font-black text-indigo-600 ">{job.token}</span>
                         {activeTabJobId === job.id && (
-                          <span className="text-[9px] bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-bold font-mono border border-indigo-200/30 dark:border-indigo-800/40">TRACKING</span>
+                          <span className="text-[9px] bg-indigo-100  text-indigo-700  px-1.5 py-0.5 rounded font-bold font-mono border border-indigo-200/30 ">TRACKING</span>
                         )}
                       </div>
-                      <p className="font-bold text-slate-800 dark:text-slate-200 truncate" title={job.fileName}>{job.fileName}</p>
-                      <p className="text-[10px] text-slate-455 dark:text-slate-500 font-mono mt-0.5">{job.pageCount} pgs · {timeAgo(job.createdAt)}</p>
+                      <p className="font-bold text-slate-800  truncate" title={job.fileName}>{job.fileName}</p>
+                      <p className="text-[10px] text-slate-455  font-mono mt-0.5">{job.pageCount} pgs · {timeAgo(job.createdAt)}</p>
                     </div>
                     
                     <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider font-mono ${
-                      job.status === 'completed' ? 'bg-emerald-50/20 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-900/40' :
-                      job.status === 'printing' ? 'bg-indigo-50/20 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 border-indigo-200/50 dark:border-indigo-900/40 animate-pulse' :
-                      job.status === 'queued' ? 'bg-amber-50/20 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200/50 dark:border-amber-900/40' :
-                      job.status === 'pending_approval' ? 'bg-orange-50/20 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border-orange-200/50 dark:border-orange-900/40' :
-                      'bg-rose-50/20 dark:bg-rose-955/30 text-rose-700 dark:text-rose-455 border-rose-200/50 dark:border-rose-900/40'
+                      job.status === 'completed' ? 'bg-emerald-50/20  text-emerald-700  border-emerald-200/50 ' :
+                      job.status === 'printing' ? 'bg-indigo-50/20  text-indigo-700  border-indigo-200/50  animate-pulse' :
+                      job.status === 'queued' ? 'bg-amber-50/20  text-amber-700  border-amber-200/50 ' :
+                      job.status === 'pending_approval' ? 'bg-orange-50/20  text-orange-700  border-orange-200/50 ' :
+                      'bg-rose-50/20  text-rose-700  border-rose-200/50 '
                     }`}>
                       {statusLabels[job.status] || job.status}
                     </span>

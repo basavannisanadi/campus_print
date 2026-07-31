@@ -1,5 +1,4 @@
 {
-  "serverUrl": "http://localhost:3001",
-  "shopId": "tjohn_print",
-  "token": ""
+  "serverUrl": "http://127.0.0.1:3001",
+  "shopId": "alliance_print"
 }

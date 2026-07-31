@@ -1,0 +1,127 @@
+================================================================
+         CAMPUS PRINT AGENT — CONSOLIDATED DIAGNOSTIC REPORT     
+================================================================
+Generated At            : 2026-07-30T17:17:16.042Z
+Agent Version           : 1.0.0
+Node.js Version         : v24.11.1
+Windows OS Version      : Windows_NT 10.0.26200 (x64)
+Machine Name (Hostname) : VICTUS
+Target Server URL       : http://127.0.0.1:60402
+Shop ID                 : alliance_print
+Daemon PID              : 27200
+Parent PID (PPID)       : 15392
+----------------------------------------------------------------
+1. CONFIGURATION & RUNTIME FILES:
+  runtime.json: {
+  "serverUrl": "http://127.0.0.1:60402",
+  "shopId": "alliance_print"
+}
+  config.json : {
+  "serverUrl": "http://127.0.0.1:60402",
+  "pollIntervalMs": 10000,
+  "mockPrinter": true,
+  "printerName": "",
+  "shopId": "alliance_print",
+  "agentId": "CP-TEST-REG-SUCCESS",
+  "machineName": "VICTUS",
+  "daemonVersion": "1.0.0",
+  "protocolVersion": "1.0.0",
+  "version": "1.0.0",
+  "token": "mock_valid...[MASKED]"
+}
+----------------------------------------------------------------
+2. 10-STAGE STARTUP PROGRESSION:
+  [10:47:13 pm] [1/10] Agent launched
+  [10:47:13 pm] [DIAGNOSTIC] runtime.json read. runtime.token exists: true
+  [10:47:13 pm] [DIAGNOSTIC] runtime.token: "mock_valid_token"
+  [10:47:13 pm] [2/10] runtime.json loaded
+  [10:47:13 pm] [3/10] Configuration validated
+  [10:47:13 pm] 
+[DIAGNOSTIC REQUEST]
+  [10:47:13 pm] [DIAGNOSTIC] getAuthHeader() config.token: "mock_valid_token"
+  [10:47:13 pm] [DIAGNOSTIC RESPONSE]
+  [10:47:13 pm] [4/10 WARN] Backend reachability test failed: 404
+  [10:47:13 pm] 
+[DIAGNOSTIC REQUEST]
+  [10:47:13 pm] [DIAGNOSTIC] getAuthHeader() config.token: "mock_valid_token"
+  [10:47:13 pm] [DIAGNOSTIC RESPONSE]
+  [10:47:13 pm] [5/10] Authentication successful
+  [10:47:13 pm] [6/10] Registration request sent
+  [10:47:15 pm] 
+[DIAGNOSTIC REQUEST]
+  [10:47:15 pm] REQUEST BODY = {"agentId":"CP-TEST-REG-SUCCESS","shopId":"alliance_print","machineName":"VICTUS","printerName":"BwMockPrinter","daemonVersion":"1.0.0","printers":["EPSON L4360 Series","HP Ink Tank 310 series","HP Officejet J4500 series"]}
+  [10:47:16 pm] [DIAGNOSTIC] getAuthHeader() config.token: "mock_valid_token"
+  [10:47:16 pm] [DIAGNOSTIC RESPONSE]
+  [10:47:16 pm] [7/10] Registration acknowledged
+----------------------------------------------------------------
+3. REGISTRATION STATUS:
+  Request Sent        : false
+  HTTP Status Code    : N/A
+  Response Payload    : {}
+----------------------------------------------------------------
+4. HEARTBEAT SYSTEM STATUS:
+  Heartbeat Loop Started : false
+  First Heartbeat Sent   : false
+  HTTP Status Code       : N/A
+  Response Payload       : {}
+----------------------------------------------------------------
+5. REAL-TIME STREAM (SSE) STATUS:
+  SSE Stream Connected   : false
+  SSE Stream Status      : Not Connected
+----------------------------------------------------------------
+6. PRINTER DISCOVERY BENCHMARKS:
+  refreshPrinterMapping() Total Time : 0 ms
+----------------------------------------------------------------
+7. NETWORK & PROTOCOL ERRORS:
+  None recorded.
+----------------------------------------------------------------
+8. UNCAUGHT EXCEPTIONS & UNHANDLED REJECTIONS:
+  None recorded.
+----------------------------------------------------------------
+9. LAUNCHER LOG (TAIL 30 LINES):
+  launcher.log file not found
+----------------------------------------------------------------
+10. CLIENT LOG (TAIL 40 LINES):
+  [DIAGNOSTIC REQUEST]
+  [Client] [2026-07-30T17:17:13.676Z] SERVER URL = http://127.0.0.1:60402
+  [Client] [2026-07-30T17:17:13.678Z] GET = http://127.0.0.1:60402/api/shops/alliance_print
+  [Client] [2026-07-30T17:17:13.679Z] HTTP METHOD = GET
+  [Client] [2026-07-30T17:17:13.681Z] [DIAGNOSTIC] getAuthHeader() config.token: "mock_valid_token"
+  [Client] [2026-07-30T17:17:13.706Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-07-30T17:17:13.715Z] GET = http://127.0.0.1:60402/api/shops/alliance_print
+  [Client] [2026-07-30T17:17:13.719Z] STATUS CODE = 404
+  [Client] [2026-07-30T17:17:13.722Z] RESPONSE BODY = 
+  [Client] [2026-07-30T17:17:13.725Z] [4/10 WARN] Backend reachability test failed: 404
+  [Client] [2026-07-30T17:17:13.727Z] Ensuring SumatraPDF...
+  [Client] [2026-07-30T17:17:13.731Z] Refreshing mappings...
+  [Client] [2026-07-30T17:17:13.735Z] 
+  [DIAGNOSTIC REQUEST]
+  [Client] [2026-07-30T17:17:13.737Z] SERVER URL = http://127.0.0.1:60402
+  [Client] [2026-07-30T17:17:13.739Z] GET = http://127.0.0.1:60402/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-07-30T17:17:13.740Z] HTTP METHOD = GET
+  [Client] [2026-07-30T17:17:13.742Z] [DIAGNOSTIC] getAuthHeader() config.token: "mock_valid_token"
+  [Client] [2026-07-30T17:17:13.749Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-07-30T17:17:13.752Z] GET = http://127.0.0.1:60402/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-07-30T17:17:13.756Z] STATUS CODE = 200
+  [Client] [2026-07-30T17:17:13.760Z] RESPONSE BODY = {"bwPrinterId":"bw-123","bwPrinterName":"BwMockPrinter","colorPrinterId":"color-123","colorPrinterName":"ColorMockPrinter"}
+  [Client] [2026-07-30T17:17:13.767Z] [5/10] Authentication successful
+  [Client] [2026-07-30T17:17:13.769Z] [6/10] Registration request sent
+  [Client] [2026-07-30T17:17:15.984Z] 
+  [DIAGNOSTIC REQUEST]
+  [Client] [2026-07-30T17:17:15.988Z] SERVER URL = http://127.0.0.1:60402
+  [Client] [2026-07-30T17:17:15.991Z] POST = http://127.0.0.1:60402/api/agent/register
+  [Client] [2026-07-30T17:17:15.993Z] HTTP METHOD = POST
+  [Client] [2026-07-30T17:17:15.997Z] REQUEST BODY = {"agentId":"CP-TEST-REG-SUCCESS","shopId":"alliance_print","machineName":"VICTUS","printerName":"BwMockPrinter","daemonVersion":"1.0.0","printers":["EPSON L4360 Series","HP Ink Tank 310 series","HP Officejet J4500 series"]}
+  [Client] [2026-07-30T17:17:16.000Z] [DIAGNOSTIC] getAuthHeader() config.token: "mock_valid_token"
+  [Client] [2026-07-30T17:17:16.008Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-07-30T17:17:16.015Z] POST = http://127.0.0.1:60402/api/agent/register
+  [Client] [2026-07-30T17:17:16.018Z] STATUS CODE = 200
+  [Client] [2026-07-30T17:17:16.022Z] RESPONSE BODY = {"success":true,"message":"Registered successfully"}
+  [Client] [2026-07-30T17:17:16.026Z] [7/10] Registration acknowledged
+  [Client] [2026-07-30T17:17:16.029Z] Registration success
+  [Client] [2026-07-30T17:17:16.032Z] Heartbeat disabled via test flag
+  [Client] [2026-07-30T17:17:16.037Z] SSE stream connection disabled via test flag
+  [Client] [2026-07-30T17:17:16.042Z] Backlog polling disabled via test flag
+================================================================
+                     END OF DIAGNOSTIC REPORT                   
+================================================================

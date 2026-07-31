@@ -156,15 +156,16 @@ test.describe('Admin Approval Workflow E2E Integration', () => {
 
     await page.reload();
 
-    // Student Login
-    await page.fill('input[placeholder="e.g. basav"]', 'basav');
-    await page.fill('input[placeholder="••••••••"]', 'password101');
-    await page.click('button:has-text("Sign In & Connect")');
+    // Student login via mock Google SSO flow
+    await page.click('button:has-text("Continue with Google")');
+    await page.click('button:has-text("basav@university.edu")');
     await expect(page.locator('button:has-text("Sign Out")')).toBeVisible();
 
     // Select Alliance Shop and wait for connection readiness
-    await expect(page.locator('select')).toBeVisible({ timeout: 10000 });
-    await page.selectOption('select', 'alliance_print');
+    const shopPillBtn = page.locator('button:has(svg.text-purple-500)');
+    await expect(shopPillBtn).toBeVisible({ timeout: 10000 });
+    await shopPillBtn.click();
+    await page.click('button:has-text("Alliance Print Center")');
     await expect(page.locator('button:has-text("System Not Ready")')).toBeHidden({ timeout: 10000 });
 
     // Upload PDF document
@@ -189,7 +190,7 @@ test.describe('Admin Approval Workflow E2E Integration', () => {
     const initialJob = db.jobs[0];
     expect(initialJob.status).toBe('pending_approval');
     expect(initialJob.tokenId).toBe(tokenId);
-    expect(initialJob.studentName).toBe('basav');
+    expect(initialJob.studentName).toBe('Basav');
     expect(initialJob.studentEmail).toBe('basav@university.edu');
 
     // Retrieve the public job token (e.g. PRNT-XYZ) to track in Spooler Table

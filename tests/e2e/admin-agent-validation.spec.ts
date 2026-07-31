@@ -375,13 +375,16 @@ test.describe('Desktop Print Agent Validation End-to-End Suite', () => {
 
     await page.reload();
 
-    await page.fill('input[placeholder="e.g. basav"]', 'basav');
-    await page.fill('input[placeholder="••••••••"]', 'password101');
-    await page.click('button:has-text("Sign In & Connect")');
+    // Student login via mock Google SSO flow
+    await page.click('button:has-text("Continue with Google")');
+    await page.click('button:has-text("basav@university.edu")');
     await expect(page.locator('button:has-text("Sign Out")')).toBeVisible();
 
-    await expect(page.locator('select')).toBeVisible({ timeout: 10000 });
-    await page.selectOption('select', 'alliance_print');
+    // Select Alliance Shop and wait for connection readiness
+    const shopPillBtn = page.locator('button:has(svg.text-purple-500)');
+    await expect(shopPillBtn).toBeVisible({ timeout: 10000 });
+    await shopPillBtn.click();
+    await page.click('button:has-text("Alliance Print Center")');
     await expect(page.locator('button:has-text("System Not Ready")')).toBeHidden({ timeout: 10000 });
 
     const pdfPath = path.resolve(__dirname, '../../Campus_Print_RC1.5_Technical_Release_Report.pdf');

@@ -102,11 +102,23 @@ const DEFAULT_AGENTS = [
 ];
 
 function resetDb() {
+  const currentIso = new Date().toISOString();
+  
+  const shops = JSON.parse(JSON.stringify(DEFAULT_SHOPS));
+  shops.forEach((s: any) => {
+    s.lastHeartbeat = currentIso;
+  });
+
+  const agents = JSON.parse(JSON.stringify(DEFAULT_AGENTS));
+  agents.forEach((a: any) => {
+    a.lastSeen = currentIso;
+  });
+
   const db = {
     jobs: [],
-    shops: JSON.parse(JSON.stringify(DEFAULT_SHOPS)),
+    shops,
     printerSettings: JSON.parse(JSON.stringify(DEFAULT_PRINTER_SETTINGS)),
-    agents: JSON.parse(JSON.stringify(DEFAULT_AGENTS)),
+    agents,
     printers: []
   };
   const dir = path.dirname(DB_TEST_PATH);
@@ -157,17 +169,18 @@ test.describe('Student Happy Path Print Submission Workflow', () => {
     // Reload so fetchPrinterSettings runs with the admin token
     await page.reload();
 
-    // 2. Perform student login
-    await page.fill('input[placeholder="e.g. basav"]', 'basav');
-    await page.fill('input[placeholder="••••••••"]', 'password101');
-    await page.click('button:has-text("Sign In & Connect")');
+    // 2. Perform student login via mock Google SSO flow
+    await page.click('button:has-text("Continue with Google")');
+    await page.click('button:has-text("basav@university.edu")');
 
     // Verify transition into main Student Dashboard
     await expect(page.locator('button:has-text("Sign Out")')).toBeVisible();
 
-    // Select Alliance Print Center from the dropdown
-    await expect(page.locator('select')).toBeVisible({ timeout: 10000 });
-    await page.selectOption('select', 'alliance_print');
+    // Select Alliance Print Center from the custom dropdown component
+    const shopPillBtn = page.locator('button:has(svg.text-purple-500)');
+    await expect(shopPillBtn).toBeVisible({ timeout: 10000 });
+    await shopPillBtn.click();
+    await page.click('button:has-text("Alliance Print Center")');
 
     // Wait for system health to update (submit button should not say "System Not Ready")
     await expect(page.locator('button:has-text("System Not Ready")')).toBeHidden({ timeout: 10000 });
@@ -232,7 +245,7 @@ test.describe('Student Happy Path Print Submission Workflow', () => {
 
     expect(db.jobs.length).toBe(1);
     const job = db.jobs[0];
-    expect(job.studentName).toBe('basav');
+    expect(job.studentName).toBe('Basav');
     expect(job.studentEmail).toBe('basav@university.edu');
     expect(job.copies).toBe(3);
     expect(job.sides).toBe('double');
