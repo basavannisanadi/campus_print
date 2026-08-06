@@ -269,25 +269,55 @@ export default function OwnerDashboard({ navigate }: Props) {
               <p className="text-[10px] text-slate-400 mt-1 font-mono">ID: {shop.shopId}</p>
             </div>
 
-            {/* Health Indicators */}
+            {/* Operational Guidance & Warnings */}
             <div className="space-y-2 text-xs font-semibold text-slate-600">
               <div className="flex justify-between items-center">
-                <span>Current State:</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase bg-indigo-50 text-indigo-700 border-indigo-200 tracking-wider">
-                  {shop.systemHealth?.currentState || 'UNKNOWN'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>System Status:</span>
+                <span>Operational State:</span>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                  shop.systemHealth?.systemReady ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                  (() => {
+                    const os = shop.health?.shopHealth || (shop.onlineStatus === 'offline' ? 'Offline' : 'Ready');
+                    if (os === 'Ready' || os === 'Operational') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    if (os === 'Printing' || os === 'Busy') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+                    if (os === 'Attention Required') return 'bg-amber-50 text-amber-700 border-amber-200';
+                    return 'bg-rose-50 text-rose-700 border-rose-200';
+                  })()
                 }`}>
-                  {shop.systemHealth?.systemReady ? '🟢 READY' : '🔴 NOT READY'}
+                  {(() => {
+                    const os = shop.health?.shopHealth || (shop.onlineStatus === 'offline' ? 'Offline' : 'Ready');
+                    if (os === 'Operational') return 'Ready';
+                    if (os === 'Busy') return 'Printing';
+                    return os;
+                  })()}
                 </span>
               </div>
-              {shop.systemHealth?.blockers && shop.systemHealth.blockers.length > 0 && (
-                <div className="text-[10px] text-rose-600 bg-rose-50/50 border border-rose-100 rounded-lg p-2 font-mono leading-tight mt-1 max-h-20 overflow-y-auto">
-                  {shop.systemHealth.blockers.join(', ')}
+
+              <div className="text-[11px] font-bold text-slate-800 bg-slate-50 border border-slate-100 rounded-lg p-2 leading-tight text-left">
+                {(() => {
+                  if (shop.health) {
+                    const { printerHealth, shopHealth } = shop.health;
+                    if (printerHealth === 'PAPER_EMPTY') return 'Printer is out of paper. Printing resumes automatically after the issue is fixed.';
+                    if (printerHealth === 'PAPER_JAM') return 'Printer has a paper jam. Printing resumes automatically after the issue is fixed.';
+                    if (printerHealth === 'COVER_OPEN') return 'Printer cover is open. Printing resumes automatically after the issue is fixed.';
+                    if (printerHealth === 'OFFLINE' || printerHealth === 'UNREACHABLE' || shopHealth === 'Unavailable') {
+                      return 'Printer is offline. Printing resumes automatically after the issue is fixed.';
+                    }
+                    if (printerHealth === 'LOW_TONER') return 'Toner is low. Please replace soon.';
+                    if (printerHealth === 'PRINTING') return 'Printer is printing.';
+                    return 'Printer is ready.';
+                  }
+                  return shop.onlineStatus === 'offline'
+                    ? 'Printer is offline. Printing resumes automatically after the issue is fixed.'
+                    : 'Printer is ready.';
+                })()}
+              </div>
+              {shop.health?.warnings && shop.health.warnings.length > 0 && (
+                <div className="space-y-1 mt-1 max-h-24 overflow-y-auto pr-1 text-left">
+                  {shop.health.warnings.map((w: any, idx: number) => (
+                    <div key={idx} className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-md p-1 flex items-start gap-1">
+                      <span>⚠️</span>
+                      <span>{w.message}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

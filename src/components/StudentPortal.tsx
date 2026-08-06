@@ -55,20 +55,14 @@ interface Props {
   onSelectShop: (shopId: string) => void;
   agentOnlineStatus?: 'online' | 'offline';
   systemHealth?: any;
+  health?: any;
 }
 
 const ACCEPTED_TYPES = [
   'application/pdf',
-  'image/png',
-  'image/jpeg',
-  'image/jpg',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 ];
 
-const ACCEPTED_EXT = '.pdf,.png,.jpg,.jpeg,.doc,.docx,.ppt,.pptx';
+const ACCEPTED_EXT = '.pdf';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -135,7 +129,8 @@ export default function StudentPortal({
   selectedShopId,
   onSelectShop,
   agentOnlineStatus = 'offline',
-  systemHealth
+  systemHealth,
+  health
 }: Props) {
   // Authentication states
   const isGlobalMaintenance = (!!shopInfo?.bwMaintenanceMode && !!shopInfo?.colorMaintenanceMode) || underMaintenance;
@@ -545,7 +540,11 @@ export default function StudentPortal({
   const estimatedMinutes = Math.max(1, Math.round(estimatedSeconds / 60));
 
   // Student's recent orders
-  const studentRecentOrders = orders.filter(o => o.studentEmail === studentEmail || o.studentId === studentSessionToken?.split('.')[0] || true); // Default to all if owner is authenticated via API already
+  const studentRecentOrders = orders.filter(o => 
+    (studentEmail && o.studentEmail === studentEmail) || 
+    (profile?.id && o.studentId === profile.id) ||
+    sessionStorage.getItem('adminRole') === 'owner'
+  );
 
   const studentActiveOrders = studentRecentOrders.filter(o => o.status === 'pending_approval' || o.status === 'queued' || o.status === 'printing');
   const studentRecentJobs = studentRecentOrders.flatMap(o => o.jobs || []);
@@ -560,12 +559,12 @@ export default function StudentPortal({
 
   // ─── MAIN APPLICATION SHELL RENDER ─────────────────────────────
   return (
-    <div className="flex h-screen w-full overflow-hidden font-sans text-left bg-[#F8F8FC]  transition-colors relative">
+    <div className="flex h-screen w-full overflow-hidden font-sans text-left bg-[var(--bg-app)]  transition-colors relative">
       {/* ─── ATMOSPHERIC CANVAS BACKGROUND ─── */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-purple-200/25  blur-[150px]" />
-        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] rounded-full bg-pink-100/25  blur-[140px]" />
-        <div className="absolute -bottom-40 right-10 w-[650px] h-[650px] rounded-full bg-indigo-100/20  blur-[150px]" />
+        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-orange-200/25  blur-[150px]" />
+        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] rounded-full bg-amber-100/25  blur-[140px]" />
+        <div className="absolute -bottom-40 right-10 w-[650px] h-[650px] rounded-full bg-orange-100/20  blur-[150px]" />
         <div className="absolute inset-0 bg-noise opacity-60 pointer-events-none" />
       </div>
       {/* Backdrop Overlay (Lighter transculent backdrop with blur) */}
@@ -1061,8 +1060,28 @@ export default function StudentPortal({
 
                       {/* Pill 2: Printer Status */}
                       <div className="px-2 py-1 rounded-lg bg-white/70  border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${agentOnlineStatus === 'online' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                        <span>{agentOnlineStatus === 'online' ? 'Operational' : 'Offline'}</span>
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                          (() => {
+                            if (health) {
+                              const isBlocked = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'].includes(health.printerHealth);
+                              if (isBlocked) return 'bg-rose-500';
+                              if (health.shopHealth === 'Busy') return 'bg-amber-500';
+                              return 'bg-emerald-500';
+                            }
+                            return agentOnlineStatus === 'online' ? 'bg-emerald-500' : 'bg-rose-500';
+                          })()
+                        }`} />
+                        <span>{
+                          (() => {
+                            if (health) {
+                              const isBlocked = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'].includes(health.printerHealth);
+                              if (isBlocked) return 'Printing temporarily unavailable.';
+                              if (health.shopHealth === 'Busy') return 'Busy';
+                              return 'Ready';
+                            }
+                            return agentOnlineStatus === 'online' ? 'Ready' : 'Printing temporarily unavailable.';
+                          })()
+                        }</span>
                       </div>
 
                       {/* Pill 3: Average Queue Time */}
@@ -1258,7 +1277,7 @@ export default function StudentPortal({
                             
                             {/* Supported formats */}
                             <p className="text-[11px] text-[var(--text-muted)] font-medium mt-1">
-                              PDF, DOCX, PPTX, XLSX & High-Res Images up to 50MB
+                              PDF files up to 50MB
                             </p>
 
                             {/* Choose Files button */}
@@ -1273,7 +1292,7 @@ export default function StudentPortal({
 
                             {/* File format chips */}
                             <div className="flex flex-wrap items-center justify-center gap-1.5 mt-4.5">
-                              {['📄 PDF', '📝 DOCX', '📊 PPTX', '🖼️ PNG / JPG'].map((type) => (
+                              {['📄 PDF'].map((type) => (
                                 <span
                                   key={type}
                                   className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/80  text-[var(--text-secondary)] border border-[var(--border-subtle)] shadow-2xs"
@@ -1740,9 +1759,25 @@ export default function StudentPortal({
                         </div>
                       </div>
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider font-mono ${
-                        agentOnlineStatus === 'online' ? 'bg-emerald-100 text-emerald-700  ' : 'bg-rose-100 text-rose-700  '
+                        (() => {
+                          if (health) {
+                            const sh = health.shopHealth;
+                            if (sh === 'Unavailable') return 'bg-rose-100 text-rose-700';
+                            if (sh === 'Busy') return 'bg-amber-100 text-amber-700';
+                            return 'bg-emerald-100 text-emerald-700';
+                          }
+                          return agentOnlineStatus === 'online' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700';
+                        })()
                       }`}>
-                        {agentOnlineStatus === 'online' ? '🟢 Operational' : '🔴 Offline'}
+                        {(() => {
+                          if (health) {
+                            const sh = health.shopHealth;
+                            if (sh === 'Unavailable') return '🔴 Unavailable';
+                            if (sh === 'Busy') return '🟡 Busy';
+                            return '🟢 Ready';
+                          }
+                          return agentOnlineStatus === 'online' ? '🟢 Ready' : '🔴 Unavailable';
+                        })()}
                       </span>
                     </div>
 
@@ -1756,13 +1791,30 @@ export default function StudentPortal({
                         </div>
                         <div className="flex items-center gap-2 font-mono text-xs font-extrabold">
                           <span className={`w-2 h-2 rounded-full ${
-                            agentOnlineStatus === 'online' ? (currentlyPrintingDocName ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500') : 'bg-rose-500'
+                            (() => {
+                              if (health) {
+                                const isBlocked = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'].includes(health.printerHealth);
+                                if (isBlocked) return 'bg-rose-500';
+                                if (health.shopHealth === 'Busy') return 'bg-amber-500 animate-pulse';
+                                return 'bg-emerald-500';
+                              }
+                              return agentOnlineStatus === 'online' ? (currentlyPrintingDocName ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500') : 'bg-rose-500';
+                            })()
                           }`} />
                           <span className="text-[var(--text-primary)]">
-                            {agentOnlineStatus === 'online' ? (currentlyPrintingDocName ? 'Spooling' : 'Online / Idle') : 'Offline'}
+                            {(() => {
+                              if (health) {
+                                const isBlocked = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'].includes(health.printerHealth);
+                                if (isBlocked) return 'Printing temporarily unavailable.';
+                                if (health.shopHealth === 'Busy') return 'Busy';
+                                return 'Ready';
+                              }
+                              return agentOnlineStatus === 'online' ? (currentlyPrintingDocName ? 'Busy' : 'Ready') : 'Printing temporarily unavailable.';
+                            })()}
                           </span>
                         </div>
                       </div>
+
 
                       {/* Row 2: Queue */}
                       <div className="p-3.5 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
@@ -2099,15 +2151,15 @@ export default function StudentPortal({
                 <div className="p-3.5 rounded-2xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] space-y-2">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-[var(--text-secondary)] font-medium">Single-sided B&W</span>
-                    <span className="font-mono font-extrabold text-purple-600 ">₹2.00 / page</span>
+                    <span className="font-mono font-extrabold text-purple-600 ">₹{(shopInfo?.bwPrice ?? 2).toFixed(2)} / page</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-[var(--text-secondary)] font-medium">Single-sided Color</span>
-                    <span className="font-mono font-extrabold text-purple-600 ">₹5.00 / page</span>
+                    <span className="font-mono font-extrabold text-purple-600 ">₹{(shopInfo?.colorPrice ?? 5).toFixed(2)} / page</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-[var(--text-secondary)] font-medium">Duplex (Double-sided)</span>
-                    <span className="font-mono font-extrabold text-purple-600 ">₹3.00 / sheet</span>
+                    <span className="font-mono font-extrabold text-purple-600 ">₹{(shopInfo?.duplexPrice ?? 3).toFixed(2)} / sheet</span>
                   </div>
                 </div>
 
@@ -2172,9 +2224,12 @@ export default function StudentPortal({
                   <span className="text-xs font-bold text-[var(--text-primary)]">Estimated Total</span>
                   <span className="text-2xl font-black text-purple-600  font-mono">
                     ₹{(() => {
-                      const rate = calcType === 'color' ? 5 : calcType === 'duplex' ? 3 : 2;
+                      const bwRate = shopInfo?.bwPrice ?? 2;
+                      const colorRate = shopInfo?.colorPrice ?? 5;
+                      const duplexRate = shopInfo?.duplexPrice ?? 3;
+                      const rate = calcType === 'color' ? colorRate : calcType === 'duplex' ? duplexRate : bwRate;
                       const activePages = calcType === 'duplex' ? Math.ceil(calcPages / 2) : calcPages;
-                      return rate * activePages * calcCopies;
+                      return (rate * activePages * calcCopies).toFixed(2);
                     })()}
                   </span>
                 </div>
@@ -2196,13 +2251,13 @@ export default function StudentPortal({
                 <div className="space-y-3.5 text-xs">
                   <div>
                     <p className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Center Name</p>
-                    <p className="text-sm font-extrabold text-[var(--text-primary)] mt-0.5">TJohn Print Center</p>
+                    <p className="text-sm font-extrabold text-[var(--text-primary)] mt-0.5">{shopInfo?.name || 'TJohn Print Center'}</p>
                   </div>
 
                   <div>
                     <p className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Physical Address</p>
                     <p className="text-xs text-[var(--text-secondary)] font-semibold mt-0.5 leading-relaxed">
-                      📍 Ground Floor, Main Block (Right next to the Campus Library entrance)
+                      📍 {shopInfo?.address || 'Ground Floor, Main Block'}
                     </p>
                   </div>
 
@@ -2210,7 +2265,9 @@ export default function StudentPortal({
                   <div className="grid grid-cols-3 gap-2.5 pt-1.5">
                     <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] text-center">
                       <p className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Status</p>
-                      <p className="text-xs font-black text-emerald-600  mt-1">Operational</p>
+                      <p className={`text-xs font-black mt-1 ${shopInfo?.isOpen ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {shopInfo?.isOpen ? 'Operational' : 'Closed'}
+                      </p>
                     </div>
                     <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] text-center">
                       <p className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Jobs in Queue</p>

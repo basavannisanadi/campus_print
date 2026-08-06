@@ -5,6 +5,20 @@ const https = require('https');
 const cp = require('child_process');
 const os = require('os');
 
+function resolveLocalRequire(relativePath) {
+  const localPath = path.join(__dirname, relativePath);
+  if (fs.existsSync(localPath)) {
+    return localPath;
+  }
+  const parentPath = path.join(__dirname, '..', relativePath);
+  if (fs.existsSync(parentPath)) {
+    return parentPath;
+  }
+  return relativePath;
+}
+
+const printerManager = require(resolveLocalRequire('./PrinterManager/index.cjs'));
+
 const logFile = path.join(__dirname, 'logs', 'client.log');
 if (!fs.existsSync(path.dirname(logFile))) {
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
@@ -489,35 +503,73 @@ function convertToPdf(localPath) {
     if (ext === '.pdf') {
       return resolve(localPath);
     }
-    if (ext !== '.doc' && ext !== '.docx' && ext !== '.ppt' && ext !== '.pptx') {
+    if (ext === '.pdf') return resolve(localPath);
+
+    const pdfPath = localPath.replace(new RegExp(ext + '$', 'i'), '.pdf');
+    if (fs.existsSync(pdfPath)) return resolve(pdfPath);
+
+    console.log(`  [CONVERT] Converting ${path.basename(localPath)} to PDF...`);
+
+    let script = '';
+    if (ext === '.doc' || ext === '.docx') {
+      script = `
+        $docPath = $args[0]
+        $pdfPath = $args[1]
+        $word = New-Object -ComObject Word.Application
+        $word.Visible = $false
+        try {
+          $doc = $word.Documents.Open($docPath)
+          $doc.SaveAs([ref] $pdfPath, [ref] 17)
+          $doc.Close()
+        } finally {
+          $word.Quit()
+          [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
+        }
+      `;
+    } else if (ext === '.ppt' || ext === '.pptx') {
+      script = `
+        $pptPath = $args[0]
+        $pdfPath = $args[1]
+        $ppt = New-Object -ComObject PowerPoint.Application
+        try {
+          $pres = $ppt.Presentations.Open($pptPath, [Microsoft.Office.Core.MsoTriState]::msoFalse, [Microsoft.Office.Core.MsoTriState]::msoFalse, [Microsoft.Office.Core.MsoTriState]::msoFalse)
+          $pres.SaveAs($pdfPath, 32)
+          $pres.Close()
+        } finally {
+          $ppt.Quit()
+          [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ppt) | Out-Null
+        }
+      `;
+    } else {
       return resolve(localPath);
     }
 
     const absoluteLocalPath = path.resolve(localPath);
-    const pdfPath = absoluteLocalPath.substring(0, absoluteLocalPath.lastIndexOf('.')) + '.pdf';
+    const absolutePdfPath = path.resolve(pdfPath);
 
-    console.log(`  [CONVERT] Converting ${path.basename(localPath)} to PDF...`);
+    const child = cp.spawn('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+      absoluteLocalPath,
+      absolutePdfPath
+    ], { windowsHide: true });
 
-    let cmd = '';
-    if (ext === '.doc' || ext === '.docx') {
-      const escapedDocPath = absoluteLocalPath.replace(/'/g, "''");
-      const escapedPdfPath = pdfPath.replace(/'/g, "''");
-      cmd = `powershell -Command "$word = New-Object -ComObject Word.Application; $word.Visible = $false; try { $doc = $word.Documents.Open('${escapedDocPath}'); $doc.SaveAs([ref] '${escapedPdfPath}', [ref] 17); $doc.Close(); } finally { $word.Quit(); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null; }"`;
-    } else if (ext === '.ppt' || ext === '.pptx') {
-      const escapedPptPath = absoluteLocalPath.replace(/'/g, "''");
-      const escapedPdfPath = pdfPath.replace(/'/g, "''");
-      cmd = `powershell -Command "$ppt = New-Object -ComObject PowerPoint.Application; try { $pres = $ppt.Presentations.Open('${escapedPptPath}', [Microsoft.Office.Core.MsoTriState]::msoFalse, [Microsoft.Office.Core.MsoTriState]::msoFalse, [Microsoft.Office.Core.MsoTriState]::msoFalse); $pres.SaveAs('${escapedPdfPath}', 32); $pres.Close(); } finally { $ppt.Quit(); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ppt) | Out-Null; }"`;
-    }
-
-    exec(cmd, (err) => {
-      if (err) {
-        console.error(`  [CONVERT] Conversion failed: ${err.message}`);
+    child.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`  [CONVERT] Conversion failed with exit code: ${code}`);
         return resolve(localPath);
       }
       if (fs.existsSync(pdfPath)) {
         console.log(`  [CONVERT] Conversion successful: ${path.basename(pdfPath)}`);
         return resolve(pdfPath);
       }
+      return resolve(localPath);
+    });
+
+    child.on('error', (err) => {
+      console.error(`  [CONVERT] Conversion spawn error: ${err.message}`);
       return resolve(localPath);
     });
   });
@@ -576,92 +628,117 @@ function showNotification(title, message) {
   }
 }
 
-function getDefaultPrinter() {
-  return new Promise((resolve) => {
-    const cmd = `powershell -Command "Get-CimInstance -ClassName Win32_Printer | Where-Object Default -eq \\\`$true | Select-Object -ExpandProperty Name"`;
-    exec(cmd, (err, stdout) => {
-      if (err || !stdout.trim()) {
-        const fallbackCmd = `powershell -Command "(Get-Printer | Where-Object UseDefault -eq \\\`$true).Name"`;
-        exec(fallbackCmd, (fallbackErr, fallbackStdout) => {
-          if (fallbackErr) resolve('');
-          else resolve(fallbackStdout.trim());
-        });
+function runPowershell(script, args = [], timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const child = cp.spawn('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+      ...args
+    ], { windowsHide: true });
+    
+    let stdout = '';
+    let stderr = '';
+    
+    child.stdout.on('data', (data) => { stdout += data; });
+    child.stderr.on('data', (data) => { stderr += data; });
+    
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch (_) {}
+      reject(new Error('Powershell execution timeout'));
+    }, timeoutMs);
+    
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(`Powershell exited with code ${code}. Stderr: ${stderr}`));
       } else {
-        resolve(stdout.trim());
+        resolve(stdout);
       }
     });
+    
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+function getDefaultPrinter() {
+  return new Promise(async (resolve) => {
+    const script = `Get-CimInstance -ClassName Win32_Printer | Where-Object Default -eq $true | Select-Object -ExpandProperty Name`;
+    try {
+      const out = await runPowershell(script);
+      if (out.trim()) return resolve(out.trim());
+    } catch (_) {}
+    
+    const fallbackScript = `(Get-Printer | Where-Object UseDefault -eq $true).Name`;
+    try {
+      const out = await runPowershell(fallbackScript);
+      resolve(out.trim());
+    } catch (_) {
+      resolve('');
+    }
   });
 }
 
 function getInstalledPrinters() {
-  return new Promise((resolve) => {
-    const cmd = "powershell -Command \"Get-Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name\"";
-    exec(cmd, { timeout: 10000 }, (err, stdout) => {
-      if (err || !stdout.trim()) {
-        logToFile(`[WARN] Primary printer query failed or timed out: ${err ? err.message : 'Empty stdout'}`);
-        const fallbackCmd = "powershell -Command \"Get-CimInstance -ClassName Win32_Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name\"";
-        exec(fallbackCmd, { timeout: 10000 }, (fallbackErr, fallbackStdout) => {
-          if (fallbackErr || !fallbackStdout.trim()) {
-            logToFile(`[WARN] Fallback printer query failed or timed out: ${fallbackErr ? fallbackErr.message : 'Empty stdout'}`);
-            resolve([]);
-          } else {
-            const printers = fallbackStdout.split(/\r?\n/).map(p => p.trim()).filter(Boolean);
-            resolve(printers);
-          }
-        });
-      } else {
-        const printers = stdout.split(/\r?\n/).map(p => p.trim()).filter(Boolean);
-        resolve(printers);
+  return new Promise(async (resolve) => {
+    const script = `Get-Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name`;
+    try {
+      const out = await runPowershell(script);
+      if (out.trim()) {
+        return resolve(out.split(/\r?\n/).map(p => p.trim()).filter(Boolean));
       }
-    });
+    } catch (err) {
+      logToFile(`[WARN] Primary printer query failed: ${err.message}`);
+    }
+    
+    const fallbackScript = `Get-CimInstance -ClassName Win32_Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name`;
+    try {
+      const out = await runPowershell(fallbackScript);
+      resolve(out.split(/\r?\n/).map(p => p.trim()).filter(Boolean));
+    } catch (err) {
+      logToFile(`[WARN] Fallback printer query failed: ${err.message}`);
+      resolve([]);
+    }
   });
 }
 
 function getPrinterStatus(printerName) {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     if (!printerName) return resolve(null);
-    const escapedPrinter = printerName.replace(/'/g, "''");
-    const cmd = `powershell -Command "Get-CimInstance -ClassName Win32_Printer | Where-Object Name -eq '${escapedPrinter}' | Select-Object PrinterStatus, WorkOffline, DetectedErrorState, ExtendedPrinterStatus | ConvertTo-Json"`;
-    exec(cmd, (err, stdout) => {
-      if (err || !stdout.trim()) {
-        const fallbackCmd = `powershell -Command "Get-Printer -Name '${escapedPrinter}' | Select-Object PrinterStatus, WorkOffline | ConvertTo-Json"`;
-        exec(fallbackCmd, (fallbackErr, fallbackStdout) => {
-          if (fallbackErr || !fallbackStdout.trim()) {
-            return resolve(null);
-          }
-          try {
-            resolve(JSON.parse(fallbackStdout));
-          } catch {
-            resolve(null);
-          }
-        });
-        return;
-      }
-      try {
-        resolve(JSON.parse(stdout));
-      } catch {
-        resolve(null);
-      }
-    });
+    const script = `Get-CimInstance -ClassName Win32_Printer | Where-Object Name -eq $args[0] | Select-Object PrinterStatus, WorkOffline, DetectedErrorState, ExtendedPrinterStatus | ConvertTo-Json`;
+    try {
+      const out = await runPowershell(script, [printerName]);
+      if (out.trim()) return resolve(JSON.parse(out));
+    } catch (_) {}
+    
+    const fallbackScript = `Get-Printer -Name $args[0] | Select-Object PrinterStatus, WorkOffline | ConvertTo-Json`;
+    try {
+      const out = await runPowershell(fallbackScript, [printerName]);
+      if (out.trim()) return resolve(JSON.parse(out));
+    } catch (_) {}
+    
+    resolve(null);
   });
 }
 
 function getSpoolerJobs(printerName) {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     if (!printerName) return resolve([]);
-    const escapedPrinter = printerName.replace(/'/g, "''");
-    const cmd = `powershell -Command "Get-PrintJob -PrinterName '${escapedPrinter}' | Select-Object Id, DocumentName, JobStatus, PagesPrinted, TotalPages | ConvertTo-Json"`;
-    exec(cmd, (err, stdout) => {
-      if (err || !stdout.trim()) return resolve([]);
-      try {
-        const parsed = JSON.parse(stdout);
-        if (Array.isArray(parsed)) resolve(parsed);
-        else if (parsed && typeof parsed === 'object') resolve([parsed]);
-        else resolve([]);
-      } catch {
-        resolve([]);
-      }
-    });
+    const script = `Get-PrintJob -PrinterName $args[0] | Select-Object Id, DocumentName, JobStatus, PagesPrinted, TotalPages | ConvertTo-Json`;
+    try {
+      const out = await runPowershell(script, [printerName]);
+      if (!out.trim()) return resolve([]);
+      const parsed = JSON.parse(out);
+      if (Array.isArray(parsed)) resolve(parsed);
+      else if (parsed && typeof parsed === 'object') resolve([parsed]);
+      else resolve([]);
+    } catch (_) {
+      resolve([]);
+    }
   });
 }
 
@@ -903,7 +980,6 @@ async function processJob(job) {
       console.log('  Sending job to printer spooler...');
       showNotification('Campus Print Hub', `Printing: ${job.token} (${job.copies} copies)`);
 
-      const printer = `-print-to "${activePrinter}"`;
       const modeSetting = job.printMode === 'color' ? 'color' : 'monochrome';
       const sidesSetting = job.sides === 'double' ? 'duplexlong' : 'simplex';
       const safeCopies = Math.max(1, parseInt(job.copies, 10) || 1);
@@ -913,12 +989,27 @@ async function processJob(job) {
         settings += `,${sanitizeCmdArg(job.pageRange)}`;
       }
       
-      const cmd = `"${sumatraPath}" ${printer} -print-settings "${settings}" "${printablePath}"`;
+      const spawnArgs = [
+        '-print-to', activePrinter,
+        '-print-settings', settings,
+        printablePath
+      ];
+      
+      console.log(`  [spool] Executing: "${sumatraPath}" ${spawnArgs.join(' ')}`);
       
       await new Promise((resolve, reject) => {
-        exec(cmd, (err) => {
-          if (err) reject(new Error(`SumatraPDF failed to print: ${err.message}`));
-          else resolve();
+        const child = cp.spawn(sumatraPath, spawnArgs, { windowsHide: true });
+        let stderr = '';
+        child.stderr.on('data', (data) => { stderr += data; });
+        child.on('error', (err) => {
+          reject(new Error(`SumatraPDF failed to spawn: ${err.message}`));
+        });
+        child.on('close', (code) => {
+          if (code !== 0) {
+            reject(new Error(`SumatraPDF print failed with code ${code}. Stderr: ${stderr}`));
+          } else {
+            resolve();
+          }
         });
       });
 
@@ -1147,6 +1238,21 @@ async function sendHeartbeat() {
       printerStatus = 'online';
     }
 
+    let printerState = null;
+    try {
+      printerState = printerManager.getState();
+    } catch (_) {}
+
+    if (!printerState) {
+      const { createPrinterState } = require(resolveLocalRequire('./PrinterManager/models/PrinterState.cjs'));
+      printerState = createPrinterState({
+        printerName: resolvedPrinterName || 'System Default',
+        provider: 'none',
+        status: 'unknown',
+        reachable: false,
+      });
+    }
+
     const hbPayload = {
       agentId: config.agentId || 'AGENT-001',
       shopId: config.shopId || 'tjohn_print',
@@ -1162,7 +1268,8 @@ async function sendHeartbeat() {
       lastPrintTime: lastPrintTime,
       agentUptime: Math.round(process.uptime()),
       windowsVersion: `${os.type()} ${os.release()}`,
-      lastCommunication: new Date().toISOString()
+      lastCommunication: new Date().toISOString(),
+      printerIntelligence: printerState
     };
 
     const res = await apiPost('/api/agent/heartbeat', hbPayload);
@@ -1308,6 +1415,13 @@ async function main() {
     logToFile('[5/10] Authentication successful');
     await registerAgent();
 
+    // Initialize PrinterManager
+    logToFile('[PrinterManager] Initializing printer intelligence layer...');
+    await printerManager.init({
+      printerName: config.printerName || '',
+      mockMode: config.mockPrinter || false
+    });
+
     // 6. Perform initial heartbeat connection immediately
     if (process.env.CP_TEST_DISABLE_HEARTBEAT !== 'true') {
       logToFile('[8/10] Initial heartbeat sent');
@@ -1343,6 +1457,16 @@ async function main() {
       logToFile('[SHUTDOWN] Shutdown signal file detected. Terminating daemon.');
       try { fs.unlinkSync(signalPath); } catch {}
       try { if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE); } catch {}
+      
+      // Dispose PrinterManager
+      try {
+        printerManager.dispose().catch((e) => {
+          console.error('[PrinterManager] Dispose error:', e.message);
+        });
+      } catch (e) {
+        console.error('[PrinterManager] Dispose error:', e.message);
+      }
+      
       process.exit(0);
     }
   }, 1000);

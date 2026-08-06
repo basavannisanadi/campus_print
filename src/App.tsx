@@ -44,6 +44,8 @@ export default function App() {
   const [agentPrinterName, setAgentPrinterName] = useState('');
   const [agentDaemonVersion, setAgentDaemonVersion] = useState('');
   const [agentLastHeartbeat, setAgentLastHeartbeat] = useState('');
+  const [printerIntelligence, setPrinterIntelligence] = useState<any>(null);
+  const [health, setHealth] = useState<any>(null);
 
   // Discovery States
   const [scanStatus, setScanStatus] = useState<'idle' | 'scanning' | 'completed' | 'timeout' | 'error'>('idle');
@@ -144,6 +146,8 @@ export default function App() {
         setAgentLastHeartbeat(settings.lastHeartbeat || '');
         setScanStatus(settings.scanStatus || 'idle');
         setScanStartedAt(settings.scanStartedAt || '');
+        setPrinterIntelligence(settings.printerIntelligence || null);
+        setHealth(settings.health || null);
         if (settings.systemHealth) {
           setSystemHealth(settings.systemHealth);
         }
@@ -197,7 +201,9 @@ export default function App() {
             data.type === 'shop_updated' ||
             data.type === 'agent_online' ||
             data.type === 'agent_offline' ||
-            data.type === 'heartbeat_received'
+            data.type === 'heartbeat_received' ||
+            data.type === 'agent_health_updated' ||
+            data.type === 'printer_intelligence_updated'
           ) {
             fetchPrinterSettings();
           }
@@ -398,6 +404,8 @@ export default function App() {
             selectedShopId={selectedShopId}
             onSelectShop={handleSelectShop}
             systemHealth={systemHealth}
+            health={health}
+            printerIntelligence={printerIntelligence}
           />
         ) : currentRoute === '/owner' ? (
           <OwnerDashboard 
@@ -416,6 +424,7 @@ export default function App() {
             onSelectShop={handleSelectShop}
             agentOnlineStatus={agentOnlineStatus}
             systemHealth={systemHealth}
+            health={health}
           />
         )}
       </main>

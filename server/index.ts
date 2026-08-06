@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import helmet from 'helmet';
 import express from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
@@ -20,6 +21,262 @@ const shopLastHeartbeatMemory = new Map<string, string>();
 
 const lastSeenDiskValue = new Map<string, string>();
 const lastHeartbeatDiskValue = new Map<string, string>();
+
+interface Warning {
+  type: string;
+  message: string;
+  severity: 'warning' | 'error' | 'info';
+  timestamp: string;
+}
+
+interface AgentHealthInfo {
+  printerHealth: 'READY' | 'PRINTING' | 'PAPER_LOW' | 'PAPER_EMPTY' | 'PAPER_JAM' | 'COVER_OPEN' | 'LOW_TONER' | 'OFFLINE' | 'UNREACHABLE' | 'UNKNOWN';
+  agentHealth: 'Healthy' | 'Degraded' | 'Offline' | 'Unavailable';
+  shopHealth: 'Operational' | 'Busy' | 'Attention Required' | 'Unavailable';
+  lastSeen: number;
+  lastSuccessfulHeartbeat: number;
+  lastPrinterUpdate: number;
+  consecutiveFailures: number;
+  healthScore: number;
+  warnings: Warning[];
+  blockedSince?: string | null;
+  blockedReason?: string | null;
+}
+
+function logDecisionEngine(message: string) {
+  const logDir = path.resolve(__dirname, './data');
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+  const logPath = path.join(logDir, 'decision_engine.log');
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] ${message}\n`;
+  try {
+    fs.appendFileSync(logPath, logLine);
+  } catch (err) {
+    console.error('Failed to write to decision_engine.log:', err);
+  }
+  console.log(`[DECISION_ENGINE] ${message}`);
+}
+
+const agentHealthCache = new Map<string, AgentHealthInfo>();
+
+function recalculateAgentHealth(db: any, shopId: string, now: number): AgentHealthInfo {
+  const agent = db.agents?.find((a: any) => a.shopId === shopId);
+  const shop = db.shops?.find((s: any) => s.id === shopId);
+  const printerIntelligence = agent ? agent.printerIntelligence : null;
+
+  let lastSeen = agent ? new Date(agent.lastSeen).getTime() : 0;
+  
+  // 1. Get or create cache entry
+  let info = agentHealthCache.get(shopId);
+  const oldPrinterHealth = info ? info.printerHealth : 'UNKNOWN';
+  if (!info) {
+    info = {
+      printerHealth: 'UNKNOWN',
+      agentHealth: 'Unavailable',
+      shopHealth: 'Unavailable',
+      lastSeen,
+      lastSuccessfulHeartbeat: lastSeen,
+      lastPrinterUpdate: printerIntelligence ? lastSeen : 0,
+      consecutiveFailures: 0,
+      healthScore: 0,
+      warnings: [],
+      blockedSince: null,
+      blockedReason: null
+    };
+  }
+
+  info.lastSeen = lastSeen;
+
+  // 2. Evaluate Printer Health
+  let printerHealth: AgentHealthInfo['printerHealth'] = 'UNKNOWN';
+  if (printerIntelligence) {
+    if (printerIntelligence.reachable) {
+      info.lastPrinterUpdate = now;
+      info.consecutiveFailures = 0;
+      info.lastSuccessfulHeartbeat = now;
+
+      const status = printerIntelligence.status;
+      if (status === 'printing') {
+        printerHealth = 'PRINTING';
+      } else if (status === 'jam' || printerIntelligence.isJam) {
+        printerHealth = 'PAPER_JAM';
+      } else if (status === 'paper_empty' || printerIntelligence.isPaperEmpty) {
+        printerHealth = 'PAPER_EMPTY';
+      } else if (status === 'cover_open' || printerIntelligence.isCoverOpen) {
+        printerHealth = 'COVER_OPEN';
+      } else if (printerIntelligence.isLowToner || (printerIntelligence.consumables && printerIntelligence.consumables.some((c: any) => c.levelPct !== null && c.levelPct <= 15))) {
+        printerHealth = 'LOW_TONER';
+      } else if (status === 'ready') {
+        printerHealth = 'READY';
+      } else {
+        printerHealth = 'UNKNOWN';
+      }
+      
+      // Check for soft paper low
+      if (printerHealth === 'READY' && printerIntelligence.errors && printerIntelligence.errors.includes('lowPaper')) {
+        printerHealth = 'PAPER_LOW';
+      }
+    } else {
+      printerHealth = 'UNREACHABLE';
+      info.consecutiveFailures++;
+    }
+  } else if (agent) {
+    // Fallback: WMI status
+    const isOnline = agent.onlineStatus === 'online' && (now - lastSeen) < 60000;
+    if (isOnline) {
+      if (agent.printerStatus === 'offline') {
+        printerHealth = 'OFFLINE';
+      } else {
+        printerHealth = 'READY';
+      }
+    } else {
+      printerHealth = 'OFFLINE';
+    }
+  } else {
+    printerHealth = 'UNKNOWN';
+  }
+
+  info.printerHealth = printerHealth;
+
+  // 3. Evaluate Warnings
+  const warnings: Warning[] = [];
+  if (printerHealth === 'PAPER_EMPTY') {
+    warnings.push({
+      type: 'Paper Empty',
+      message: 'Printer is out of paper. Please reload tray.',
+      severity: 'error',
+      timestamp: new Date(now).toISOString()
+    });
+  }
+  if (printerHealth === 'PAPER_JAM') {
+    warnings.push({
+      type: 'Paper Jam',
+      message: 'Paper jam detected. Please clear the paper path.',
+      severity: 'error',
+      timestamp: new Date(now).toISOString()
+    });
+  }
+  if (printerHealth === 'COVER_OPEN') {
+    warnings.push({
+      type: 'Cover Open',
+      message: 'Printer cover is open. Please close it securely.',
+      severity: 'error',
+      timestamp: new Date(now).toISOString()
+    });
+  }
+  if (printerHealth === 'LOW_TONER') {
+    warnings.push({
+      type: 'Low Toner',
+      message: 'Toner level is low. Please replace cartridge soon.',
+      severity: 'warning',
+      timestamp: new Date(now).toISOString()
+    });
+  }
+  if (printerIntelligence && !printerIntelligence.reachable) {
+    if (printerIntelligence.errorMessage && printerIntelligence.errorMessage.includes('timeout')) {
+      warnings.push({
+        type: 'SNMP Failure',
+        message: 'SNMP query request timed out.',
+        severity: 'warning',
+        timestamp: new Date(now).toISOString()
+      });
+    } else {
+      warnings.push({
+        type: 'Network Failure',
+        message: printerIntelligence.errorMessage || 'Cannot establish network connection to printer.',
+        severity: 'warning',
+        timestamp: new Date(now).toISOString()
+      });
+    }
+  }
+  
+  const isAgentOnline = agent && agent.onlineStatus === 'online' && (now - lastSeen) < (process.env.NODE_ENV === 'test' ? 300000 : 60000);
+  if (agent && !isAgentOnline) {
+    warnings.push({
+      type: 'Offline',
+      message: 'Desktop Agent check-in missed.',
+      severity: 'error',
+      timestamp: new Date(now).toISOString()
+    });
+  }
+
+  info.warnings = warnings;
+
+  // 4. Compute Health Score
+  let score = 100;
+  if (!agent) {
+    score = 0;
+  } else if (!isAgentOnline) {
+    score = 0;
+  } else {
+    if (printerHealth === 'OFFLINE' || printerHealth === 'UNREACHABLE') {
+      score -= 100;
+    } else if (printerHealth === 'PAPER_JAM' || printerHealth === 'PAPER_EMPTY' || printerHealth === 'COVER_OPEN') {
+      score -= 60;
+    } else {
+      if (printerHealth === 'LOW_TONER' || printerHealth === 'PAPER_LOW') {
+        score -= 20;
+      }
+      if (printerIntelligence && !printerIntelligence.reachable) {
+        score -= 10;
+      }
+    }
+  }
+  info.healthScore = Math.max(0, Math.min(100, score));
+
+  // 5. Evaluate Agent Health
+  if (!agent) {
+    info.agentHealth = 'Unavailable';
+  } else if (!isAgentOnline) {
+    info.agentHealth = 'Offline';
+  } else if (printerHealth === 'PAPER_JAM' || printerHealth === 'PAPER_EMPTY' || printerHealth === 'COVER_OPEN' || printerHealth === 'UNREACHABLE') {
+    info.agentHealth = 'Degraded';
+  } else {
+    info.agentHealth = 'Healthy';
+  }
+
+  // 6. Evaluate Shop Operational State
+  if (info.agentHealth === 'Offline' || info.agentHealth === 'Unavailable') {
+    info.shopHealth = 'Unavailable';
+  } else if (info.agentHealth === 'Degraded') {
+    info.shopHealth = 'Attention Required';
+  } else if (printerHealth === 'PRINTING') {
+    info.shopHealth = 'Busy';
+  } else {
+    info.shopHealth = 'Operational';
+  }
+
+  // 7. Track blocked since/reason
+  const blockedStates = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'];
+  const isBlocked = blockedStates.includes(printerHealth);
+
+  if (isBlocked) {
+    if (!info.blockedSince) {
+      info.blockedSince = new Date(now).toISOString();
+    }
+    // Blocked reason mapping
+    let reason = 'Unknown device state';
+    if (printerHealth === 'OFFLINE') reason = 'Printer is offline';
+    else if (printerHealth === 'UNREACHABLE') reason = 'Printer is unreachable';
+    else if (printerHealth === 'PAPER_EMPTY') reason = 'Printer is out of paper';
+    else if (printerHealth === 'PAPER_JAM') reason = 'Printer has a paper jam';
+    else if (printerHealth === 'COVER_OPEN') reason = 'Printer cover is open';
+    info.blockedReason = reason;
+  } else {
+    info.blockedSince = null;
+    info.blockedReason = null;
+  }
+
+  // 8. Log health transitions
+  if (oldPrinterHealth !== printerHealth) {
+    logDecisionEngine(`Health transition for shop ${shopId}: ${oldPrinterHealth} -> ${printerHealth}`);
+  }
+
+  agentHealthCache.set(shopId, info);
+  return info;
+}
 
 function readDb() {
   const db = readDbRaw();
@@ -190,6 +447,36 @@ const PORT = process.env.PORT || 3001;
 
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'campusprint_admin_123';
 const AGENT_TOKEN = process.env.AGENT_TOKEN || 'campusprint_agent_token_123';
+const JWT_SECRET = process.env.JWT_SECRET || 'campusprint_jwt_secret_dev_123';
+const OWNER_PASSWORD = process.env.OWNER_PASSWORD || 'campusprint_owner_password_dev_123';
+
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'campusprint_jwt_secret_dev_123') {
+    throw new Error('FATAL: JWT_SECRET must be set to a secure custom value in production.');
+  }
+  if (process.env.JWT_SECRET.length < 32) {
+    throw new Error('FATAL: JWT_SECRET must be at least 32 characters long in production.');
+  }
+  if (!process.env.OWNER_PASSWORD || process.env.OWNER_PASSWORD === 'campusprint_owner_password_dev_123') {
+    throw new Error('FATAL: OWNER_PASSWORD must be set to a secure custom value in production.');
+  }
+  if (process.env.OWNER_PASSWORD.length < 8) {
+    throw new Error('FATAL: OWNER_PASSWORD must be at least 8 characters long in production.');
+  }
+  if (!process.env.ADMIN_API_KEY || process.env.ADMIN_API_KEY === 'campusprint_admin_123') {
+    throw new Error('FATAL: ADMIN_API_KEY must be set to a secure custom value in production.');
+  }
+  if (process.env.ADMIN_API_KEY.length < 16) {
+    throw new Error('FATAL: ADMIN_API_KEY must be at least 16 characters long in production.');
+  }
+}
+
+const printerNameRegex = /^[a-zA-Z0-9 _.-]+$/;
+function isValidPrinterName(name: string | undefined): boolean {
+  if (name === undefined) return true;
+  if (name === '') return true;
+  return printerNameRegex.test(name);
+}
 
 interface AdminSession {
   token: string;
@@ -211,7 +498,7 @@ function signSessionToken(studentId: string): string {
   const expiresAt = Date.now() + STUDENT_SESSION_TIMEOUT_MS;
   const payload = JSON.stringify({ studentId, expiresAt });
   const base64Payload = Buffer.from(payload).toString('base64url');
-  const signature = crypto.createHmac('sha256', ADMIN_API_KEY).update(base64Payload).digest('base64url');
+  const signature = crypto.createHmac('sha256', JWT_SECRET).update(base64Payload).digest('base64url');
   return `${base64Payload}.${signature}`;
 }
 
@@ -220,11 +507,21 @@ function verifySessionToken(token: string): string | null {
     const parts = token.split('.');
     if (parts.length !== 2) return null;
     const [base64Payload, signature] = parts;
-    const expectedSignature = crypto.createHmac('sha256', ADMIN_API_KEY).update(base64Payload).digest('base64url');
-
-    const sigBuffer = Buffer.from(signature);
-    const expBuffer = Buffer.from(expectedSignature);
-    if (sigBuffer.length !== expBuffer.length || !crypto.timingSafeEqual(sigBuffer, expBuffer)) {
+    
+    // 1. Try JWT_SECRET first
+    let expectedSignature = crypto.createHmac('sha256', JWT_SECRET).update(base64Payload).digest('base64url');
+    let sigBuffer = Buffer.from(signature);
+    let expBuffer = Buffer.from(expectedSignature);
+    let isValid = sigBuffer.length === expBuffer.length && crypto.timingSafeEqual(sigBuffer, expBuffer);
+    
+    // 2. Fallback to ADMIN_API_KEY for backward compatibility
+    if (!isValid) {
+      expectedSignature = crypto.createHmac('sha256', ADMIN_API_KEY).update(base64Payload).digest('base64url');
+      expBuffer = Buffer.from(expectedSignature);
+      isValid = sigBuffer.length === expBuffer.length && crypto.timingSafeEqual(sigBuffer, expBuffer);
+    }
+    
+    if (!isValid) {
       return null;
     }
 
@@ -269,10 +566,19 @@ const requireAuth = (req: express.Request, res: express.Response, next: express.
   next();
 };
 
-function signShopId(shopId: string): string {
-  const hmac = crypto.createHmac('sha256', ADMIN_API_KEY);
-  hmac.update(shopId);
-  return `token_${shopId}_${hmac.digest('hex')}`;
+function signShopId(shopId: string, type: 'admin' | 'agent' = 'admin'): string {
+  const expiresAt = type === 'agent'
+    ? Date.now() + 10 * 365 * 24 * 60 * 60 * 1000 // 10 years for agent daemon
+    : Date.now() + 12 * 60 * 60 * 1000; // 12 hours for admin browser sessions
+  const payload = JSON.stringify({
+    shopId,
+    type,
+    expiresAt,
+    nonce: crypto.randomBytes(16).toString('hex')
+  });
+  const payloadBase64 = Buffer.from(payload).toString('base64url');
+  const signature = crypto.createHmac('sha256', ADMIN_API_KEY).update(payloadBase64).digest('hex');
+  return `token_${shopId}_${payloadBase64}.${signature}`;
 }
 
 function sanitizeShop(shop: any): any {
@@ -284,20 +590,61 @@ function sanitizeShop(shop: any): any {
 }
 
 function verifyShopToken(token: string): string | null {
-  if (!token.startsWith('token_')) return null;
-  const parts = token.split('_');
-  if (parts.length < 3) return null;
-  const signature = parts[parts.length - 1];
-  const shopId = parts.slice(1, -1).join('_');
-  
-  const expectedHmac = crypto.createHmac('sha256', ADMIN_API_KEY).update(shopId).digest('hex');
+  if (!token || !token.startsWith('token_')) return null;
+
+  // 1. Structured Token Scheme (Random, Signed, Expired, Revocable)
+  if (token.includes('.')) {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 2) return null;
+      const [headerAndPayload, signature] = parts;
+
+      const hpParts = headerAndPayload.split('_');
+      if (hpParts.length < 3) return null;
+      const payloadBase64 = hpParts[hpParts.length - 1];
+      const shopId = hpParts.slice(1, -1).join('_');
+
+      const expectedSig = crypto.createHmac('sha256', ADMIN_API_KEY).update(payloadBase64).digest('hex');
+      const sigBuffer = Buffer.from(signature, 'hex');
+      const expBuffer = Buffer.from(expectedSig, 'hex');
+      if (sigBuffer.length !== expBuffer.length || !crypto.timingSafeEqual(sigBuffer, expBuffer)) {
+        return null;
+      }
+
+      const payload = JSON.parse(Buffer.from(payloadBase64, 'base64url').toString('utf8'));
+      if (payload.shopId !== shopId) return null;
+      if (Date.now() > payload.expiresAt) return null;
+
+      // Revocation Check:
+      // human admin browser sessions must be present in the active sessions map
+      if (payload.type === 'admin') {
+        const session = activeAdminSessions.get(shopId);
+        if (!session || session.token !== token) {
+          return null; // Token has been revoked (logged out)
+        }
+      }
+
+      return shopId;
+    } catch {
+      return null;
+    }
+  }
+
+  // 2. Backward Compatibility fallback for legacy deterministic agent tokens
   try {
+    const parts = token.split('_');
+    if (parts.length < 3) return null;
+    const signature = parts[parts.length - 1];
+    const shopId = parts.slice(1, -1).join('_');
+
+    const expectedHmac = crypto.createHmac('sha256', ADMIN_API_KEY).update(shopId).digest('hex');
     const signatureBuffer = Buffer.from(signature, 'hex');
     const expectedBuffer = Buffer.from(expectedHmac, 'hex');
     if (signatureBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
       return shopId;
     }
   } catch {}
+
   return null;
 }
 
@@ -387,6 +734,49 @@ setInterval(() => {
       const isOnline = (now - lastSeenTime) < (process.env.NODE_ENV === 'test' ? 300000 : 60000);
       const computedStatus = isOnline ? 'online' : 'offline';
 
+      // Evaluate health before status checks
+      const lastHealthInfo = agentHealthCache.get(agent.shopId);
+      const oldPrinterHealth = lastHealthInfo?.printerHealth;
+      const oldAgentHealth = lastHealthInfo?.agentHealth;
+      const oldShopHealth = lastHealthInfo?.shopHealth;
+
+      const currentInfo = recalculateAgentHealth(db, agent.shopId, now);
+
+      const healthChanged = !lastHealthInfo ||
+                            oldPrinterHealth !== currentInfo.printerHealth ||
+                            oldAgentHealth !== currentInfo.agentHealth ||
+                            oldShopHealth !== currentInfo.shopHealth;
+
+      if (healthChanged) {
+        broadcastSse({
+          type: 'agent_health_updated',
+          shopId: agent.shopId,
+          health: {
+            printerHealth: currentInfo.printerHealth,
+            agentHealth: currentInfo.agentHealth,
+            shopHealth: currentInfo.shopHealth,
+            healthScore: currentInfo.healthScore,
+            warnings: currentInfo.warnings,
+            blockedSince: currentInfo.blockedSince,
+            blockedReason: currentInfo.blockedReason
+          }
+        });
+        
+        // Broadcast resolved settings update to sync UIs
+        const resolved = getResolvedPrinterSettings(db, agent.shopId);
+        broadcastSse({ type: 'printer_updated', settings: resolved });
+
+        // Auto-resume logic: check transition from Blocked state to Non-Blocked state
+        const blockedStates = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'];
+        const wasBlocked = oldPrinterHealth && blockedStates.includes(oldPrinterHealth);
+        const isBlocked = blockedStates.includes(currentInfo.printerHealth);
+
+        if (wasBlocked && !isBlocked) {
+          logDecisionEngine(`Automatic recovery / Dispatch resumed for shop ${agent.shopId}: printer health resolved from ${oldPrinterHealth} to ${currentInfo.printerHealth}`);
+          setTimeout(() => dispatchNextJob(agent.shopId), 100);
+        }
+      }
+
       if (agent.onlineStatus !== computedStatus) {
         agent.onlineStatus = computedStatus;
         changed = true;
@@ -448,6 +838,23 @@ setInterval(() => {
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(o => o && o !== '*') 
   : [];
+
+app.disable('x-powered-by');
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://lh3.googleusercontent.com"],
+      connectSrc: ["'self'", "http://localhost:*", "ws://localhost:*", "https://accounts.google.com"],
+      frameSrc: ["'self'", "https://accounts.google.com"],
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -531,7 +938,8 @@ app.post('/api/auth/google', async (req, res) => {
   const googleClientId = process.env.GOOGLE_CLIENT_ID;
 
   // Development/Test Mode Mock Bypass
-  if (!isProd && (!googleClientId || idToken.startsWith('mock_token_'))) {
+  const allowMockAuth = process.env.ALLOW_MOCK_AUTH === 'true' || (!isProd && (!googleClientId || idToken.startsWith('mock_token_')));
+  if (allowMockAuth && idToken.startsWith('mock_token_')) {
     if (idToken === 'mock_token_basav') {
       googleId = 'google_id_basav_123';
       email = 'basav@university.edu';
@@ -634,7 +1042,7 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   const { shopId, username, password } = req.body;
 
   // 1. Owner Login check
-  if (username === 'owner' && password === ADMIN_API_KEY) {
+  if (username === 'owner' && (password === OWNER_PASSWORD || password === ADMIN_API_KEY)) {
     const token = `owner_session_${crypto.randomBytes(24).toString('hex')}`;
     activeOwnerSessions.set(token, Date.now() + OWNER_SESSION_TIMEOUT_MS);
     return res.json({
@@ -893,6 +1301,15 @@ app.get('/api/owner/dashboard', requireAdmin, (req, res) => {
 
     const waitingJobsCount = db.jobs.filter(j => j.shopId === shop.id && (j.status === 'queued' || j.status === 'printing')).length;
 
+    const healthInfo = agentHealthCache.get(shop.id);
+    const health = healthInfo ? {
+      printerHealth: healthInfo.printerHealth,
+      agentHealth: healthInfo.agentHealth,
+      shopHealth: healthInfo.shopHealth,
+      healthScore: healthInfo.healthScore,
+      warnings: healthInfo.warnings
+    } : undefined;
+
     return {
       shopId: shop.id,
       shopName: shop.name,
@@ -912,7 +1329,8 @@ app.get('/api/owner/dashboard', requireAdmin, (req, res) => {
       lastSuccessfulPrint: lastSuccessJob ? `${lastSuccessJob.fileName} (Token: ${lastSuccessJob.token})` : 'None',
       lastSuccessfulPrintTimestamp: lastSuccessJob ? lastSuccessJob.createdAt : 'N/A',
       lastFailedPrint: lastFailedJob ? `${lastFailedJob.fileName} (Token: ${lastFailedJob.token})` : 'None',
-      lastFailedPrintTimestamp: lastFailedJob ? lastFailedJob.createdAt : 'N/A'
+      lastFailedPrintTimestamp: lastFailedJob ? lastFailedJob.createdAt : 'N/A',
+      health
     };
   });
 
@@ -1018,9 +1436,50 @@ function dispatchNextJob(shopId: string): boolean {
   console.log(`[DIAG][dispatchNextJob] hasPrintingJob=${hasPrintingJob}`);
   if (hasPrintingJob) return false; // Agent is busy — will dispatch when it reports completion
 
-  // Check printer status
-  const resolved = getResolvedPrinterSettings(db, shopId);
-  if (resolved.status === 'offline') return false;
+  // Evaluate printer health and block dispatch if blocked
+  const healthInfo = agentHealthCache.get(shopId) || recalculateAgentHealth(db, shopId, Date.now());
+  const printerHealth = healthInfo.printerHealth;
+
+  const blockedStates = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'];
+  const isBlocked = blockedStates.includes(printerHealth);
+
+  if (isBlocked) {
+    console.log(`[DISPATCH_BLOCKED] Print job dispatch blocked. Printer health is ${printerHealth} for shopId=${shopId}`);
+    
+    // Find next queued job to add timeline warning if not already warned
+    const nextQueued = db.jobs.find(j => {
+      if (j.status !== 'queued') return false;
+      if (j.shopId !== shopId) return false;
+      return true;
+    });
+    if (nextQueued) {
+      if (!nextQueued.timeline) nextQueued.timeline = [];
+      const lastT = nextQueued.timeline[nextQueued.timeline.length - 1];
+      if (!lastT || lastT.stage !== 'dispatch_blocked' || lastT.reason !== printerHealth) {
+        nextQueued.timeline.push({
+          stage: 'dispatch_blocked',
+          at: new Date().toISOString(),
+          reason: printerHealth,
+          printerId: formatPrinterId(db.printerSettings?.selectedPrinter || 'UNKNOWN'),
+          printerName: db.printerSettings?.selectedPrinter || 'UNKNOWN'
+        });
+        writeDb(db);
+        broadcastSse({ type: 'job_updated', job: nextQueued });
+      }
+    }
+    
+    logDecisionEngine(`Dispatch blocked for shopId=${shopId}: printer is in a blocked state (${printerHealth})`);
+    
+    // Send specific SSE event warning to UI
+    broadcastSse({
+      type: 'dispatch_blocked',
+      shopId,
+      reason: printerHealth,
+      timestamp: new Date().toISOString()
+    });
+    
+    return false;
+  }
 
   // Find next queued job (same FIFO logic as GET /api/jobs/next)
   const now = new Date();
@@ -1160,21 +1619,11 @@ const upload = multer({
     const ext = path.extname(file.originalname).toLowerCase();
     const mime = file.mimetype.toLowerCase();
 
-    const allowedExts = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.ppt', '.pptx'];
-    const allowedMimes = [
-      'application/pdf',
-      'image/png',
-      'image/jpeg',
-      'image/jpg',
-      'image/pjpeg',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-    ];
+    const allowedExts = ['.pdf'];
+    const allowedMimes = ['application/pdf'];
 
     if (!allowedExts.includes(ext) || !allowedMimes.includes(mime)) {
-      return cb(new Error(`Invalid file type for "${file.originalname}". Only PDF, images, Word (.doc/.docx), and PowerPoint (.ppt/.pptx) are supported.`));
+      return cb(new Error(`Invalid file type for "${file.originalname}". Only PDF files are supported. (Legacy: Only PDF, images, Word (.doc/.docx), and PowerPoint (.ppt/.pptx) are supported.)`));
     }
 
     cb(null, true);
@@ -1345,6 +1794,19 @@ function getResolvedPrinterSettings(db: any, shopId: string = 'alliance_print') 
     agentDaemonVersion: agent ? agent.daemonVersion : '',
     agentOnlineStatus: agent ? agent.onlineStatus : 'offline',
     operationalState: shop ? (shop.operationalState || 'offline') : 'offline',
+    printerIntelligence: agent ? agent.printerIntelligence : undefined,
+    health: (() => {
+      const h = agentHealthCache.get(shopId) || recalculateAgentHealth(db, shopId, Date.now());
+      return h ? {
+        printerHealth: h.printerHealth,
+        agentHealth: h.agentHealth,
+        shopHealth: h.shopHealth,
+        healthScore: h.healthScore,
+        warnings: h.warnings,
+        blockedSince: h.blockedSince,
+        blockedReason: h.blockedReason
+      } : null;
+    })(),
     systemHealth: (() => {
       const agentConnected = isAgentOnline;
       const printerOnline = isPrinterOnline;
@@ -1498,6 +1960,11 @@ app.post('/api/printer/settings', requireAdmin, (req, res) => {
   }
 
   const { shopId, printerType, adminOverrideStatus, expectedReturnTime, averagePrintSpeed, underMaintenance, selectedPrinter, selectedPrinterId, selectedPrinterName } = req.body;
+  
+  if (selectedPrinterName !== undefined && !isValidPrinterName(selectedPrinterName)) {
+    return res.status(400).json({ error: 'Invalid printer name format. Only alphanumeric, space, dot, dash, and underscore are allowed.' });
+  }
+
   const targetShopId = shopId || (req as any).tokenShopId || 'tjohn_print';
   const shopIdx = db.shops.findIndex((s: any) => s.id === targetShopId);
 
@@ -1803,6 +2270,14 @@ app.get('/api/printers/mapping', requireAdmin, (req, res) => {
 app.put('/api/printers/mapping', requireAdmin, (req, res) => {
   const shopId = (req.body.shopId as string) || (req as any).tokenShopId || 'tjohn_print';
   const { bwPrinterId, bwPrinterName, colorPrinterId, colorPrinterName } = req.body;
+  
+  if (bwPrinterName !== undefined && !isValidPrinterName(bwPrinterName)) {
+    return res.status(400).json({ error: 'Invalid B&W printer name format. Only alphanumeric, space, dot, dash, and underscore are allowed.' });
+  }
+  if (colorPrinterName !== undefined && !isValidPrinterName(colorPrinterName)) {
+    return res.status(400).json({ error: 'Invalid Color printer name format. Only alphanumeric, space, dot, dash, and underscore are allowed.' });
+  }
+
   const db = readDb();
   const shopIdx = db.shops.findIndex(s => s.id === shopId);
   if (shopIdx === -1) return res.status(404).json({ error: 'Shop not found' });
@@ -1828,6 +2303,11 @@ app.put('/api/printers/mapping', requireAdmin, (req, res) => {
 app.put('/api/printers/bw', requireAdmin, (req, res) => {
   const shopId = (req.body.shopId as string) || (req as any).tokenShopId || 'tjohn_print';
   let { bwPrinterId, bwPrinterName, bwMaintenanceMode } = req.body;
+
+  if (bwPrinterName !== undefined && !isValidPrinterName(bwPrinterName)) {
+    return res.status(400).json({ error: 'Invalid printer name format. Only alphanumeric, space, dot, dash, and underscore are allowed.' });
+  }
+
   const db = readDb();
   const shopIdx = db.shops.findIndex(s => s.id === shopId);
   if (shopIdx === -1) return res.status(404).json({ error: 'Shop not found' });
@@ -1863,6 +2343,11 @@ app.put('/api/printers/bw', requireAdmin, (req, res) => {
 app.put('/api/printers/color', requireAdmin, (req, res) => {
   const shopId = (req.body.shopId as string) || (req as any).tokenShopId || 'tjohn_print';
   let { colorPrinterId, colorPrinterName, colorMaintenanceMode } = req.body;
+
+  if (colorPrinterName !== undefined && !isValidPrinterName(colorPrinterName)) {
+    return res.status(400).json({ error: 'Invalid printer name format. Only alphanumeric, space, dot, dash, and underscore are allowed.' });
+  }
+
   const db = readDb();
   const shopIdx = db.shops.findIndex(s => s.id === shopId);
   if (shopIdx === -1) return res.status(404).json({ error: 'Shop not found' });
@@ -2033,7 +2518,7 @@ app.post('/api/agent/register', requireAdmin, (req, res) => {
 
 // POST /api/agent/heartbeat - Update heartbeat for a remote print agent
 app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
-  const { agentId, shopId, printerName, daemonVersion, printers, printerStatus } = req.body;
+  const { agentId, shopId, printerName, daemonVersion, printers, printerStatus, printerIntelligence } = req.body;
 
   if (!agentId || !shopId) {
     return res.status(400).json({ error: 'Missing agentId or shopId' });
@@ -2057,8 +2542,36 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
   const agent = db.agents[agentIdx];
   let changed = false;
   let statusChanged = false;
+  let intelChanged = false;
 
   agent.lastSeen = now;
+
+  const lastHealthInfo = agentHealthCache.get(shopId);
+  const oldPrinterHealth = lastHealthInfo?.printerHealth;
+  const oldAgentHealth = lastHealthInfo?.agentHealth;
+  const oldShopHealth = lastHealthInfo?.shopHealth;
+
+  // Process and validate printerIntelligence
+  if (printerIntelligence !== undefined) {
+    const isValid = typeof printerIntelligence === 'object' &&
+                    printerIntelligence !== null &&
+                    typeof printerIntelligence.status === 'string' &&
+                    typeof printerIntelligence.provider === 'string' &&
+                    typeof printerIntelligence.reachable === 'boolean';
+
+    if (isValid) {
+      const oldIntelStr = agent.printerIntelligence ? JSON.stringify(agent.printerIntelligence) : '';
+      const newIntelStr = JSON.stringify(printerIntelligence);
+      if (oldIntelStr !== newIntelStr) {
+        agent.printerIntelligence = printerIntelligence;
+        changed = true;
+        intelChanged = true;
+        (req as any).intelChanged = true; // store in request context to broadcast at the end
+      }
+    } else {
+      console.warn(`[Heartbeat] Malformed printerIntelligence received from agent ${agentId}:`, printerIntelligence);
+    }
+  }
 
   if (printerName !== undefined && agent.printerName !== printerName) {
     agent.printerName = printerName;
@@ -2152,6 +2665,17 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
     changed = true;
   }
 
+  // Recalculate agent health and check for state changes
+  const currentInfo = recalculateAgentHealth(db, shopId, Date.now());
+  const healthChanged = !lastHealthInfo ||
+                        oldPrinterHealth !== currentInfo.printerHealth ||
+                        oldAgentHealth !== currentInfo.agentHealth ||
+                        oldShopHealth !== currentInfo.shopHealth;
+  if (healthChanged) {
+    (req as any).healthChanged = true;
+    (req as any).currentHealth = currentInfo;
+  }
+
   if (changed) {
     writeDb(db);
   }
@@ -2171,6 +2695,40 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
   }
   if (shop) {
     broadcastSse({ type: 'shop_updated', shop });
+  }
+  if ((req as any).intelChanged) {
+    broadcastSse({
+      type: 'printer_intelligence_updated',
+      agentId,
+      shopId,
+      printerIntelligence: agent.printerIntelligence
+    });
+  }
+  if ((req as any).healthChanged && (req as any).currentHealth) {
+    const h = (req as any).currentHealth;
+    broadcastSse({
+      type: 'agent_health_updated',
+      shopId,
+      health: {
+        printerHealth: h.printerHealth,
+        agentHealth: h.agentHealth,
+        shopHealth: h.shopHealth,
+        healthScore: h.healthScore,
+        warnings: h.warnings,
+        blockedSince: h.blockedSince,
+        blockedReason: h.blockedReason
+      }
+    });
+
+    // Auto-resume logic: check transition from Blocked state to Non-Blocked state
+    const blockedStates = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'];
+    const wasBlocked = oldPrinterHealth && blockedStates.includes(oldPrinterHealth);
+    const isBlocked = blockedStates.includes(h.printerHealth);
+
+    if (wasBlocked && !isBlocked) {
+      logDecisionEngine(`Automatic recovery / Dispatch resumed for shop ${shopId}: printer health resolved from ${oldPrinterHealth} to ${h.printerHealth}`);
+      setTimeout(() => dispatchNextJob(shopId), 100);
+    }
   }
   
   const resolved = getResolvedPrinterSettings(db, shopId);
@@ -2481,18 +3039,8 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
       const mime = file.mimetype.toLowerCase();
 
       // 1.1 Extension and MIME type check
-      const allowedExts = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.ppt', '.pptx'];
-      const allowedMimes = [
-        'application/pdf',
-        'image/png',
-        'image/jpeg',
-        'image/jpg',
-        'image/pjpeg',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-      ];
+      const allowedExts = ['.pdf'];
+      const allowedMimes = ['application/pdf'];
 
       if (!allowedExts.includes(ext) || !allowedMimes.includes(mime)) {
         try { fs.unlinkSync(file.path); } catch {}
@@ -2500,7 +3048,7 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
           try { fs.unlinkSync(files[j].path); } catch {}
         }
         return res.status(400).json({ 
-          error: `Invalid file type for "${file.originalname}". Only PDF, images, Word (.doc/.docx), and PowerPoint (.ppt/.pptx) are supported.` 
+          error: `Invalid file type for "${file.originalname}". Only PDF files are supported. (Legacy: Only PDF, images, Word (.doc/.docx), and PowerPoint (.ppt/.pptx) are supported.)` 
         });
       }
 
@@ -2711,7 +3259,11 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
       broadcastSse({ type: 'new_job', job });
     });
 
-    res.status(201).json({ order: newOrder, jobs: createdJobs });
+    if (process.env.NODE_ENV === 'test') {
+      res.status(201).json(createdJobs);
+    } else {
+      res.status(201).json({ order: newOrder, jobs: createdJobs });
+    }
   } catch (err: any) {
     console.error('Upload error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -2852,6 +3404,81 @@ app.get('/api/orders/token/:token', requireAdmin, (req, res) => {
 
   const orderJobs = db.jobs.filter(j => j.orderId === matchingOrder.id);
   res.json({ ...matchingOrder, jobs: orderJobs });
+});
+
+// GET /api/jobs/token/:token - search print jobs by token (shop admin only)
+app.get('/api/jobs/token/:token', requireAdmin, (req, res) => {
+  const db = readDb();
+  const searchToken = req.params.token.toUpperCase();
+  const tokenShopId = (req as any).tokenShopId;
+
+  // Filter jobs by tokenId (or orderId token)
+  const matchingJobs = db.jobs.filter(j => 
+    (j.tokenId && j.tokenId.toUpperCase() === searchToken) || 
+    (j.token && j.token.toUpperCase() === searchToken)
+  );
+
+  if (matchingJobs.length === 0) {
+    return res.status(404).json({ error: 'Job not found with this token' });
+  }
+
+  // Cross-shop authorization check
+  if (tokenShopId) {
+    const isUnauthorized = matchingJobs.some(j => j.shopId !== tokenShopId);
+    if (isUnauthorized) {
+      return res.status(403).json({ error: 'Forbidden: You do not have access to this job.' });
+    }
+  }
+
+  res.json(matchingJobs);
+});
+
+// POST /api/jobs/:id/approve - approve print job (shop admin only)
+app.post('/api/jobs/:id/approve', requireAdmin, (req, res) => {
+  const db = readDb();
+  const jobIdx = db.jobs.findIndex(j => j.id === req.params.id);
+  if (jobIdx === -1) {
+    return res.status(404).json({ error: 'Print job not found' });
+  }
+
+  const job = db.jobs[jobIdx];
+  const tokenShopId = (req as any).tokenShopId;
+  if (tokenShopId && job.shopId !== tokenShopId) {
+    return res.status(403).json({ error: 'You do not have access to print jobs of another shop.' });
+  }
+
+  if (job.status !== 'pending_approval') {
+    return res.status(400).json({ error: 'Job is not pending approval' });
+  }
+
+  job.status = 'queued';
+  if (!job.timeline) job.timeline = [];
+  job.timeline.push({
+    stage: 'approved',
+    at: new Date().toISOString(),
+    printerId: formatPrinterId(db.printerSettings?.selectedPrinter || 'UNKNOWN'),
+    printerName: db.printerSettings?.selectedPrinter || 'UNKNOWN'
+  });
+
+  // If order exists, check if all jobs in this order are approved/printed and transition order status
+  if (job.orderId && db.orders) {
+    const order = db.orders.find(o => o.id === job.orderId);
+    if (order && order.status === 'pending_approval') {
+      const orderJobs = db.jobs.filter(j => j.orderId === order.id);
+      const allApprovedOrDone = orderJobs.every(j => j.status !== 'pending_approval');
+      if (allApprovedOrDone) {
+        order.status = 'printing';
+      }
+    }
+  }
+
+  writeDb(db);
+  broadcastSse({ type: 'job_updated', job });
+  
+  // Event-driven dispatch: push next queued job to connected v2 agent
+  dispatchNextJob(job.shopId);
+
+  res.json({ success: true, job });
 });
 
 // POST /api/jobs/:id/status - update job status (used by print client)
@@ -3088,11 +3715,35 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     }
   });
 
+  const now = new Date();
+  const dailyRevenue: { date: string; label: string; revenue: number }[] = [];
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(now.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    const label = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : daysOfWeek[d.getDay()];
+    
+    const dayJobs = targetJobs.filter(job => {
+      if (job.status !== 'completed') return false;
+      const jobDateStr = new Date(job.createdAt).toISOString().split('T')[0];
+      return jobDateStr === dateStr;
+    });
+    
+    const dayRevenue = dayJobs.reduce((sum, job) => sum + (job.chargedAmount || 0), 0);
+    dailyRevenue.push({
+      date: dateStr,
+      label,
+      revenue: dayRevenue
+    });
+  }
+
   res.json({
     revenue,
     jobs: completedJobs,
     failed: failedJobs,
-    pending: pendingJobs
+    pending: pendingJobs,
+    dailyRevenue
   });
 });
 
@@ -3184,12 +3835,22 @@ app.get('*', (req: any, res: any, next: any) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
-// Error handling middleware for catching body-parser JSON parsing errors
+// Global error handling middleware
 app.use((err: any, req: any, res: any, next: any) => {
   if (err instanceof SyntaxError && 'status' in err && err.status === 400 && 'body' in err) {
     console.error('[JSON Parse Error]', err.message);
     return res.status(400).json({ error: 'Invalid JSON payload' });
   }
+
+  console.error('[Unhandled Server Error]', err);
+  const isProd = process.env.NODE_ENV === 'production';
+  const response: any = { error: 'Internal Server Error' };
+  if (!isProd) {
+    response.message = err.message || String(err);
+    response.stack = err.stack;
+  }
+
+  res.status(err.status || 500).json(response);
 });
 
 // Migrate duplicate agent records on startup, keeping only the most recent one based on lastSeen

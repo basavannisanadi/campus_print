@@ -154,6 +154,7 @@ export interface Agent {
     message: string;
     timestamp: string;
   } | null;
+  printerIntelligence?: any;
 }
 
 export interface Student {

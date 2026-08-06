@@ -85,6 +85,8 @@ interface Props {
   selectedShopId: string;
   onSelectShop: (shopId: string) => void;
   systemHealth?: any;
+  health?: any;
+  printerIntelligence?: any;
 }
 
 interface DailyRevenueEntry {
@@ -120,7 +122,9 @@ export default function AdminPortal({
   shops,
   selectedShopId,
   onSelectShop,
-  systemHealth
+  systemHealth,
+  health,
+  printerIntelligence
 }: Props) {
   const activeShopId = selectedShopId;
   const isShopAdmin = sessionStorage.getItem('role') === 'shop_admin';
@@ -2357,6 +2361,153 @@ export default function AdminPortal({
               </div>
             </div>
           </div>
+
+          {/* Printer Intelligence & Diagnostics Card */}
+          {health && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 font-sans">
+              <div className="flex flex-col lg:flex-row gap-8">
+                {/* Left: Overall Health & Diagnostics */}
+                <div className="flex-1 space-y-4 text-left">
+                  <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-indigo-500" />
+                    <span>Printer Intelligence & Diagnostics</span>
+                  </h3>
+                  
+                  {health.blockedReason && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 text-rose-800 text-xs">
+                      <span className="text-lg">🚫</span>
+                      <div>
+                        <p className="font-extrabold uppercase tracking-wide text-rose-900">Printing blocked</p>
+                        <p className="font-semibold mt-0.5">Reason: {health.blockedReason}</p>
+                        <p className="mt-1 text-rose-600 font-medium">
+                          Current health: <span className="font-mono font-bold bg-rose-100 px-1 py-0.5 rounded text-rose-850">{health.printerHealth}</span>
+                        </p>
+                        <p className="mt-0.5 text-rose-600 font-medium">
+                          Time detected: <span className="font-mono">{health.blockedSince ? new Date(health.blockedSince).toLocaleTimeString() : 'N/A'}</span>
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Printer Status</p>
+                      <p className="font-extrabold text-slate-850 mt-1 flex items-center gap-1.5 text-slate-800">
+                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${
+                          health.printerHealth === 'READY' || health.printerHealth === 'PRINTING' ? 'bg-emerald-500' :
+                          health.printerHealth === 'PAPER_LOW' || health.printerHealth === 'LOW_TONER' ? 'bg-amber-500' : 'bg-rose-500'
+                        }`} />
+                        {health.printerHealth}
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Agent Status</p>
+                      <p className="font-extrabold text-slate-850 mt-1 flex items-center gap-1.5 text-slate-800">
+                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${
+                          health.agentHealth === 'Healthy' ? 'bg-emerald-500' :
+                          health.agentHealth === 'Degraded' ? 'bg-amber-500' : 'bg-rose-500'
+                        }`} />
+                        {health.agentHealth}
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Shop Status</p>
+                      <p className="font-extrabold text-slate-850 mt-1 flex items-center gap-1.5 text-slate-800">
+                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${
+                          health.shopHealth === 'Operational' || health.shopHealth === 'Busy' ? 'bg-emerald-500' :
+                          health.shopHealth === 'Attention Required' ? 'bg-amber-500' : 'bg-rose-500'
+                        }`} />
+                        {health.shopHealth}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* SNMP Telemetry Details if available */}
+                  {printerIntelligence && (
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2 text-xs font-semibold text-slate-650">
+                      <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono mb-2">SNMP Telemetry Details</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                        <div className="flex justify-between">
+                          <span>Vendor / Model:</span>
+                          <span className="text-slate-900 font-bold">{printerIntelligence.vendor || 'N/A'} {printerIntelligence.model || ''}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Serial Number:</span>
+                          <span className="text-slate-900 font-mono font-bold">{printerIntelligence.serialNumber || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Page Count:</span>
+                          <span className="text-slate-900 font-mono font-bold">{printerIntelligence.pageCount !== undefined ? printerIntelligence.pageCount.toLocaleString() : 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Toner Status:</span>
+                          <span className="text-slate-900 font-bold">
+                            {printerIntelligence.consumables && printerIntelligence.consumables[0] 
+                              ? `${printerIntelligence.consumables[0].levelPct}%` 
+                              : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right: Health Score & Warnings Panel */}
+                <div className="w-full lg:w-80 space-y-4 text-left">
+                  {/* Health Score */}
+                  <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Health Score</p>
+                      <p className="text-3xl font-extrabold text-slate-850 mt-1 text-slate-800">{health.healthScore}%</p>
+                    </div>
+                    <div className="relative w-16 h-16">
+                      <svg className="w-full h-full transform -rotate-90">
+                        <circle cx="32" cy="32" r="28" className="stroke-slate-200 fill-none" strokeWidth="6" />
+                        <circle cx="32" cy="32" r="28" className={`fill-none ${
+                          health.healthScore >= 80 ? 'stroke-emerald-500' :
+                          health.healthScore >= 50 ? 'stroke-amber-500' : 'stroke-rose-500'
+                        }`} strokeWidth="6" strokeDasharray={`${2 * Math.PI * 28}`} strokeDashoffset={`${2 * Math.PI * 28 * (1 - health.healthScore / 100)}`} strokeLinecap="round" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Warnings Panel */}
+                  <div className="bg-slate-50 p-5 rounded-xl border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono mb-3">Active Warnings Panel</p>
+                    {health.warnings && health.warnings.length > 0 ? (
+                      <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                        {health.warnings.map((w: any, idx: number) => (
+                          <div key={idx} className={`p-3 rounded-xl text-xs font-bold border flex items-start gap-2.5 ${
+                            w.severity === 'error' ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                            w.severity === 'warning' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}>
+                            <span className="text-base select-none">
+                              {w.type === 'Paper Jam' ? '🔴' :
+                               w.type === 'Paper Empty' ? '🔴' :
+                               w.type === 'Cover Open' ? '🔴' :
+                               w.type === 'Offline' ? '⚫' :
+                               w.type === 'Low Toner' ? '🟠' : '🟡'}
+                            </span>
+                            <div>
+                              <p className="font-extrabold uppercase text-[10px] tracking-wide">{w.type}</p>
+                              <p className="font-medium mt-0.5 leading-relaxed text-slate-500">{w.message}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs font-bold text-emerald-600 flex items-center gap-1.5">
+                        <span>🟢</span> No active warnings. System healthy.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* B&W and Color Printer Selection Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Black & White Operations */}

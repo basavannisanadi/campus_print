@@ -12,48 +12,48 @@
 
 :root {
   /* Surface Layers (Softly Tinted SaaS Palette) */
-  --bg-app: #f7f6f9;                                /* Base canvas */
-  --bg-card: rgba(251, 250, 254, 0.88);             /* Soft Lavender-Grey Surface */
+  --bg-app: #faf9f6;                                /* Base canvas */
+  --bg-card: rgba(255, 253, 250, 0.88);             /* Soft Peach-Cream Surface */
   --bg-surface-cream: rgba(255, 253, 248, 0.88);     /* Soft Warm Cream Surface */
   --bg-surface-mist: rgba(246, 248, 252, 0.88);      /* Cool Mist Surface */
   --bg-surface-sage: rgba(244, 251, 248, 0.88);      /* Soft Sage / Mint Surface */
   --bg-surface-peach: rgba(255, 248, 244, 0.88);     /* Soft Peach Surface */
 
-  --bg-surface-secondary: rgba(243, 242, 247, 0.9);  /* Inset / secondary panel */
+  --bg-surface-secondary: rgba(250, 247, 242, 0.9);  /* Inset / secondary panel */
   --bg-elevated: rgba(255, 255, 255, 0.96);          /* Modals, popovers, dropdowns */
-  --bg-hover: rgba(238, 236, 248, 0.7);              /* Interactive hover tint */
-  --bg-hover-subtle: rgba(248, 247, 252, 0.8);
-  --bg-pressed: rgba(230, 227, 244, 0.8);
+  --bg-hover: rgba(241, 191, 152, 0.15);              /* Interactive hover tint */
+  --bg-hover-subtle: rgba(241, 191, 152, 0.06);
+  --bg-pressed: rgba(235, 220, 205, 0.8);
   --bg-input: rgba(255, 255, 255, 0.92);
-  --bg-subtle: rgba(243, 242, 247, 0.8);
+  --bg-subtle: rgba(250, 247, 242, 0.8);
 
   /* Soft Tinted Borders */
-  --border-subtle: rgba(226, 224, 240, 0.6);
-  --border-card: rgba(220, 218, 236, 0.75);
-  --border-default: rgba(215, 213, 233, 0.75);
-  --border-input: rgba(215, 213, 233, 0.75);
-  --border-strong: rgba(195, 192, 218, 0.85);
+  --border-subtle: rgba(241, 191, 152, 0.25);
+  --border-card: rgba(235, 225, 215, 0.75);
+  --border-default: rgba(230, 220, 210, 0.75);
+  --border-input: rgba(230, 220, 210, 0.75);
+  --border-strong: rgba(215, 200, 185, 0.85);
 
   /* Typography Hierarchy */
-  --text-main: #1e1b2e;               /* Deep Slate/Violet Charcoal */
-  --text-primary: #1e1b2e;
-  --text-secondary: #4a4560;             /* Muted Lavender Slate */
-  --text-muted: #6b6580;                 /* Soft Muted Violet-Slate */
-  --text-disabled: #9b95b0;
+  --text-main: #2d221c;               /* Deep Warm Charcoal/Brown */
+  --text-primary: #2d221c;
+  --text-secondary: #594c43;             /* Muted Warm Slate */
+  --text-muted: #7a6b60;                 /* Soft Muted Warm-Slate */
+  --text-disabled: #ad9e92;
 
   /* Icon Colors */
-  --icon-primary: #3b3552;
-  --icon-secondary: #6b6580;
+  --icon-primary: #45352c;
+  --icon-secondary: #7a6b60;
 
-  /* Brand / Primary Violet-Indigo */
-  --color-primary: #635bff;            /* Signature Violet-Indigo */
-  --color-primary-hover: #5247e6;
-  --color-primary-light: rgba(99, 91, 255, 0.08);
-  --color-primary-border: rgba(99, 91, 255, 0.25);
+  /* Brand / Primary Peach */
+  --color-primary: #F1BF98;            /* Signature Brand Peach */
+  --color-primary-hover: #ad744c;      /* Darker shade for high contrast interactive hover */
+  --color-primary-light: rgba(241, 191, 152, 0.12);
+  --color-primary-border: rgba(241, 191, 152, 0.4);
 
   /* Accent Palette for Intentional Distribution */
-  --color-accent-purple: #7c3aed;      /* Brand identity */
-  --color-accent-peach: #f97316;       /* Warm highlights */
+  --color-accent-purple: #F1BF98;      /* Brand identity accent */
+  --color-accent-peach: #F1BF98;       /* Warm highlights */
   --color-accent-sage: #059669;        /* Success & queue metrics */
   --color-accent-blue: #0284c7;        /* Interactive elements */
   --color-accent-coral: #e11d48;       /* Warnings & alerts */
@@ -76,15 +76,15 @@
   --color-info-border: rgba(186, 230, 253, 0.8);
 
   /* Interactive States */
-  --focus-ring: rgba(99, 91, 255, 0.25);
-  --focus-border: #635bff;
+  --focus-ring: rgba(241, 191, 152, 0.35);
+  --focus-border: #ad744c;
 
   /* Colored Soft Ambient Shadows */
-  --shadow-card: 0 2px 4px 0 rgba(30, 27, 46, 0.02), 0 12px 28px -6px rgba(99, 91, 255, 0.07), 0 4px 12px -2px rgba(30, 27, 46, 0.02);
-  --shadow-elevated: 0 20px 44px -8px rgba(30, 27, 46, 0.09), 0 8px 16px -4px rgba(124, 58, 237, 0.08);
+  --shadow-card: 0 2px 4px 0 rgba(30, 27, 46, 0.02), 0 12px 28px -6px rgba(241, 191, 152, 0.12), 0 4px 12px -2px rgba(30, 27, 46, 0.02);
+  --shadow-elevated: 0 20px 44px -8px rgba(30, 27, 46, 0.09), 0 8px 16px -4px rgba(241, 191, 152, 0.15);
 
   /* Dedicated Chart Light Palette */
-  --chart-1: #635bff; /* Violet-Indigo */
+  --chart-1: #F1BF98; /* Peach */
   --chart-2: #10b981; /* Emerald */
   --chart-3: #f97316; /* Soft Peach */
   --chart-4: #ec4899; /* Pink */
@@ -139,6 +139,43 @@
   --color-status-info-text: var(--color-info-text);
   --color-status-info-bg: var(--color-info-bg);
   --color-status-info-border: var(--color-info-border);
+
+  /* Map indigo, purple, violet, etc. to peach color scale derived from #F1BF98 */
+  --color-indigo-50: #fdf7f2;
+  --color-indigo-100: #fbeae0;
+  --color-indigo-200: #f8d4c1;
+  --color-indigo-300: #f4bda2;
+  --color-indigo-400: #f1bf98;
+  --color-indigo-500: #f1bf98;
+  --color-indigo-600: #ad744c;
+  --color-indigo-700: #8c522b;
+  --color-indigo-800: #6b3513;
+  --color-indigo-900: #4b2005;
+  --color-indigo-950: #2d1101;
+
+  --color-purple-50: #fdf7f2;
+  --color-purple-100: #fbeae0;
+  --color-purple-200: #f8d4c1;
+  --color-purple-300: #f4bda2;
+  --color-purple-400: #f1bf98;
+  --color-purple-500: #f1bf98;
+  --color-purple-600: #ad744c;
+  --color-purple-700: #8c522b;
+  --color-purple-800: #6b3513;
+  --color-purple-900: #4b2005;
+  --color-purple-950: #2d1101;
+
+  --color-violet-50: #fdf7f2;
+  --color-violet-100: #fbeae0;
+  --color-violet-200: #f8d4c1;
+  --color-violet-300: #f4bda2;
+  --color-violet-400: #f1bf98;
+  --color-violet-500: #f1bf98;
+  --color-violet-600: #ad744c;
+  --color-violet-700: #8c522b;
+  --color-violet-800: #6b3513;
+  --color-violet-900: #4b2005;
+  --color-violet-950: #2d1101;
 }
 
 * {
@@ -151,14 +188,14 @@ code, pre, .font-mono {
 }
 
 body {
-  background-color: #f7f6f9;
+  background-color: #faf9f6;
   background-image: 
-    radial-gradient(circle at 10% 12%, rgba(226, 216, 246, 0.55) 0%, transparent 45%),   /* Dusty Lavender Top-Left */
-    radial-gradient(circle at 90% 15%, rgba(255, 226, 216, 0.50) 0%, transparent 45%),   /* Soft Peach Top-Right */
-    radial-gradient(circle at 50% 40%, rgba(255, 249, 235, 0.60) 0%, transparent 50%),   /* Warm Cream Center */
-    radial-gradient(circle at 12% 85%, rgba(220, 244, 236, 0.50) 0%, transparent 45%),   /* Soft Mint/Sage Bottom-Left */
-    radial-gradient(circle at 88% 88%, rgba(224, 238, 255, 0.50) 0%, transparent 45%),   /* Sky Blue Bottom-Right */
-    linear-gradient(180deg, #f7f6f9 0%, #f3f2f7 50%, #f6f5fa 100%);
+    radial-gradient(circle at 10% 12%, rgba(254, 234, 218, 0.6) 0%, transparent 45%),   /* Peach Top-Left */
+    radial-gradient(circle at 90% 15%, rgba(255, 240, 225, 0.55) 0%, transparent 45%),   /* Soft Cream-Peach Top-Right */
+    radial-gradient(circle at 50% 40%, rgba(255, 251, 242, 0.70) 0%, transparent 50%),   /* Warm Cream Center */
+    radial-gradient(circle at 12% 85%, rgba(248, 244, 236, 0.50) 0%, transparent 45%),   /* Soft Neutral Warm Bottom-Left */
+    radial-gradient(circle at 88% 88%, rgba(241, 191, 152, 0.12) 0%, transparent 45%),   /* Soft Brand Glow Bottom-Right */
+    linear-gradient(180deg, #faf9f6 0%, #f7f5f0 50%, #f9f8f4 100%);
   background-attachment: fixed;
   color: var(--text-main);
   -webkit-font-smoothing: antialiased;
@@ -179,25 +216,25 @@ body {
 
 /* Base Default Card */
 .portal-card {
-  background-color: rgba(251, 250, 254, 0.88);
+  background-color: rgba(255, 253, 250, 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(220, 218, 236, 0.75);
+  border: 1px solid rgba(235, 225, 215, 0.75);
   border-radius: 0.875rem; /* 14px */
-  box-shadow: 0 1px 3px 0 rgba(30, 27, 46, 0.02), 0 12px 28px -4px rgba(99, 91, 255, 0.07), 0 4px 12px -2px rgba(30, 27, 46, 0.02);
+  box-shadow: 0 1px 3px 0 rgba(30, 27, 46, 0.02), 0 12px 28px -4px rgba(241, 191, 152, 0.12), 0 4px 12px -2px rgba(30, 27, 46, 0.02);
   transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
 }
 
 
 
-/* Tonal Surface Variation 1: Soft Lavender-Grey Card */
+/* Tonal Surface Variation 1: Soft Peach-Cream Card */
 .portal-card-lavender {
-  background-color: rgba(251, 250, 254, 0.88);
+  background-color: rgba(255, 250, 245, 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(220, 218, 238, 0.8);
+  border: 1px solid rgba(245, 230, 218, 0.8);
   border-radius: 0.875rem;
-  box-shadow: 0 1px 3px 0 rgba(30, 27, 46, 0.02), 0 12px 28px -4px rgba(124, 58, 237, 0.06);
+  box-shadow: 0 1px 3px 0 rgba(30, 27, 46, 0.02), 0 12px 28px -4px rgba(241, 191, 152, 0.10);
 }
 
 
@@ -242,9 +279,9 @@ body {
   background-color: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(203, 213, 225, 0.7);
+  border: 1px solid rgba(235, 225, 215, 0.7);
   border-radius: 0.875rem;
-  box-shadow: 0 20px 44px -8px rgba(30, 27, 46, 0.09), 0 8px 16px -4px rgba(124, 58, 237, 0.08);
+  box-shadow: 0 20px 44px -8px rgba(30, 27, 46, 0.09), 0 8px 16px -4px rgba(241, 191, 152, 0.15);
 }
 
 
@@ -304,22 +341,25 @@ body {
 
 .btn-primary-action {
   background-color: var(--color-primary);
-  color: #ffffff;
+  color: #2d1101;
+  font-weight: 700;
   transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
               box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
-              background-color 0.18s ease;
+              background-color 0.18s ease,
+              color 0.18s ease;
   will-change: transform;
 }
 
 .btn-primary-action:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
+  color: #ffffff;
   transform: translateY(-1.5px);
-  box-shadow: 0 8px 20px -4px rgba(99, 91, 255, 0.35);
+  box-shadow: 0 8px 20px -4px rgba(241, 191, 152, 0.45);
 }
 
 .btn-primary-action:active:not(:disabled) {
   transform: translateY(0.5px) scale(0.975);
-  box-shadow: 0 3px 8px -2px rgba(99, 91, 255, 0.2);
+  box-shadow: 0 3px 8px -2px rgba(241, 191, 152, 0.25);
 }
 
 .btn-secondary-action {
