@@ -456,7 +456,18 @@ export default function StudentPortal({
         xhr.send(formData);
       });
 
-      setSuccess({ order: result.order, jobs: Array.isArray(result.jobs) ? result.jobs : [] });
+      if (result && !Array.isArray(result) && result.order) {
+        setSuccess({ order: result.order, jobs: Array.isArray(result.jobs) ? result.jobs : [] });
+      } else if (Array.isArray(result)) {
+        const firstJob = result[0];
+        const synthOrder = firstJob ? {
+          id: firstJob.orderId || 'UNKNOWN',
+          token: firstJob.tokenId || firstJob.token || 'UNKNOWN'
+        } : null;
+        setSuccess({ order: synthOrder, jobs: result });
+      } else {
+        setSuccess(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {

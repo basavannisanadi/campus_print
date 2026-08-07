@@ -18,7 +18,6 @@
     "deploy:frontend": "npm run build && npx wrangler pages deploy dist"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "bcrypt": "^6.0.0",
@@ -30,7 +29,6 @@
     "google-auth-library": "^10.9.1",
     "helmet": "^8.3.0",
     "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
     "multer": "^2.1.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^3.11.174",
@@ -41,8 +39,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
     "@types/bcrypt": "^6.0.0",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",

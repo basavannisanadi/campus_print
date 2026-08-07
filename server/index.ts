@@ -2780,6 +2780,7 @@ app.post('/api/agent/shutdown', requireAdmin, (req, res) => {
 
 // POST /api/shops/:id/heartbeat - legacy heartbeat support redirecting to printer status
 app.post('/api/shops/:id/heartbeat', requireAdmin, (req, res) => {
+  console.warn(`[DEPRECATION WARNING] POST /api/shops/:id/heartbeat is deprecated. Older print clients should be upgraded to use /api/agent/heartbeat.`);
   const db = readDb();
   const { printerStatus } = req.body;
   
@@ -2831,6 +2832,7 @@ app.post('/api/shops/:id/heartbeat', requireAdmin, (req, res) => {
 
 // POST /api/shops/:id - update shop status and settings
 app.post('/api/shops/:id', requireAdmin, (req, res) => {
+  console.warn(`[DEPRECATION WARNING] POST /api/shops/:id is deprecated. Use PUT /api/shops/:id/settings instead.`);
   const db = readDb();
   const shop = db.shops.find(s => s.id === req.params.id);
   if (!shop) return res.status(404).json({ error: 'Shop not found' });
@@ -3747,48 +3749,10 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
   });
 });
 
-// GET /api/central/stats - aggregate stats for all shops
+// GET /api/central/stats - Deprecated in v1.0. Returns 410 Gone.
 app.get('/api/central/stats', requireAdmin, (req, res) => {
-  const db = readDb();
-  
-  const totalRevenue = db.jobs
-    .filter(j => j.status === 'completed')
-    .reduce((sum, j) => {
-      return sum + (j.chargedAmount || 0);
-    }, 0);
-    
-  const totalJobs = db.jobs.filter(j => j.status === 'completed').length;
-  const totalFailed = db.jobs.filter(j => ['failed', 'printer_offline', 'paper_empty'].includes(j.status)).length;
-  const totalPending = db.jobs.filter(j => ['queued', 'printing'].includes(j.status)).length;
-  
-  const shopsBreakdown = db.shops.map(shop => {
-    const shopJobs = db.jobs.filter(j => j.shopId === shop.id);
-    const revenue = shopJobs
-      .filter(j => j.status === 'completed')
-      .reduce((sum, j) => {
-        return sum + (j.chargedAmount || 0);
-      }, 0);
-    const completed = shopJobs.filter(j => j.status === 'completed').length;
-    return {
-      id: shop.id,
-      name: shop.name,
-      phone: shop.phone,
-      address: shop.address,
-      isOpen: shop.isOpen,
-      openingTime: shop.openingTime,
-      closingTime: shop.closingTime,
-      revenue,
-      jobs: completed
-    };
-  });
-  
-  res.json({
-    revenue: totalRevenue,
-    jobs: totalJobs,
-    failed: totalFailed,
-    pending: totalPending,
-    shops: shopsBreakdown
-  });
+  console.warn(`[DEPRECATION WARNING] GET /api/central/stats is deprecated and returns 410 Gone.`);
+  res.status(410).json({ error: 'This endpoint is deprecated and no longer available.' });
 });
 
 // POST /api/reset - clear all jobs

@@ -10,7 +10,7 @@ export default function Login() {
   const googleButtonRef = useRef<HTMLDivElement>(null);
 
   const googleClientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
-  const isDev = (import.meta as any).env.DEV;
+  const isDev = (import.meta as any).env.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
   useEffect(() => {
     if (!googleClientId) return;
@@ -75,21 +75,16 @@ export default function Login() {
   };
 
   const handleContinueWithGoogle = () => {
-    if (googleClientId) {
+    if (isDev) {
+      setShowMockPicker(true);
+    } else if (googleClientId) {
       // Trigger GIS Prompt
       try {
         (window as any).google?.accounts.id.prompt();
       } catch (err) {
         console.error('One Tap prompt error:', err);
-        // Fallback to standard button render if prompt fails
         setError('Google login initialization failed. Using development fallback.');
-        if (isDev) {
-          setShowMockPicker(true);
-        }
       }
-    } else if (isDev) {
-      // Fallback to mock account selector in dev mode
-      setShowMockPicker(true);
     } else {
       setError('Google Client ID is not configured on this server.');
     }
@@ -154,6 +149,16 @@ export default function Login() {
             <div className="w-full flex justify-center mt-2" style={{ minHeight: '44px' }}>
               <div ref={googleButtonRef} className="w-full max-w-[320px]" />
             </div>
+          )}
+
+          {(!googleClientId || isDev) && (
+            <button
+              type="button"
+              onClick={handleContinueWithGoogle}
+              className="w-full max-w-[320px] flex items-center justify-center gap-3 px-6 py-3 rounded-xl border border-[var(--border-card)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover-subtle)] text-[var(--text-primary)] font-bold text-sm cursor-pointer shadow-xs transition-all"
+            >
+              Continue with Google
+            </button>
           )}
         </div>
 

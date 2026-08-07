@@ -1,1 +1,0 @@
-{"status":"online","underMaintenance":false,"expectedReturnTime":"2:00 PM","averagePrintSpeed":5,"agentOnlineStatus":"offline","systemHealth":{"printersDiscovered":true,"bwPrinterSelected":false,"colorPrinterSelected":false,"currentState":"NOT_READY","blockers":["Print agent is not connected","Printer is offline"],"timestamp":"2026-07-31T17:33:32.157Z"}}

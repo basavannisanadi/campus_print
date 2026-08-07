@@ -52,18 +52,6 @@ export interface PrintJob {
   metrics?: JobMetrics;
 }
 
-export interface Student {
-  id: string;
-  googleId: string;
-  name: string;
-  email: string;
-  picture: string;
-  role: 'student';
-  createdAt: string;
-  lastLogin: string;
-  isActive: boolean;
-  lastSeen: string;
-}
 export interface Shop {
   id: string;
   name: string;
@@ -98,23 +86,3 @@ export interface Shop {
   lastHeartbeat?: string;
 }
 
-export interface Agent {
-  agentId: string;
-  shopId: string;
-  machineName: string;
-  printerName: string;
-  daemonVersion: string;
-  onlineStatus: 'online' | 'offline';
-  lastSeen: string;
-  scanRequested?: boolean;
-  scanStatus?: 'idle' | 'scanning' | 'completed' | 'timeout' | 'error';
-  scanStartedAt?: string;
-}
-
-export interface Printer {
-  printerId: string;
-  shopId: string;
-  printerName: string;
-  status: 'online' | 'offline';
-  discoveredAt: string;
-}

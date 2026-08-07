@@ -1,15 +1,15 @@
 ================================================================
          CAMPUS PRINT AGENT — CONSOLIDATED DIAGNOSTIC REPORT     
 ================================================================
-Generated At            : 2026-07-31T17:36:15.020Z
+Generated At            : 2026-08-07T13:33:10.344Z
 Agent Version           : 1.0.0
 Node.js Version         : v24.11.1
 Windows OS Version      : Windows_NT 10.0.26200 (x64)
 Machine Name (Hostname) : VICTUS
 Target Server URL       : http://127.0.0.1:3001
 Shop ID                 : alliance_print
-Daemon PID              : 26000
-Parent PID (PPID)       : 15444
+Daemon PID              : 2268
+Parent PID (PPID)       : 12080
 ----------------------------------------------------------------
 1. CONFIGURATION & RUNTIME FILES:
   runtime.json: {
@@ -30,304 +30,358 @@ Parent PID (PPID)       : 15444
 }
 ----------------------------------------------------------------
 2. 10-STAGE STARTUP PROGRESSION:
-  [11:02:26 pm] [1/10] Agent launched
-  [11:02:26 pm] [DIAGNOSTIC] runtime.json read. runtime.token exists: true
-  [11:02:26 pm] [DIAGNOSTIC] runtime.token: "token_alliance_print"
-  [11:02:26 pm] [2/10] runtime.json loaded
-  [11:02:26 pm] [3/10] Configuration validated
-  [11:02:26 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:26 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:26 pm] [DIAGNOSTIC RESPONSE]
-  [11:02:26 pm] RESPONSE BODY = {"id":"alliance_print","name":"Alliance Print Center","ownerName":"Alliance Staff","phoneNumber":"9876543211","phone":"9876543211","address":"Alliance Main Block","maintenanceMode":false,"bwPrice":2,"colorPrice":5,"duplexPrice":3,"isOpen":true,"openingTime":"08:00 AM","closingTime":"08:00 PM","printerStatus":"offline","lastHeartbeat":"2026-07-31T17:32:15.063Z","bwStatusMode":"online","colorStatusMode":"online","bwMaintenanceMode":false,"colorMaintenanceMode":false,"bwPrinterName":"HP Officejet J4500 series","colorPrinterName":"HP Officejet J4500 series","printerName":"UNKNOWN","daemonVersion":"1.0.0","printers":[],"activePrinter":null}
-  [11:02:26 pm] [4/10] Backend reachable
-  [11:02:26 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:27 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:27 pm] [DIAGNOSTIC RESPONSE]
-  [11:02:27 pm] [5/10] Authentication successful
-  [11:02:27 pm] [6/10] Registration request sent
-  [11:02:34 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:35 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","machineName":"VICTUS","printerName":"HP Officejet J4500 series","daemonVersion":"1.0.0","printers":["EPSON L4360 Series","HP Ink Tank 310 series","HP Officejet J4500 series"]}
-  [11:02:35 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:35 pm] [DIAGNOSTIC RESPONSE]
-  [11:02:35 pm] [7/10] Registration acknowledged
-  [11:02:35 pm] [8/10] Initial heartbeat sent
-  [11:02:35 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:35 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:36 pm] [DIAGNOSTIC RESPONSE]
-  [11:02:43 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:43 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"HP Officejet J4500 series","printerCount":3,"printers":["EPSON L4360 Series","HP Ink Tank 310 series","HP Officejet J4500 series"],"printerStatus":"online","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":18,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-07-31T17:32:43.719Z"}
-  [11:02:43 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:43 pm] [DIAGNOSTIC RESPONSE]
-  [11:02:43 pm] [9/10] Heartbeat acknowledged by backend
-  [11:02:43 pm] [10/10] Agent ready
-  [11:02:43 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:43 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:44 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:44 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:44 pm] [DIAGNOSTIC RESPONSE]
-  [11:02:44 pm] [DIAGNOSTIC RESPONSE]
-  [11:02:53 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:53 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:53 pm] [DIAGNOSTIC RESPONSE]
-  [11:02:56 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:56 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:56 pm] [DIAGNOSTIC RESPONSE]
-  [11:02:56 pm] [HEARTBEAT] Backend acknowledged
-  [11:02:56 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:02:56 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:02:56 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:03 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:04 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:04 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:12 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:13 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:13 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:13 pm] [HEARTBEAT] Backend acknowledged
-  [11:03:13 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:14 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:14 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:14 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:24 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:24 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:24 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:25 pm] [HEARTBEAT] Backend acknowledged
-  [11:03:25 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:26 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:26 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:26 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:27 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:27 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:36 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:37 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:37 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:42 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:43 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:44 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:44 pm] [HEARTBEAT] Backend acknowledged
-  [11:03:44 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:44 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:45 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:47 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:48 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:49 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:49 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:50 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:50 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:51 pm] [HEARTBEAT] Backend acknowledged
-  [11:03:51 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:03:51 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:03:52 pm] [DIAGNOSTIC RESPONSE]
-  [11:03:59 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:00 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:00 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:01 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:01 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:02 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:02 pm] [HEARTBEAT] Backend acknowledged
-  [11:04:02 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:03 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:03 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:10 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:10 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:10 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:10 pm] [HEARTBEAT] Backend acknowledged
-  [11:04:10 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:11 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:11 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:11 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:11 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:11 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:19 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:19 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:19 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:20 pm] [HEARTBEAT] Backend acknowledged
-  [11:04:20 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:21 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:21 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:21 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:21 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:22 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:30 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:31 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:31 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:32 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:32 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:32 pm] [HEARTBEAT] Backend acknowledged
-  [11:04:32 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:33 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:33 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:33 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:42 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:42 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:43 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:43 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:43 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:44 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:44 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:44 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:44 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:44 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:44 pm] [HEARTBEAT] Backend acknowledged
-  [11:04:44 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:44 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:52 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:53 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:53 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:57 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:58 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:58 pm] [DIAGNOSTIC RESPONSE]
-  [11:04:58 pm] [HEARTBEAT] Backend acknowledged
-  [11:04:58 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:04:59 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:04:59 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:00 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:01 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:01 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:02 pm] [HEARTBEAT] Backend acknowledged
-  [11:05:02 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:04 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:04 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:04 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:04 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:05 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:12 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:13 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:13 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:13 pm] [HEARTBEAT] Backend acknowledged
-  [11:05:13 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:13 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:13 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:14 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:14 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:20 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:20 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:20 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:20 pm] [HEARTBEAT] Backend acknowledged
-  [11:05:20 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:21 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:21 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:24 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:25 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:25 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:29 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:29 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:29 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:29 pm] [HEARTBEAT] Backend acknowledged
-  [11:05:29 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:30 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:30 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:35 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:35 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:36 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:45 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:46 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:46 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:47 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:47 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:47 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:47 pm] [HEARTBEAT] Backend acknowledged
-  [11:05:47 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:47 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:47 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:52 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:52 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:53 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:56 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:57 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:57 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:57 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:57 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:57 pm] [DIAGNOSTIC RESPONSE]
-  [11:05:57 pm] [HEARTBEAT] Backend acknowledged
-  [11:05:57 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:05:57 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:05:58 pm] [DIAGNOSTIC RESPONSE]
-  [11:06:03 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:06:03 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:06:03 pm] [DIAGNOSTIC RESPONSE]
-  [11:06:04 pm] [HEARTBEAT] Backend acknowledged
-  [11:06:04 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:06:04 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:06:04 pm] [DIAGNOSTIC RESPONSE]
-  [11:06:07 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:06:07 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:06:07 pm] [DIAGNOSTIC RESPONSE]
-  [11:06:14 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:06:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:06:14 pm] [DIAGNOSTIC RESPONSE]
-  [11:06:14 pm] [HEARTBEAT] Backend acknowledged
-  [11:06:14 pm] 
-[DIAGNOSTIC REQUEST]
-  [11:06:14 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [11:06:14 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:16 pm] [1/10] Agent launched
+  [6:59:16 pm] [DIAGNOSTIC] runtime.json read. runtime.token exists: true
+  [6:59:16 pm] [DIAGNOSTIC] runtime.token: "token_alliance_print"
+  [6:59:16 pm] [2/10] runtime.json loaded
+  [6:59:16 pm] [3/10] Configuration validated
+  [6:59:16 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:16 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:16 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:16 pm] RESPONSE BODY = {"id":"alliance_print","name":"Alliance Print Center","ownerName":"Alliance Staff","phoneNumber":"9876543211","phone":"9876543211","address":"Alliance Main Block","maintenanceMode":false,"bwPrice":2,"colorPrice":5,"duplexPrice":3,"isOpen":true,"openingTime":"08:00 AM","closingTime":"08:00 PM","printerStatus":"offline","lastHeartbeat":"2026-08-07T13:29:10.856Z","bwStatusMode":"online","colorStatusMode":"online","bwMaintenanceMode":false,"colorMaintenanceMode":false,"bwPrinterName":"Microsoft Print to PDF","colorPrinterName":"Microsoft Print to PDF","printerName":"UNKNOWN","daemonVersion":"1.0.0","printers":[],"activePrinter":null}
+  [6:59:16 pm] [4/10] Backend reachable
+  [6:59:17 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:17 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:17 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:17 pm] [5/10] Authentication successful
+  [6:59:17 pm] [6/10] Registration request sent
+  [6:59:20 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:20 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","machineName":"VICTUS","printerName":"Microsoft Print to PDF","daemonVersion":"1.0.0","printers":["HP Officejet J4500 series"]}
+  [6:59:20 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:20 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:20 pm] [7/10] Registration acknowledged
+  [6:59:20 pm] [PrinterManager] Initializing printer intelligence layer...
+  [6:59:20 pm] [8/10] Initial heartbeat sent
+  [6:59:20 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:21 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:21 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:24 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:24 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":1,"printers":["HP Officejet J4500 series"],"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":9,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:29:24.895Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [6:59:25 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:25 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:25 pm] [9/10] Heartbeat acknowledged by backend
+  [6:59:25 pm] [10/10] Agent ready
+  [6:59:25 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:25 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:25 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:25 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:25 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:25 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:35 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:35 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:35 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:38 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:38 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":22,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:29:38.042Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [6:59:38 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:38 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:38 pm] [HEARTBEAT] Backend acknowledged
+  [6:59:38 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:38 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:38 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:45 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:45 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:45 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:48 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:48 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":32,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:29:48.117Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [6:59:48 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:48 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:48 pm] [HEARTBEAT] Backend acknowledged
+  [6:59:48 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:48 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:48 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:55 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:55 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:55 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:58 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:58 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":42,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:29:58.389Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [6:59:58 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:58 pm] [DIAGNOSTIC RESPONSE]
+  [6:59:58 pm] [HEARTBEAT] Backend acknowledged
+  [6:59:58 pm] 
+[DIAGNOSTIC REQUEST]
+  [6:59:58 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [6:59:58 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:05 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:05 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:05 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:08 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:08 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":52,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:30:08.161Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:00:08 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:08 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:08 pm] [HEARTBEAT] Backend acknowledged
+  [7:00:08 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:08 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:08 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:15 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:15 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:15 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:18 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:18 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":62,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:30:18.497Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:00:18 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:18 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:18 pm] [HEARTBEAT] Backend acknowledged
+  [7:00:18 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:18 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:18 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:25 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:25 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:25 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:29 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:29 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":73,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:30:29.090Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:00:29 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:29 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:29 pm] [HEARTBEAT] Backend acknowledged
+  [7:00:29 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:29 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:29 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:35 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:36 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:36 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:38 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:38 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":83,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:30:38.865Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:00:38 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:38 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:39 pm] [HEARTBEAT] Backend acknowledged
+  [7:00:39 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:39 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:39 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:46 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:46 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:46 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:48 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:48 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":92,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:30:48.615Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:00:48 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:48 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:48 pm] [HEARTBEAT] Backend acknowledged
+  [7:00:48 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:48 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:49 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:56 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:56 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:56 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:58 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:58 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":103,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:30:58.773Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:00:58 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:58 pm] [DIAGNOSTIC RESPONSE]
+  [7:00:59 pm] [HEARTBEAT] Backend acknowledged
+  [7:00:59 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:00:59 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:00:59 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:06 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:06 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:06 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:08 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:08 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":113,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:31:08.855Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:01:08 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:09 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:09 pm] [HEARTBEAT] Backend acknowledged
+  [7:01:09 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:09 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:09 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:16 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:16 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:16 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:19 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:19 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":123,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:31:19.041Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:01:19 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:19 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:19 pm] [HEARTBEAT] Backend acknowledged
+  [7:01:19 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:19 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:19 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:26 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:26 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:26 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:28 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:29 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":133,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:31:28.929Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:01:29 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:29 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:29 pm] [HEARTBEAT] Backend acknowledged
+  [7:01:29 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:29 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:29 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:36 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:36 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:36 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:39 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:39 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":143,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:31:39.517Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:01:39 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:39 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:39 pm] [HEARTBEAT] Backend acknowledged
+  [7:01:39 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:39 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:39 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:46 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:46 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:46 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:49 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:49 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":153,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:31:49.171Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:01:49 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:49 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:49 pm] [HEARTBEAT] Backend acknowledged
+  [7:01:49 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:49 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:49 pm] [DIAGNOSTIC RESPONSE]
+  [7:01:56 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:01:56 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:01:56 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:02 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:02 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":166,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:32:02.494Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:02:02 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:02 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:02 pm] [HEARTBEAT] Backend acknowledged
+  [7:02:02 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:02 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:02 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:06 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:06 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:06 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:09 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:09 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":173,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:32:09.293Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:02:09 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:09 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:09 pm] [HEARTBEAT] Backend acknowledged
+  [7:02:09 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:09 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:09 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:16 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:17 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:17 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:19 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:19 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":184,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:32:19.885Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:02:19 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:20 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:20 pm] [HEARTBEAT] Backend acknowledged
+  [7:02:20 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:20 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:20 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:27 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:27 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:27 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:29 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:29 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":194,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:32:29.704Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:02:29 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:29 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:29 pm] [HEARTBEAT] Backend acknowledged
+  [7:02:29 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:30 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:30 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:37 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:37 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:37 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:40 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:40 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":204,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:32:40.421Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:02:40 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:40 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:40 pm] [HEARTBEAT] Backend acknowledged
+  [7:02:40 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:40 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:40 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:47 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:47 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:47 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:49 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:49 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":214,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:32:49.865Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:02:49 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:50 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:50 pm] [HEARTBEAT] Backend acknowledged
+  [7:02:50 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:50 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:50 pm] [DIAGNOSTIC RESPONSE]
+  [7:02:57 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:02:57 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:02:57 pm] [DIAGNOSTIC RESPONSE]
+  [7:03:00 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:03:00 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":224,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:33:00.034Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:03:00 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:03:00 pm] [DIAGNOSTIC RESPONSE]
+  [7:03:00 pm] [HEARTBEAT] Backend acknowledged
+  [7:03:00 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:03:00 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:03:00 pm] [DIAGNOSTIC RESPONSE]
+  [7:03:07 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:03:07 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:03:07 pm] [DIAGNOSTIC RESPONSE]
+  [7:03:09 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:03:09 pm] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":234,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:33:09.871Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [7:03:10 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:03:10 pm] [DIAGNOSTIC RESPONSE]
+  [7:03:10 pm] [HEARTBEAT] Backend acknowledged
+  [7:03:10 pm] 
+[DIAGNOSTIC REQUEST]
+  [7:03:10 pm] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [7:03:10 pm] [DIAGNOSTIC RESPONSE]
 ----------------------------------------------------------------
 3. REGISTRATION STATUS:
   Request Sent        : false
@@ -354,78 +408,78 @@ Parent PID (PPID)       : 15444
   None recorded.
 ----------------------------------------------------------------
 9. LAUNCHER LOG (TAIL 30 LINES):
-  [2026-07-30 4:56:03 pm] Stop signal written successfully.
-  [2026-07-30 4:56:03 pm] Attempting process termination for PID 26276...
-  [2026-07-30 4:56:03 pm] Print Agent shutdown completed.
-  [2026-07-30 4:58:17 pm] Invoked: "stop" -> Action: STOP
-  [2026-07-30 4:58:17 pm] Stopping Print Agent: Writing stop signal to shutdown.signal...
-  [2026-07-30 4:58:17 pm] Stop signal written successfully.
-  [2026-07-30 4:58:17 pm] Print Agent shutdown completed.
-  [2026-07-30 4:58:19 pm] Parsed serverUrl: http://127.0.0.1:3001
-  [2026-07-30 4:58:19 pm] Parsed shopId: alliance_print
-  [2026-07-30 4:58:19 pm] Parsed token: [HIDDEN]
-  [2026-07-30 4:58:19 pm] Invoked: "campusprint://start?serverUrl=http://127.0.0.1:3001&shopId=alliance_print&token=token_alliance_print_f36bdec457d02fdc20b2fef1195b2900f89853e2c7247d9529830ae8e9156187" -> Action: START
-  [2026-07-30 4:58:19 pm] Runtime configuration updated atomically: http://127.0.0.1:3001 / alliance_print
-  [2026-07-30 4:58:19 pm] Starting Print Agent daemon (client.cjs) in Taskbar window...
-  [2026-07-30 5:02:16 pm] Invoked: "stop" -> Action: STOP
-  [2026-07-30 5:02:16 pm] Stopping Print Agent: Writing stop signal to shutdown.signal...
-  [2026-07-30 5:02:16 pm] Stop signal written successfully.
-  [2026-07-30 5:02:16 pm] Attempting process termination for PID 23916...
-  [2026-07-30 5:02:17 pm] Print Agent shutdown completed.
-  [2026-07-31 11:02:20 pm] Invoked: "stop" -> Action: STOP
-  [2026-07-31 11:02:20 pm] Stopping Print Agent: Writing stop signal to shutdown.signal...
-  [2026-07-31 11:02:20 pm] Stop signal written successfully.
-  [2026-07-31 11:02:20 pm] Attempting process termination for PID 18752...
-  [2026-07-31 11:02:20 pm] daemon.lock removed.
-  [2026-07-31 11:02:20 pm] Print Agent shutdown completed.
-  [2026-07-31 11:02:26 pm] Parsed serverUrl: http://127.0.0.1:3001
-  [2026-07-31 11:02:26 pm] Parsed shopId: alliance_print
-  [2026-07-31 11:02:26 pm] Parsed token: [HIDDEN]
-  [2026-07-31 11:02:26 pm] Invoked: "campusprint://start?serverUrl=http://127.0.0.1:3001&shopId=alliance_print&token=token_alliance_print_f36bdec457d02fdc20b2fef1195b2900f89853e2c7247d9529830ae8e9156187" -> Action: START
-  [2026-07-31 11:02:26 pm] Runtime configuration updated atomically: http://127.0.0.1:3001 / alliance_print
-  [2026-07-31 11:02:26 pm] Starting Print Agent daemon (client.cjs) in Taskbar window...
+  [2026-08-07 6:42:50 pm] Process tree for PID 15928 killed via taskkill.
+  [2026-08-07 6:42:50 pm] daemon.lock removed.
+  [2026-08-07 6:42:50 pm] Print Agent shutdown completed.
+  [2026-08-07 6:50:26 pm] Invoked: "stop" -> Action: STOP
+  [2026-08-07 6:50:26 pm] Stopping Print Agent: Writing stop signal to shutdown.signal...
+  [2026-08-07 6:50:26 pm] Stop signal written successfully.
+  [2026-08-07 6:50:26 pm] Print Agent shutdown completed.
+  [2026-08-07 6:50:29 pm] Parsed serverUrl: http://127.0.0.1:3001
+  [2026-08-07 6:50:29 pm] Parsed shopId: alliance_print
+  [2026-08-07 6:50:29 pm] Parsed token: [HIDDEN]
+  [2026-08-07 6:50:29 pm] Invoked: "campusprint://start?serverUrl=http://127.0.0.1:3001&shopId=alliance_print&token=token_alliance_print_eyJzaG9wSWQiOiJhbGxpYW5jZV9wcmludCIsInR5cGUiOiJhZG1pbiIsImV4cGlyZXNBdCI6MTc4NjE1MjAyOTM5OCwibm9uY2UiOiI0N2QyZjJiZmIxNzczMTYwMjllOTI5MWQ4NmQxYWUxMyJ9.413a257f94886ec51c14abddc4719ac1cb6f66cc4d5cb2fbfbf94d0f4d6dc614" -> Action: START
+  [2026-08-07 6:50:29 pm] Runtime configuration updated atomically: http://127.0.0.1:3001 / alliance_print
+  [2026-08-07 6:50:29 pm] Starting Print Agent daemon (client.cjs) in Taskbar window...
+  [2026-08-07 6:54:26 pm] Invoked: "stop" -> Action: STOP
+  [2026-08-07 6:54:26 pm] Stopping Print Agent: Writing stop signal to shutdown.signal...
+  [2026-08-07 6:54:26 pm] Stop signal written successfully.
+  [2026-08-07 6:54:26 pm] Attempting process termination for PID 16928...
+  [2026-08-07 6:54:27 pm] Process tree for PID 16928 killed via taskkill.
+  [2026-08-07 6:54:27 pm] daemon.lock removed.
+  [2026-08-07 6:54:27 pm] Print Agent shutdown completed.
+  [2026-08-07 6:59:12 pm] Invoked: "stop" -> Action: STOP
+  [2026-08-07 6:59:13 pm] Stopping Print Agent: Writing stop signal to shutdown.signal...
+  [2026-08-07 6:59:13 pm] Stop signal written successfully.
+  [2026-08-07 6:59:13 pm] Print Agent shutdown completed.
+  [2026-08-07 6:59:16 pm] Parsed serverUrl: http://127.0.0.1:3001
+  [2026-08-07 6:59:16 pm] Parsed shopId: alliance_print
+  [2026-08-07 6:59:16 pm] Parsed token: [HIDDEN]
+  [2026-08-07 6:59:16 pm] Invoked: "campusprint://start?serverUrl=http://127.0.0.1:3001&shopId=alliance_print&token=token_alliance_print_eyJzaG9wSWQiOiJhbGxpYW5jZV9wcmludCIsInR5cGUiOiJhZG1pbiIsImV4cGlyZXNBdCI6MTc4NjE1MjU1NjA0Miwibm9uY2UiOiIxYmFkYWVjOTA3MWE2MjRkN2ZkMWFiNzk3NGY1NjEzZCJ9.4a8a9f2cc31cc591d551be4dc0c1b3419a618e786ee5e4b95118f97c62e0ef25" -> Action: START
+  [2026-08-07 6:59:16 pm] Runtime configuration updated atomically: http://127.0.0.1:3001 / alliance_print
+  [2026-08-07 6:59:16 pm] Starting Print Agent daemon (client.cjs) in Taskbar window...
 ----------------------------------------------------------------
 10. CLIENT LOG (TAIL 40 LINES):
-  [Client] [2026-07-31T17:36:04.078Z] 
+  [Client] [2026-08-07T13:33:00.538Z] SERVER URL = http://127.0.0.1:3001
+  [Client] [2026-08-07T13:33:00.558Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-08-07T13:33:00.599Z] HTTP METHOD = GET
+  [Client] [2026-08-07T13:33:00.629Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [Client] [2026-08-07T13:33:00.667Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-08-07T13:33:00.694Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-08-07T13:33:00.723Z] STATUS CODE = 200
+  [Client] [2026-08-07T13:33:00.760Z] RESPONSE BODY = {"bwPrinterId":"","bwPrinterName":"Microsoft Print to PDF","colorPrinterId":"","colorPrinterName":"Microsoft Print to PDF"}
+  [Client] [2026-08-07T13:33:07.431Z] 
   [DIAGNOSTIC REQUEST]
-  [Client] [2026-07-31T17:36:04.151Z] SERVER URL = http://127.0.0.1:3001
-  [Client] [2026-07-31T17:36:04.183Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
-  [Client] [2026-07-31T17:36:04.219Z] HTTP METHOD = GET
-  [Client] [2026-07-31T17:36:04.257Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [Client] [2026-07-31T17:36:04.341Z] [DIAGNOSTIC RESPONSE]
-  [Client] [2026-07-31T17:36:04.400Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
-  [Client] [2026-07-31T17:36:04.459Z] STATUS CODE = 200
-  [Client] [2026-07-31T17:36:04.499Z] RESPONSE BODY = {"bwPrinterId":"","bwPrinterName":"HP Officejet J4500 series","colorPrinterId":"","colorPrinterName":"HP Officejet J4500 series"}
-  [Client] [2026-07-31T17:36:07.189Z] 
+  [Client] [2026-08-07T13:33:07.455Z] SERVER URL = http://127.0.0.1:3001
+  [Client] [2026-08-07T13:33:07.473Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-08-07T13:33:07.485Z] HTTP METHOD = GET
+  [Client] [2026-08-07T13:33:07.498Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [Client] [2026-08-07T13:33:07.523Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-08-07T13:33:07.538Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-08-07T13:33:07.550Z] STATUS CODE = 200
+  [Client] [2026-08-07T13:33:07.561Z] RESPONSE BODY = {"bwPrinterId":"","bwPrinterName":"Microsoft Print to PDF","colorPrinterId":"","colorPrinterName":"Microsoft Print to PDF"}
+  [Client] [2026-08-07T13:33:09.872Z] 
   [DIAGNOSTIC REQUEST]
-  [Client] [2026-07-31T17:36:07.385Z] SERVER URL = http://127.0.0.1:3001
-  [Client] [2026-07-31T17:36:07.508Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
-  [Client] [2026-07-31T17:36:07.592Z] HTTP METHOD = GET
-  [Client] [2026-07-31T17:36:07.670Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [Client] [2026-07-31T17:36:07.877Z] [DIAGNOSTIC RESPONSE]
-  [Client] [2026-07-31T17:36:07.980Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
-  [Client] [2026-07-31T17:36:08.207Z] STATUS CODE = 200
-  [Client] [2026-07-31T17:36:08.285Z] RESPONSE BODY = {"bwPrinterId":"","bwPrinterName":"HP Officejet J4500 series","colorPrinterId":"","colorPrinterName":"HP Officejet J4500 series"}
-  [Client] [2026-07-31T17:36:14.439Z] 
+  [Client] [2026-08-07T13:33:09.888Z] SERVER URL = http://127.0.0.1:3001
+  [Client] [2026-08-07T13:33:09.912Z] POST = http://127.0.0.1:3001/api/agent/heartbeat
+  [Client] [2026-08-07T13:33:09.943Z] HTTP METHOD = POST
+  [Client] [2026-08-07T13:33:09.974Z] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"Microsoft Print to PDF","printerCount":0,"printerStatus":"unknown","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":234,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-08-07T13:33:09.871Z","printerIntelligence":{"printerName":"","vendor":null,"model":null,"serialNumber":null,"status":"unknown","isOffline":false,"isJam":false,"isPaperEmpty":false,"isCoverOpen":false,"isPrinting":false,"pageCount":null,"consumables":[],"supportedFeatures":[],"provider":"none","reachable":false,"errorMessage":null,"timestamp":"2026-08-07T13:29:20.900Z"}}
+  [Client] [2026-08-07T13:33:10.012Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [Client] [2026-08-07T13:33:10.056Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-08-07T13:33:10.081Z] POST = http://127.0.0.1:3001/api/agent/heartbeat
+  [Client] [2026-08-07T13:33:10.104Z] STATUS CODE = 200
+  [Client] [2026-08-07T13:33:10.122Z] RESPONSE BODY = {"success":true,"acknowledged":true,"serverTime":"2026-08-07T13:33:10.050Z","scanRequested":false}
+  [Client] [2026-08-07T13:33:10.138Z] [HEARTBEAT] Backend acknowledged
+  [Client] [2026-08-07T13:33:10.164Z] 
   [DIAGNOSTIC REQUEST]
-  [Client] [2026-07-31T17:36:14.473Z] SERVER URL = http://127.0.0.1:3001
-  [Client] [2026-07-31T17:36:14.498Z] POST = http://127.0.0.1:3001/api/agent/heartbeat
-  [Client] [2026-07-31T17:36:14.524Z] HTTP METHOD = POST
-  [Client] [2026-07-31T17:36:14.550Z] REQUEST BODY = {"agentId":"CP-AGENT-E2E-TEST","shopId":"alliance_print","daemonVersion":"1.0.0","protocolVersion":"1.0.0","installedVersion":"1.0.0","selectedPrinter":"HP Officejet J4500 series","printerCount":0,"printerStatus":"online","queueLength":0,"currentJob":null,"lastPrintTime":"","agentUptime":229,"windowsVersion":"Windows_NT 10.0.26200","lastCommunication":"2026-07-31T17:36:14.436Z"}
-  [Client] [2026-07-31T17:36:14.577Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [Client] [2026-07-31T17:36:14.665Z] [DIAGNOSTIC RESPONSE]
-  [Client] [2026-07-31T17:36:14.699Z] POST = http://127.0.0.1:3001/api/agent/heartbeat
-  [Client] [2026-07-31T17:36:14.729Z] STATUS CODE = 200
-  [Client] [2026-07-31T17:36:14.754Z] RESPONSE BODY = {"success":true,"acknowledged":true,"serverTime":"2026-07-31T17:36:14.663Z","scanRequested":false}
-  [Client] [2026-07-31T17:36:14.781Z] [HEARTBEAT] Backend acknowledged
-  [Client] [2026-07-31T17:36:14.810Z] 
-  [DIAGNOSTIC REQUEST]
-  [Client] [2026-07-31T17:36:14.833Z] SERVER URL = http://127.0.0.1:3001
-  [Client] [2026-07-31T17:36:14.856Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
-  [Client] [2026-07-31T17:36:14.881Z] HTTP METHOD = GET
-  [Client] [2026-07-31T17:36:14.930Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
-  [Client] [2026-07-31T17:36:14.977Z] [DIAGNOSTIC RESPONSE]
-  [Client] [2026-07-31T17:36:15.019Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-08-07T13:33:10.181Z] SERVER URL = http://127.0.0.1:3001
+  [Client] [2026-08-07T13:33:10.214Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-08-07T13:33:10.232Z] HTTP METHOD = GET
+  [Client] [2026-08-07T13:33:10.247Z] [DIAGNOSTIC] getAuthHeader() config.token: "token_alliance_print"
+  [Client] [2026-08-07T13:33:10.277Z] [DIAGNOSTIC RESPONSE]
+  [Client] [2026-08-07T13:33:10.298Z] GET = http://127.0.0.1:3001/api/printers/mapping?shopId=alliance_print
+  [Client] [2026-08-07T13:33:10.324Z] STATUS CODE = 200
+  [Client] [2026-08-07T13:33:10.344Z] RESPONSE BODY = {"bwPrinterId":"","bwPrinterName":"Microsoft Print to PDF","colorPrinterId":"","colorPrinterName":"Microsoft Print to PDF"}
 ================================================================
                      END OF DIAGNOSTIC REPORT                   
 ================================================================
