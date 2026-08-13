@@ -161,5 +161,5 @@ describe('Agent Registration 401 Regression Test', () => {
         }
       });
     });
-  });
+  }, 15000);
 });

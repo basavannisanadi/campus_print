@@ -146,8 +146,15 @@ export default function Login() {
           )}
 
           {googleClientId && (
-            <div className="w-full flex justify-center mt-2" style={{ minHeight: '44px' }}>
+            <div className="w-full flex flex-col items-center gap-3 mt-2">
               <div ref={googleButtonRef} className="w-full max-w-[320px]" />
+              <button
+                type="button"
+                onClick={() => setShowMockPicker(true)}
+                className="w-full max-w-[320px] flex items-center justify-center gap-3 px-6 py-2.5 rounded-xl border border-dashed border-purple-300 bg-purple-50/50 hover:bg-purple-50 text-purple-700 font-bold text-sm cursor-pointer shadow-xs transition-all"
+              >
+                Mock Bypass Login
+              </button>
             </div>
           )}
 

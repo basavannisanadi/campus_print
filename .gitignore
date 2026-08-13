@@ -12,13 +12,16 @@ server/data/
 server/uploads/
 server/uploads-test/
 print-client/temp/
+print-client/temp-success/
 print-client/printed_output/
 temp/
 logs/
 daemon.lock
+scratch/
 
 # Local Client/Server Files
 print-client/config.json
+print-client/runtime.json
 *.exe
 *.zip
 

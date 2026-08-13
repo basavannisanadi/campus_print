@@ -257,7 +257,7 @@ describe('Jobs API Supertest Coverage', () => {
         .attach('files', badBuffer, 'test.txt');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Only PDF, images, Word (.doc/.docx), and PowerPoint (.ppt/.pptx) are supported.');
+      expect(res.body.error).toContain('Only PDF (.pdf) and images (.png, .jpg, .jpeg) are supported.');
 
       // Assert no files are written to the uploads directory
       const uploadedFiles = fs.readdirSync(UPLOADS_TEST_DIR);

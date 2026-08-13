@@ -346,6 +346,71 @@ let pollTimer = null;
 let isShuttingDown = false;
 let isRegistered = false;
 
+// --- P1 PREFETCH CACHE & PERFORMANCE INSTRUMENTATION ---
+const prefetchedJobs = new Map();
+const activePrefetches = new Set();
+let lastSumatraExitTime = 0;
+
+async function prefetchNextJob(nextJob, currentJob) {
+  if (!nextJob || !nextJob.id || !nextJob.serverFilePath) return;
+
+  // 1. Customer Order Boundary Check
+  if (currentJob && currentJob.orderId && nextJob.orderId !== currentJob.orderId) {
+    logToFile(`[PREFETCH SKIP] Customer boundary mismatch: nextJob.orderId (${nextJob.orderId}) !== currentJob.orderId (${currentJob.orderId})`);
+    return;
+  }
+
+  // 2. Deduplication & In-Flight Check
+  if (prefetchedJobs.has(nextJob.id) || activePrefetches.has(nextJob.id)) {
+    logToFile(`[PREFETCH SKIP] Job ${nextJob.id} is already prefetched or downloading.`);
+    return;
+  }
+
+  // 3. Resource Limit: Max 1 prefetched file on disk. Clean up previous prefetch cache entries if any.
+  for (const [id, item] of prefetchedJobs.entries()) {
+    logToFile(`[PREFETCH CLEANUP] Evicting stale prefetched file for job ${id}`);
+    try { if (fs.existsSync(item.localPath)) fs.unlinkSync(item.localPath); } catch {}
+    if (item.printablePath !== item.localPath) {
+      try { if (fs.existsSync(item.printablePath)) fs.unlinkSync(item.printablePath); } catch {}
+    }
+    prefetchedJobs.delete(id);
+  }
+
+  activePrefetches.add(nextJob.id);
+  const tPrefetchStart = Date.now();
+  logToFile(`[PREFETCH START] Pre-fetching next job ${nextJob.token} (${nextJob.fileName}) for order ${nextJob.orderId}`);
+
+  try {
+    const safeFileName = sanitizeCmdArg(path.basename(nextJob.fileName));
+    const prefetchLocalPath = path.join(TEMP_DIR, 'prefetch-' + nextJob.id + '-' + safeFileName);
+
+    await downloadFile(nextJob.serverFilePath, prefetchLocalPath);
+
+    if (!fs.existsSync(prefetchLocalPath) || fs.statSync(prefetchLocalPath).size === 0) {
+      throw new Error('Downloaded prefetch file is zero bytes or missing');
+    }
+
+    const printablePath = await convertToPdf(prefetchLocalPath);
+    const tPrefetchEnd = Date.now();
+    const durationMs = tPrefetchEnd - tPrefetchStart;
+
+    logToFile(`[PREFETCH COMPLETE] Job ${nextJob.token} prefetched in ${durationMs}ms | Local Path: ${prefetchLocalPath}`);
+
+    prefetchedJobs.set(nextJob.id, {
+      localPath: prefetchLocalPath,
+      printablePath: printablePath,
+      orderId: nextJob.orderId,
+      downloadedAt: tPrefetchEnd,
+      job: nextJob
+    });
+  } catch (err) {
+    // Prefetch failure MUST NOT fail current job or disrupt printing
+    logToFile(`[PREFETCH FAILED] Job ${nextJob.token} prefetch error: ${err.message}. Fallback to standard download upon execution.`);
+  } finally {
+    activePrefetches.delete(nextJob.id);
+  }
+}
+
 // Ensure directories
 const TEMP_DIR = path.join(__dirname, 'temp');
 const OUTPUT_DIR = path.join(__dirname, 'printed_output');
@@ -630,12 +695,18 @@ function showNotification(title, message) {
 
 function runPowershell(script, args = [], timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
+    let finalScript = script;
+    if (Array.isArray(args) && args.length > 0) {
+      args.forEach((arg, idx) => {
+        const safeArg = String(arg || '').replace(/'/g, "''");
+        finalScript = finalScript.replace(new RegExp(`\\$args\\[${idx}\\]`, 'g'), `'${safeArg}'`);
+      });
+    }
     const child = cp.spawn('powershell.exe', [
       '-NoProfile',
       '-NonInteractive',
       '-Command',
-      script,
-      ...args
+      finalScript
     ], { windowsHide: true });
     
     let stdout = '';
@@ -685,9 +756,12 @@ function getDefaultPrinter() {
 
 function getInstalledPrinters() {
   return new Promise(async (resolve) => {
-    const script = `Get-Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name`;
+    if (config.mockPrinter) {
+      return resolve(['BwMockPrinter', 'ColorMockPrinter']);
+    }
+    const script = `Get-CimInstance -ClassName Win32_Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name`;
     try {
-      const out = await runPowershell(script);
+      const out = await runPowershell(script, [], 3000);
       if (out.trim()) {
         return resolve(out.split(/\r?\n/).map(p => p.trim()).filter(Boolean));
       }
@@ -695,9 +769,9 @@ function getInstalledPrinters() {
       logToFile(`[WARN] Primary printer query failed: ${err.message}`);
     }
     
-    const fallbackScript = `Get-CimInstance -ClassName Win32_Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name`;
+    const fallbackScript = `Get-Printer | Where-Object PortName -notlike 'PORTPROMPT*' | Where-Object PortName -notlike 'nul*' | Where-Object PortName -notlike 'Microsoft*' | Where-Object Name -notlike '*PDF*' | Where-Object Name -notlike '*XPS*' | Where-Object Name -notlike '*OneNote*' | Where-Object Name -notlike '*Fax*' | Where-Object Name -notlike '*Send to*' | Where-Object Name -notlike '*AnyDesk*' | Where-Object Name -notlike '*PDF24*' | Select-Object -ExpandProperty Name`;
     try {
-      const out = await runPowershell(fallbackScript);
+      const out = await runPowershell(fallbackScript, [], 3000);
       resolve(out.split(/\r?\n/).map(p => p.trim()).filter(Boolean));
     } catch (err) {
       logToFile(`[WARN] Fallback printer query failed: ${err.message}`);
@@ -894,6 +968,7 @@ function startRecoveryLoop() {
           recoveryActive = false;
           isQueuePaused = false;
           showNotification('Campus Print Hub', `Resuming: Printer is back online!`);
+          processNextDispatchedJob();
           poll();
         }
       }
@@ -924,18 +999,59 @@ async function processJob(job) {
     await apiPost(`/api/jobs/${job.id}/status`, { status: 'printing', progressPercent: 0 });
 
     const safeFileName = sanitizeCmdArg(path.basename(job.fileName));
-    const localPath = path.join(TEMP_DIR, job.id + '-' + safeFileName);
-    console.log('  Downloading file...');
-    await downloadFile(job.serverFilePath, localPath);
-    console.log('  Download complete.');
+    const defaultLocalPath = path.join(TEMP_DIR, job.id + '-' + safeFileName);
+    let localPath = defaultLocalPath;
+    let printablePath = null;
+    let prefetchHit = false;
 
-    try {
-      await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'downloaded', printerId, printerName, daemonInstance });
-    } catch (e) {
-      console.error('  [Telemetry Error] Failed timeline downloaded:', e.message);
+    // Check P1 prefetch cache
+    if (prefetchedJobs.has(job.id)) {
+      const cached = prefetchedJobs.get(job.id);
+      prefetchedJobs.delete(job.id);
+
+      if (cached && fs.existsSync(cached.localPath) && fs.statSync(cached.localPath).size > 0) {
+        prefetchHit = true;
+        localPath = cached.localPath;
+        printablePath = cached.printablePath;
+        logToFile(`[PREFETCH HIT] Job ${job.token} (${job.fileName}) ready locally! Network download skipped.`);
+        try {
+          await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'downloaded', printerId, printerName, daemonInstance });
+        } catch (e) {}
+      } else {
+        logToFile(`[PREFETCH MISS] Cached file for ${job.token} missing or invalid. Falling back to normal download.`);
+      }
     }
 
-    const printablePath = await convertToPdf(localPath);
+    if (!prefetchHit) {
+      logToFile(`[PREFETCH MISS] Downloading file for ${job.token}...`);
+      console.log('  Downloading file...');
+      const tDownloadStart = Date.now();
+      logToFile(`[PERF][T12] PDF download started at ${tDownloadStart} (${new Date(tDownloadStart).toISOString()})`);
+      await downloadFile(job.serverFilePath, localPath);
+      const tDownloadEnd = Date.now();
+      logToFile(`[PERF][T13] PDF download completed at ${tDownloadEnd} (${new Date(tDownloadEnd).toISOString()}) — duration: ${tDownloadEnd - tDownloadStart}ms`);
+      logToFile(`[DOWNLOAD END] Job ${job.token} downloaded in ${tDownloadEnd - tDownloadStart}ms`);
+      console.log('  Download complete.');
+
+      try {
+        await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'downloaded', printerId, printerName, daemonInstance });
+      } catch (e) {
+        console.error('  [Telemetry Error] Failed timeline downloaded:', e.message);
+      }
+
+      printablePath = await convertToPdf(localPath);
+    } else {
+      const t13Hit = Date.now();
+      logToFile(`[PERF][T12/T13 HIT] Prefetch hit — PDF download skipped at ${t13Hit}`);
+    }
+
+    // Trigger N+1 background prefetch for next job in order (if present and matching customer order)
+    if (job._nextJob) {
+      prefetchNextJob(job._nextJob, job).catch(e => {
+        logToFile(`[PREFETCH ERROR] Background prefetch error: ${e.message}`);
+      });
+    }
+
     const totalPages = job.pageCount * job.copies;
 
     if (config.mockPrinter) {
@@ -995,6 +1111,15 @@ async function processJob(job) {
         printablePath
       ];
       
+      const tSumatraStart = Date.now();
+      logToFile(`[PERF][T14] SumatraPDF spawn started at ${tSumatraStart} (${new Date(tSumatraStart).toISOString()}) for job ${job.token}`);
+      logToFile(`[PRINT START] Job ${job.token} sending to printer spooler at ${tSumatraStart}`);
+
+      if (lastSumatraExitTime > 0) {
+        const interFileGap = tSumatraStart - lastSumatraExitTime;
+        logToFile(`[PERF METRIC] INTER_FILE_GAP = ${interFileGap}ms (Previous Sumatra exit -> Current Sumatra start for job ${job.token})`);
+      }
+
       console.log(`  [spool] Executing: "${sumatraPath}" ${spawnArgs.join(' ')}`);
       
       await new Promise((resolve, reject) => {
@@ -1013,6 +1138,11 @@ async function processJob(job) {
         });
       });
 
+      const tSumatraExit = Date.now();
+      lastSumatraExitTime = tSumatraExit;
+      logToFile(`[PERF][T15] SumatraPDF process exited at ${tSumatraExit} (${new Date(tSumatraExit).toISOString()}) — duration: ${tSumatraExit - tSumatraStart}ms`);
+      logToFile(`[SUMATRA EXIT] Job ${job.token} SumatraPDF process exited in ${tSumatraExit - tSumatraStart}ms`);
+
       try {
         await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'spool_command_sent', printerId, printerName, daemonInstance });
       } catch (e) {}
@@ -1023,18 +1153,22 @@ async function processJob(job) {
       
       for (let attempt = 0; attempt < 15; attempt++) {
         const jobs = await getSpoolerJobs(activePrinter);
-        spoolerJob = jobs.find(j => {
-          if (!j.DocumentName) return false;
-          const spoolDocLower = j.DocumentName.toLowerCase();
-          const spoolBasename = path.basename(spoolDocLower);
-          const localBasename = path.basename(normalizedLocalPath);
-          return spoolDocLower === normalizedLocalPath || spoolBasename === localBasename || spoolDocLower.includes(localBasename);
-        });
+        if (jobs.length > 0) {
+          spoolerJob = jobs.find(j => {
+            if (!j.DocumentName) return false;
+            const spoolDocLower = j.DocumentName.toLowerCase();
+            const spoolBasename = path.basename(spoolDocLower);
+            const localBasename = path.basename(normalizedLocalPath);
+            return spoolDocLower === normalizedLocalPath || spoolBasename === localBasename || spoolDocLower.includes(localBasename);
+          }) || jobs[jobs.length - 1];
+        }
         if (spoolerJob) break;
         await new Promise(r => setTimeout(r, 200));
       }
 
       if (spoolerJob) {
+        const t16 = Date.now();
+        logToFile(`[PERF][T16] Windows Print Spooler job detected (Spooler ID ${spoolerJob.Id}) at ${t16} (${new Date(t16).toISOString()})`);
         try {
           await apiPost(`/api/jobs/${job.id}/timeline`, { stage: 'spooler_job_detected', printerId, printerName, daemonInstance });
         } catch (e) {}
@@ -1074,6 +1208,40 @@ async function processJob(job) {
   } finally {
     activeJobToken = null;
     logToFile(`[DIAG][processJob] finally — busy will be cleared by .finally() chain or poll()`);
+  }
+}
+
+const pendingDispatchedJobs = [];
+
+function enqueueAndProcessDispatchedJob(job, nextJob) {
+  if (job && job.id) {
+    if (nextJob) {
+      job._nextJob = nextJob;
+    }
+    if (!pendingDispatchedJobs.some(j => j.id === job.id)) {
+      pendingDispatchedJobs.push(job);
+      const t10 = Date.now();
+      logToFile(`[PERF][T10] Agent enqueued job ${job.token} (id=${job.id}) at ${t10} (${new Date(t10).toISOString()})`);
+      logToFile(`[DISPATCH QUEUE] Enqueued job ${job.token} (${job.fileName}) | Total queued: ${pendingDispatchedJobs.length}`);
+    }
+  }
+  processNextDispatchedJob();
+}
+
+async function processNextDispatchedJob() {
+  if (busy || isQueuePaused || pendingDispatchedJobs.length === 0) return;
+  busy = true;
+  const job = pendingDispatchedJobs.shift();
+  const t11 = Date.now();
+  logToFile(`[PERF][T11] Agent dequeued job ${job.token} and starting processJob() at ${t11} (${new Date(t11).toISOString()})`);
+  logToFile(`[DISPATCH QUEUE] Dequeued job ${job.token} (${job.fileName}) for execution | Remaining: ${pendingDispatchedJobs.length}`);
+  try {
+    await processJob(job);
+  } catch (err) {
+    logToFile(`[JOB ERROR] ${err.message}`);
+  } finally {
+    busy = false;
+    setTimeout(processNextDispatchedJob, 50);
   }
 }
 
@@ -1165,20 +1333,20 @@ function connectSSE() {
           try {
             const data = JSON.parse(line.substring(5).trim());
             if (data.type === 'dispatch_job' && data.job) {
-              // Server-push dispatch: backend has pre-claimed this job
-              logToFile(`[DISPATCH] Received job: ${data.job.token} — ${data.job.fileName}`);
-              logToFile(`[DIAG][SSE] dispatch_job received | jobId=${data.job.id} token=${data.job.token}`);
+              const t9 = Date.now();
+              logToFile(`[PERF][T9] Agent received SSE dispatch_job for jobId=${data.job.id} at ${t9} (${new Date(t9).toISOString()})`);
+              // Server-push dispatch: backend has pre-claimed this job (includes optional nextJob for P1 prefetch)
+              logToFile(`[DISPATCH] Received job: ${data.job.token} — ${data.job.fileName} (nextJob: ${data.nextJob?.token || 'none'})`);
+              logToFile(`[DIAG][SSE] dispatch_job received | jobId=${data.job.id} token=${data.job.token} nextJobId=${data.nextJob?.id || 'none'}`);
               logToFile(`[DIAG][SSE] Agent state | busy=${busy} paused=${isQueuePaused}`);
-              if (!busy && !isQueuePaused) {
-                busy = true;
-                logToFile(`[DIAG][SSE] processJob starting for jobId=${data.job.id}`);
-                processJob(data.job)
-                  .catch(err => logToFile(`[JOB ERROR] ${err.message}`))
-                  .finally(() => { busy = false; });
+              if (!isQueuePaused) {
+                enqueueAndProcessDispatchedJob(data.job, data.nextJob);
               } else {
-                logToFile(`[DISPATCH] Ignored (busy=${busy}, paused=${isQueuePaused})`);
+                logToFile(`[DISPATCH] Ignored due to queue paused`);
               }
             } else if (data.type === 'new_job') {
+              poll();
+            } else if (data.type === 'scan_printers' && data.shopId === config.shopId) {
               poll();
             } else if (data.type === 'scan_printers' && data.shopId === config.shopId) {
               activeScanRequested = true;

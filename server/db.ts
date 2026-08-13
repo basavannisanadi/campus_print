@@ -59,6 +59,7 @@ export interface DbJob {
   createdAt: string;
   progressPercent?: number;
   serverFilePath?: string;
+  originalFilePath?: string;
   reason?: string;
   scheduledFor?: string;
   shopId: string;

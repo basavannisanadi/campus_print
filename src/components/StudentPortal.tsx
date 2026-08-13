@@ -60,9 +60,11 @@ interface Props {
 
 const ACCEPTED_TYPES = [
   'application/pdf',
+  'image/png',
+  'image/jpeg'
 ];
 
-const ACCEPTED_EXT = '.pdf';
+const ACCEPTED_EXT = 'application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -116,6 +118,9 @@ interface FileConfig {
   pageCount: number;
   choosePagesType: 'all' | 'custom';
   customPages: string;
+  isConverting?: boolean;
+  preConvertedPdfFilename?: string;
+  preConvertedOriginalFilename?: string;
 }
 
 export default function StudentPortal({
@@ -155,6 +160,7 @@ export default function StudentPortal({
   const [fileConfigs, setFileConfigs] = useState<{ [fileName: string]: FileConfig }>({});
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
   const [previewUrls, setPreviewUrls] = useState<{ [fileName: string]: string }>({});
+  const isPreConverting = (Object.values(fileConfigs) as FileConfig[]).some(c => c.isConverting);
 
   const [dragOver, setDragOver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -261,17 +267,73 @@ export default function StudentPortal({
     }
   };
 
+  const triggerPreConversion = async (file: File) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = studentSessionToken || sessionStorage.getItem('studentSessionToken');
+      
+      const res = await fetch(getApiUrl('/api/jobs/pre-convert'), {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        body: formData
+      });
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Conversion failed');
+      }
+      
+      const result = await res.json();
+      
+      setFileConfigs(prev => {
+        const conf = prev[file.name];
+        if (!conf) return prev;
+        return {
+          ...prev,
+          [file.name]: {
+            ...conf,
+            pageCount: result.pageCount,
+            preConvertedPdfFilename: result.pdfFilename,
+            preConvertedOriginalFilename: result.originalFilename,
+            isConverting: false
+          }
+        };
+      });
+
+      const previewUrl = getApiUrl(`/api/jobs/pre-convert/preview/${result.pdfFilename}`);
+      setPreviewUrls(prev => ({
+        ...prev,
+        [file.name]: previewUrl
+      }));
+    } catch (err: any) {
+      console.error('Pre-conversion failed for:', file.name, err);
+      setError(`Document conversion failed for "${file.name}": ${err.message}`);
+      setFiles(prev => prev.filter(f => f.name !== file.name));
+      setFileConfigs(prev => {
+        const copy = { ...prev };
+        delete copy[file.name];
+        return copy;
+      });
+    }
+  };
+
+  const isSupportedFile = (file: File): boolean => {
+    if (!file || !file.name) return false;
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    const allowedExts = ['.pdf', '.png', '.jpg', '.jpeg'];
+    return allowedExts.includes(ext);
+  };
+
   const addFiles = async (newFiles: File[]) => {
     const updatedFiles = [...files];
     const updatedConfigs = { ...fileConfigs };
     const updatedUrls = { ...previewUrls };
+    const validAddedFiles: File[] = [];
 
     for (const file of newFiles) {
-      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-      const allowedExts = ['.pdf','.png','.jpg','.jpeg','.doc','.docx','.ppt','.pptx'];
-      
-      if (!ACCEPTED_TYPES.includes(file.type) && !allowedExts.includes(ext)) {
-        setError(`File "${file.name}" is not a supported format (audio/video blocked).`);
+      if (!isSupportedFile(file)) {
+        setError(`File "${file.name}" is not a supported format. Only PDF (.pdf) and images (.png, .jpg, .jpeg) are supported.`);
         continue;
       }
       if (file.size > 50 * 1024 * 1024) {
@@ -282,11 +344,16 @@ export default function StudentPortal({
       if (updatedFiles.some(f => f.name === file.name)) continue;
       
       let pageCount = 1;
-      if (file.type === 'application/pdf') {
+      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+      const isPdf = ext === '.pdf' || file.type === 'application/pdf';
+      const isConverting = !isPdf;
+
+      if (isPdf) {
         pageCount = await getPdfPageCount(file);
       }
 
       updatedFiles.push(file);
+      validAddedFiles.push(file);
       updatedConfigs[file.name] = {
         copies: 1,
         printMode: (!!shopInfo?.bwMaintenanceMode && !shopInfo?.colorMaintenanceMode) ? 'color' : 'mono',
@@ -295,6 +362,7 @@ export default function StudentPortal({
         pageCount,
         choosePagesType: 'all',
         customPages: '',
+        isConverting,
       };
 
       updatedUrls[file.name] = URL.createObjectURL(file);
@@ -304,8 +372,16 @@ export default function StudentPortal({
     setFileConfigs(updatedConfigs);
     setPreviewUrls(updatedUrls);
     
-    if (newFiles.length > 0 && !activeFileName) {
-      setActiveFileName(newFiles[0].name);
+    if (updatedFiles.length > 0 && !activeFileName) {
+      setActiveFileName(updatedFiles[0].name);
+    }
+
+    for (const file of validAddedFiles) {
+      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+      const isPdf = ext === '.pdf' || file.type === 'application/pdf';
+      if (!isPdf) {
+        triggerPreConversion(file);
+      }
     }
   };
 
@@ -323,13 +399,8 @@ export default function StudentPortal({
     e.preventDefault();
     setDragOver(false);
     const droppedFiles = Array.from(e.dataTransfer.files) as File[];
-    const validFiles = droppedFiles.filter(f => ACCEPTED_TYPES.includes(f.type));
-    
-    if (validFiles.length > 0) {
-      addFiles(validFiles);
-      setError('');
-    } else {
-      setError('Please upload valid PDF, Word, PowerPoint, or image files.');
+    if (droppedFiles.length > 0) {
+      addFiles(droppedFiles);
     }
   }, [files, fileConfigs, activeFileName, previewUrls]);
 
@@ -401,7 +472,10 @@ export default function StudentPortal({
 
     const formData = new FormData();
     files.forEach(file => {
-      formData.append('files', file);
+      const conf = fileConfigs[file.name] || {};
+      if (!conf.preConvertedPdfFilename) {
+        formData.append('files', file);
+      }
     });
     
     formData.append('studentName', studentName.trim());
@@ -415,7 +489,11 @@ export default function StudentPortal({
         printType: conf.printType || 'bw',
         printMode: conf.printType === 'color' ? 'color' : 'mono',
         sides: conf.sides,
-        pageRange: conf.choosePagesType === 'custom' ? conf.customPages : ''
+        pageRange: conf.choosePagesType === 'custom' ? conf.customPages : '',
+        preConvertedPdfFilename: conf.preConvertedPdfFilename,
+        preConvertedOriginalFilename: conf.preConvertedOriginalFilename,
+        name: file.name,
+        size: file.size
       };
     });
     formData.append('configs', JSON.stringify(configsArray));
@@ -1288,7 +1366,7 @@ export default function StudentPortal({
                             
                             {/* Supported formats */}
                             <p className="text-[11px] text-[var(--text-muted)] font-medium mt-1">
-                              PDF files up to 50MB
+                              PDF & Images (PNG, JPG) up to 50MB
                             </p>
 
                             {/* Choose Files button */}
@@ -1303,16 +1381,23 @@ export default function StudentPortal({
 
                             {/* File format chips */}
                             <div className="flex flex-wrap items-center justify-center gap-1.5 mt-4.5">
-                              {['📄 PDF'].map((type) => (
+                              {['📄 PDF', '🖼️ PNG / JPG'].map((type) => (
                                 <span
                                   key={type}
-                                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/80  text-[var(--text-secondary)] border border-[var(--border-subtle)] shadow-2xs"
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/80 text-[var(--text-secondary)] border border-[var(--border-subtle)] shadow-2xs"
                                 >
                                   {type}
                                 </span>
                               ))}
                             </div>
                           </div>
+                        </div>
+
+                        {/* Student-facing Format Notice */}
+                        <div className="mt-2.5 px-3.5 py-2 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-center">
+                          <span className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+                            ✦ PDF & Images only — DOC, DOCX, PPT & PPTX files are not supported.
+                          </span>
                         </div>
                       </div>
 
@@ -1361,7 +1446,7 @@ export default function StudentPortal({
                             <FileText className="w-8 h-8 text-[var(--text-muted)] mx-auto opacity-40" />
                             <p className="text-xs font-bold text-[var(--text-secondary)]">No documents loaded</p>
                             <p className="text-[11px] text-[var(--text-muted)] font-medium max-w-sm mx-auto">
-                              Upload PDF, DOCX, or Image files in the dropzone above to view the first-page document preview & print setup.
+                              Upload PDF or Image files in the dropzone above to view the first-page document preview & print setup.
                             </p>
                           </div>
                         ) : (
@@ -1394,14 +1479,23 @@ export default function StudentPortal({
                                           {ext}
                                         </span>
                                       </div>
-                                      <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] font-mono mt-1">
-                                        <span>{formatFileSize(file.size)}</span>
-                                        <span>•</span>
-                                        <span>{fileConfigs[file.name]?.pageCount || 1} pgs</span>
-                                        <span>•</span>
-                                        <span className="text-purple-600  font-extrabold uppercase">
-                                          ₹{getFileCost(file.name)}
-                                        </span>
+                                      <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] font-mono mt-1 animate-fade-in">
+                                        {fileConfigs[file.name]?.isConverting ? (
+                                          <div className="flex items-center gap-1.5 text-purple-600 font-extrabold">
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            <span>Converting to PDF...</span>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <span>{formatFileSize(file.size)}</span>
+                                            <span>•</span>
+                                            <span>{`${fileConfigs[file.name]?.pageCount || 1} pgs`}</span>
+                                            <span>•</span>
+                                            <span className="text-purple-600 font-extrabold uppercase">
+                                              ₹{getFileCost(file.name)}
+                                            </span>
+                                          </>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
@@ -1440,7 +1534,13 @@ export default function StudentPortal({
                             
                             {/* White Paper Sheet Placed on Table */}
                             <div className="w-full max-w-[350px] sm:max-w-[390px] aspect-[1/1.414] bg-white rounded-xl shadow-2xl shadow-slate-900/25 border border-slate-200/90 flex items-center justify-center relative overflow-hidden pointer-events-none select-none transition-transform duration-300">
-                              {activeFileName.toLowerCase().endsWith('.pdf') ? (
+                              {fileConfigs[activeFileName]?.isConverting ? (
+                                <div className="w-full h-full flex flex-col items-center justify-center p-8 bg-slate-50 text-center select-none">
+                                  <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-4" />
+                                  <h3 className="text-sm font-extrabold text-slate-800">Converting to PDF...</h3>
+                                  <p className="text-[11px] text-slate-500 mt-2">Generating exact page count and preview.</p>
+                                </div>
+                              ) : (activeFileName.toLowerCase().endsWith('.pdf') || fileConfigs[activeFileName]?.preConvertedPdfFilename) ? (
                                 <PdfFirstPageCanvas url={previewUrls[activeFileName]} />
                               ) : activeFileName.toLowerCase().match(/\.(png|jpg|jpeg)$/) ? (
                                 <img
@@ -1463,7 +1563,7 @@ export default function StudentPortal({
                                         {activeFileName}
                                       </h3>
                                       <p className="text-[11px] text-slate-500 mt-1 font-mono">
-                                        {formatFileSize(files.find(f => f.name === activeFileName)?.size || 0)} • {fileConfigs[activeFileName]?.pageCount || 1} Total Pages
+                                        {formatFileSize(files.find(f => f.name === activeFileName)?.size || 0)} • {(fileConfigs[activeFileName]?.pageCount || 1)} Total Pages
                                       </p>
                                     </div>
                                   </div>
@@ -1477,7 +1577,7 @@ export default function StudentPortal({
 
                             {/* Page 1 of X Label */}
                             <p className="text-[11px] font-extrabold font-mono text-[var(--text-muted)] text-center tracking-wider uppercase mt-4">
-                              Page 1 of {fileConfigs[activeFileName]?.pageCount || 1}
+                              Page 1 of {(fileConfigs[activeFileName]?.pageCount || 1)}
                             </p>
                           </div>
                         </div>
@@ -1733,13 +1833,18 @@ export default function StudentPortal({
                       {/* 5. SUBMIT BUTTON (LARGE FULL-WIDTH CTA) */}
                       <button
                         type="submit"
-                        disabled={files.length === 0 || submitting || isUploadDisabled}
+                        disabled={files.length === 0 || submitting || isUploadDisabled || (Object.values(fileConfigs) as FileConfig[]).some(c => c.isConverting)}
                         className="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 disabled:opacity-50 text-white font-extrabold text-sm uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2.5 border-none shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:scale-[1.01]"
                       >
                         {submitting ? (
                           <div className="flex items-center gap-2">
                             <Loader2 className="w-5 h-5 animate-spin" />
                             Processing Print Job...
+                          </div>
+                        ) : (Object.values(fileConfigs) as FileConfig[]).some(c => c.isConverting) ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Converting Files to PDF...
                           </div>
                         ) : (
                           <div className="flex items-center gap-2.5">
@@ -1928,7 +2033,7 @@ export default function StudentPortal({
                     { icon: Zap, color: 'text-amber-500', title: 'Fast Printing', desc: 'Process documents in milliseconds with our optimized spooler.' },
                     { icon: ShieldCheck, color: 'text-emerald-500', title: 'Secure Documents', desc: 'End-to-end encryption ensures your private files stay private.' },
                     { icon: Cloud, color: 'text-sky-500', title: 'Cloud-Based Printing', desc: 'Send jobs from your dorm, pick them up at the library.' },
-                    { icon: Layers, color: 'text-indigo-500', title: 'Multiple File Support', desc: 'Native support for PDFs, DOCX, PPTX, and high-res images.' },
+                    { icon: Layers, color: 'text-indigo-500', title: 'Multiple File Support', desc: 'Native support for PDFs, PNG, and JPG images.' },
                     { icon: Activity, color: 'text-purple-500', title: 'Live Queue Tracking', desc: 'Watch your document move through the print queue in real-time.' },
                     { icon: CheckCircle, color: 'text-teal-500', title: 'Reliable Printing', desc: 'Robust architecture with automatic failover and load balancing.' }
                   ].map((feature, idx) => (
@@ -2051,7 +2156,7 @@ export default function StudentPortal({
                         <div className="w-7 h-7 rounded-full bg-purple-100  text-purple-600  flex items-center justify-center font-black text-xs shrink-0 font-mono">1</div>
                         <div>
                           <h4 className="text-sm font-bold text-[var(--text-primary)]">Upload Your Document</h4>
-                          <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">Drag and drop your PDF, DOCX, or Image file into the dropzone on the Dashboard. Configure your print settings (copies, color, duplex) right there.</p>
+                          <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">Drag and drop your PDF or Image file into the dropzone on the Dashboard. Configure your print settings (copies, color, duplex) right there.</p>
                         </div>
                       </div>
                       <div className="flex items-start gap-4">
