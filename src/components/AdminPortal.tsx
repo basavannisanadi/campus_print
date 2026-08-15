@@ -217,7 +217,7 @@ export default function AdminPortal({
         setOperationalState('connecting');
         setConnectionError(null);
 
-        const origin = window.location.origin;
+        const origin = (import.meta as any).env.VITE_API_BASE_URL || window.location.origin;
         const protocolUrl = `campusprint://start?serverUrl=${encodeURIComponent(origin)}&shopId=${activeShopId}&token=${encodeURIComponent(token)}`;
         
         const iframe = document.createElement('iframe');
@@ -1940,14 +1940,18 @@ export default function AdminPortal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {jobs.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
-                        No active print queue jobs.
-                      </td>
-                    </tr>
-                  ) : (
-                    jobs.map(job => {
+                  {(() => {
+                    const activeShopJobs = jobs.filter(j => !j.shopId || j.shopId === activeShopId);
+                    if (activeShopJobs.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                            No active print queue jobs.
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return activeShopJobs.map(job => {
                       const shop = shops.find(s => s.id === selectedShopId);
                       const bw = shop ? shop.bwPrice : 2;
                       const color = shop ? shop.colorPrice : 5;
@@ -2045,8 +2049,8 @@ export default function AdminPortal({
                           </td>
                         </tr>
                       );
-                    })
-                  )}
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>

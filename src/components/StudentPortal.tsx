@@ -241,13 +241,16 @@ export default function StudentPortal({
     previewUrlsRef.current = previewUrls;
   }, [previewUrls]);
 
+  // Clear any staged uploaded files / preview URLs when changing shop to prevent submitting stale file configs under different shop pricing
   useEffect(() => {
-    return () => {
-      Object.values(previewUrlsRef.current).forEach((url: string) => URL.revokeObjectURL(url));
-    };
-  }, []);
-
-
+    if (files.length > 0) {
+      setFiles([]);
+      setFileConfigs({});
+      Object.values(previewUrls).forEach((url: string) => URL.revokeObjectURL(url));
+      setPreviewUrls({});
+      setError('');
+    }
+  }, [selectedShopId]);
 
   const handleSignOut = () => {
     logout();

@@ -5,6 +5,7 @@ if (process.env.NODE_ENV === 'test') {
   process.env.JWT_SECRET = 'campusprint_jwt_secret_dev_123';
   process.env.OWNER_PASSWORD = 'campusprint_admin_123';
   process.env.ADMIN_API_KEY = 'campusprint_admin_123';
+  process.env.AGENT_TOKEN = 'campusprint_agent_token_123';
   process.env.ALLOW_MOCK_AUTH = 'true';
 }
 
@@ -18,7 +19,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { PDFDocument } from 'pdf-lib';
-import { readDb as readDbRaw, writeDb as writeDbRaw, DbJob, DbPrintOrder, Agent } from './db.js';
+import { readDb as readDbRaw, writeDb as writeDbRaw, DbJob, DbPrintOrder, Agent, Shop, Student, dbRepository } from './db.js';
+import { uploadDocument, getDocumentStream, deleteDocument, executeRetentionPurge, UPLOADS_DIR, isRemoteStorageActive } from './storage.js';
 import rateLimit from 'express-rate-limit';
 import compression from 'compression';
 import { OAuth2Client } from 'google-auth-library';
@@ -453,7 +455,7 @@ export const app = express();
 const PORT = process.env.PORT || 3001;
 
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'campusprint_admin_123';
-const AGENT_TOKEN = process.env.AGENT_TOKEN || 'campusprint_agent_token_123';
+const AGENT_TOKEN = process.env.AGENT_TOKEN || (process.env.NODE_ENV === 'production' ? '' : 'campusprint_agent_token_123');
 const JWT_SECRET = process.env.JWT_SECRET || 'campusprint_jwt_secret_dev_123';
 const OWNER_PASSWORD = process.env.OWNER_PASSWORD || 'campusprint_owner_password_dev_123';
 
@@ -475,6 +477,12 @@ if (process.env.NODE_ENV === 'production') {
   }
   if (process.env.ADMIN_API_KEY.length < 16) {
     throw new Error('FATAL: ADMIN_API_KEY must be at least 16 characters long in production.');
+  }
+  if (!process.env.AGENT_TOKEN || process.env.AGENT_TOKEN === 'campusprint_agent_token_123') {
+    throw new Error('FATAL: AGENT_TOKEN must be set to a secure custom value in production.');
+  }
+  if (process.env.AGENT_TOKEN.length < 16) {
+    throw new Error('FATAL: AGENT_TOKEN must be at least 16 characters long in production.');
   }
 }
 
@@ -712,11 +720,17 @@ const requireAdmin = (req: express.Request, res: express.Response, next: express
         req.body.shopId = tokenShopId;
       }
 
-      // Also validate print job shopId if querying/updating a job status/timeline
+      // Also validate print job / order shopId if querying/updating a job or order
       if (req.params.id && (req.path.includes('/api/jobs/') || req.path.includes('/api/admin/jobs/'))) {
         const job = db.jobs.find(j => j.id === req.params.id);
         if (job && job.shopId !== tokenShopId) {
           return res.status(403).json({ error: 'Forbidden: You do not have access to this print job.' });
+        }
+      }
+      if (req.params.id && req.path.includes('/api/orders/')) {
+        const order = (db.orders || []).find(o => o.id === req.params.id);
+        if (order && order.shopId !== tokenShopId) {
+          return res.status(403).json({ error: 'Forbidden: You do not have access to this print order.' });
         }
       }
 
@@ -804,12 +818,12 @@ setInterval(() => {
               if (retries >= 3) {
                 job.status = 'failed';
                 job.reason = 'Max retries exceeded (agent went offline during printing)';
-                console.log(`[STUCK-RECOVERY] Job ${job.token} marked failed after ${retries} retries`);
+                console.log(`[STUCK-RECOVERY] Job ${job.id} marked failed after ${retries} retries`);
               } else {
                 job.status = 'queued';
                 job.progressPercent = 0;
                 job.retryCount = retries + 1;
-                console.log(`[STUCK-RECOVERY] Job ${job.token} reverted to queued (retry ${job.retryCount}/3)`);
+                console.log(`[STUCK-RECOVERY] Job ${job.id} reverted to queued (retry ${job.retryCount}/3)`);
               }
               broadcastSse({ type: 'job_updated', job });
             }
@@ -929,6 +943,41 @@ if (process.env.NODE_ENV !== 'test') {
   app.use('/api', apiLimiter);
 }
 
+// GET /health - Lightweight live health probe for UptimeRobot and deployment monitors
+app.get('/health', async (_req, res) => {
+  const startTime = Date.now();
+  let dbHealthy = false;
+  let dbMode = 'local_json';
+
+  try {
+    if (dbRepository.isSupabase()) {
+      dbMode = 'supabase';
+      dbHealthy = await dbRepository.ping();
+    } else {
+      dbHealthy = true; // Local JSON active in test/dev
+    }
+  } catch {
+    dbHealthy = false;
+  }
+
+  const payload = {
+    status: dbHealthy ? 'ok' : 'degraded',
+    database: {
+      mode: dbMode,
+      healthy: dbHealthy,
+      latencyMs: Date.now() - startTime
+    },
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString()
+  };
+
+  if (!dbHealthy && process.env.NODE_ENV === 'production') {
+    return res.status(503).json(payload);
+  }
+
+  return res.status(200).json(payload);
+});
+
 // POST /api/auth/google - verify Google ID Token & establish session
 app.post('/api/auth/google', async (req, res) => {
   const { idToken } = req.body;
@@ -1014,6 +1063,14 @@ app.post('/api/auth/google', async (req, res) => {
     db.students.push(student);
   }
   writeDb(db);
+
+  if (dbRepository.isSupabase()) {
+    try {
+      await dbRepository.upsertStudent(student);
+    } catch (err: any) {
+      console.error('[SUPABASE STUDENT SYNC ERROR]', err?.message || err);
+    }
+  }
 
   // Generate stateless signed session token
   const sessionToken = signSessionToken(student.id);
@@ -1206,14 +1263,29 @@ app.post('/api/auth/admin-ping', requireAdmin, (req, res) => {
 });
 
 // GET /api/owner/dashboard - aggregated observation data for owner
-app.get('/api/owner/dashboard', requireAdmin, (req, res) => {
+app.get('/api/owner/dashboard', requireAdmin, async (req, res) => {
   const auth = req.headers.authorization;
   const token = auth?.replace('Bearer ', '');
   if (!token || !activeOwnerSessions.has(token)) {
     return res.status(403).json({ error: 'Forbidden: Owner only access.' });
   }
 
-  const db = readDb();
+  let dbShops: Shop[];
+  let dbJobs: DbJob[];
+  let db = readDb();
+
+  if (dbRepository.isSupabase()) {
+    try {
+      dbShops = await dbRepository.getShops();
+      dbJobs = await dbRepository.getJobs();
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  } else {
+    dbShops = db.shops;
+    dbJobs = db.jobs;
+  }
+
   const now = new Date();
 
   // Helper to check if date is within N days
@@ -1229,53 +1301,51 @@ app.get('/api/owner/dashboard', requireAdmin, (req, res) => {
   let jobsThisWeek = 0;
   let jobsThisMonth = 0;
 
-  db.jobs.forEach(job => {
+  dbJobs.forEach(job => {
     if (isWithinDays(job.createdAt, 1)) jobsToday++;
     if (isWithinDays(job.createdAt, 7)) jobsThisWeek++;
     if (isWithinDays(job.createdAt, 30)) jobsThisMonth++;
   });
 
   // Recent Activity: last 10 jobs
-  const recentJobs = db.jobs.slice(-10).reverse().map(j => ({
+  const recentJobs = dbJobs.slice(0, 10).map(j => ({
     id: j.id,
     token: j.token,
     fileName: j.fileName,
-    shopName: db.shops.find(s => s.id === j.shopId)?.name || j.shopId,
+    shopName: dbShops.find(s => s.id === j.shopId)?.name || j.shopId,
     status: j.status,
     createdAt: j.createdAt,
     studentName: j.studentName
   }));
 
   // Recent Failures: last 10 failed/error jobs
-  const failuresList = db.jobs
+  const failuresList = dbJobs
     .filter(j => ['failed', 'printer_offline', 'paper_empty'].includes(j.status))
-    .slice(-10)
-    .reverse()
+    .slice(0, 10)
     .map(j => ({
       id: j.id,
       token: j.token,
       fileName: j.fileName,
-      shopName: db.shops.find(s => s.id === j.shopId)?.name || j.shopId,
+      shopName: dbShops.find(s => s.id === j.shopId)?.name || j.shopId,
       status: j.status,
       reason: j.reason || 'Unknown error',
       createdAt: j.createdAt
     }));
 
   // Recent Warnings: paused jobs and agent connection warnings
-  const warningsList = db.jobs
+  const warningsList = dbJobs
     .filter(j => j.status === 'paused')
-    .slice(-10)
-    .reverse()
+    .slice(0, 10)
     .map(j => ({
       id: j.id,
       token: j.token,
       fileName: j.fileName,
-      shopName: db.shops.find(s => s.id === j.shopId)?.name || j.shopId,
+      shopName: dbShops.find(s => s.id === j.shopId)?.name || j.shopId,
       message: 'Job is currently paused by administrator',
       createdAt: j.createdAt
     }));
 
-  db.shops.forEach(shop => {
+  dbShops.forEach(shop => {
     const agent = db.agents?.find(a => a.shopId === shop.id);
     const lastSeenTime = agent ? new Date(agent.lastSeen).getTime() : 0;
     const isOnline = agent && (now.getTime() - lastSeenTime < 60000);
@@ -1291,7 +1361,7 @@ app.get('/api/owner/dashboard', requireAdmin, (req, res) => {
     }
   });
 
-  const shopsStatus = db.shops.map(shop => {
+  const shopsStatus = dbShops.map(shop => {
     const agent = db.agents?.find(a => a.shopId === shop.id);
     const lastSeenTime = agent ? new Date(agent.lastSeen).getTime() : 0;
     const isOnline = agent && (now.getTime() - lastSeenTime < 60000);
@@ -1300,13 +1370,13 @@ app.get('/api/owner/dashboard', requireAdmin, (req, res) => {
     const activePrinter = shopPrinters.find(p => p.printerId === shop.activePrinterId);
     const connectedPrinterName = activePrinter ? activePrinter.printerName : (agent ? agent.printerName : 'UNKNOWN');
 
-    const shopSuccess = db.jobs.filter(j => j.shopId === shop.id && j.status === 'completed');
-    const shopFailed = db.jobs.filter(j => j.shopId === shop.id && ['failed', 'printer_offline', 'paper_empty'].includes(j.status));
+    const shopSuccess = dbJobs.filter(j => j.shopId === shop.id && j.status === 'completed');
+    const shopFailed = dbJobs.filter(j => j.shopId === shop.id && ['failed', 'printer_offline', 'paper_empty'].includes(j.status));
 
-    const lastSuccessJob = shopSuccess.length > 0 ? shopSuccess[shopSuccess.length - 1] : null;
-    const lastFailedJob = shopFailed.length > 0 ? shopFailed[shopFailed.length - 1] : null;
+    const lastSuccessJob = shopSuccess.length > 0 ? shopSuccess[0] : null;
+    const lastFailedJob = shopFailed.length > 0 ? shopFailed[0] : null;
 
-    const waitingJobsCount = db.jobs.filter(j => j.shopId === shop.id && (j.status === 'queued' || j.status === 'printing')).length;
+    const waitingJobsCount = dbJobs.filter(j => j.shopId === shop.id && (j.status === 'queued' || j.status === 'printing')).length;
 
     const healthInfo = agentHealthCache.get(shop.id);
     const health = healthInfo ? {
@@ -1384,7 +1454,7 @@ interface SseClient {
 }
 let sseClients: SseClient[] = [];
 
-function broadcastSse(data: any) {
+function broadcastSse(data: any, targetShopId?: string) {
   let sanitizedData = data;
   if (data && typeof data === 'object') {
     sanitizedData = JSON.parse(JSON.stringify(data));
@@ -1415,8 +1485,16 @@ function broadcastSse(data: any) {
       sanitizedData.shops.forEach(sanitizeShop);
     }
   }
+
+  // Derive target shop if not explicitly provided
+  const eventShopId = targetShopId || data?.job?.shopId || data?.order?.shopId || data?.shopId;
+
   const payload = `data: ${JSON.stringify(sanitizedData)}\n\n`;
   sseClients.forEach(client => {
+    // If the client is explicitly connected to a shop, only send events matching that shop or global broadcast events
+    if (client.shopId && eventShopId && client.shopId !== eventShopId) {
+      return; // Skip client from another shop
+    }
     try {
       client.res.write(payload);
     } catch {}
@@ -1427,7 +1505,7 @@ const lastOrderCompletedTimeMap = new Map<string, number>();
 const lastDispatchedOrderIdMap = new Map<string, string>();
 
 // Event-driven dispatch: push next queued job to a connected v2 agent
-function dispatchNextJob(shopId: string): boolean {
+async function dispatchNextJob(shopId: string): Promise<boolean> {
   const t5 = Date.now();
   console.log(`[PERF][T5] dispatchNextJob entered for shopId=${shopId} at ${t5} (${new Date(t5).toISOString()})`);
   console.log(`[DIAG][dispatchNextJob] Entered — shopId=${shopId}`);
@@ -1444,13 +1522,6 @@ function dispatchNextJob(shopId: string): boolean {
 
   const db = readDb();
 
-  // Check if agent is already busy (any job in 'printing' status for this shop)
-  const hasPrintingJob = db.jobs.some(
-    j => j.shopId === shopId && j.status === 'printing'
-  );
-  console.log(`[DIAG][dispatchNextJob] hasPrintingJob=${hasPrintingJob}`);
-  if (hasPrintingJob) return false; // Agent is busy — will dispatch when it reports completion
-
   // Evaluate printer health and block dispatch if blocked
   const healthInfo = agentHealthCache.get(shopId) || recalculateAgentHealth(db, shopId, Date.now());
   const printerHealth = healthInfo.printerHealth;
@@ -1462,11 +1533,7 @@ function dispatchNextJob(shopId: string): boolean {
     console.log(`[DISPATCH_BLOCKED] Print job dispatch blocked. Printer health is ${printerHealth} for shopId=${shopId}`);
     
     // Find next queued job to add timeline warning if not already warned
-    const nextQueued = db.jobs.find(j => {
-      if (j.status !== 'queued') return false;
-      if (j.shopId !== shopId) return false;
-      return true;
-    });
+    const nextQueued = db.jobs.find(j => j.status === 'queued' && j.shopId === shopId);
     if (nextQueued) {
       if (!nextQueued.timeline) nextQueued.timeline = [];
       const lastT = nextQueued.timeline[nextQueued.timeline.length - 1];
@@ -1485,7 +1552,6 @@ function dispatchNextJob(shopId: string): boolean {
     
     logDecisionEngine(`Dispatch blocked for shopId=${shopId}: printer is in a blocked state (${printerHealth})`);
     
-    // Send specific SSE event warning to UI
     broadcastSse({
       type: 'dispatch_blocked',
       shopId,
@@ -1496,92 +1562,111 @@ function dispatchNextJob(shopId: string): boolean {
     return false;
   }
 
-  // Find next queued job (same FIFO logic as GET /api/jobs/next)
-  const now = new Date();
-  const queuedCount = db.jobs.filter(j => j.shopId === shopId && j.status === 'queued').length;
-  console.log(`[DIAG][dispatchNextJob] Queued jobs for shopId=${shopId}: ${queuedCount}`);
+  const defaultPrinterName = db.printerSettings?.selectedPrinter || 'UNKNOWN';
 
-  const next = db.jobs.find(j => {
-    if (j.status !== 'queued') return false;
-    if (j.shopId !== shopId) return false;
-    if (j.scheduledFor) {
-      const scheduledTime = new Date(j.scheduledFor);
-      return now >= scheduledTime;
+  let claimedJob: DbJob | null = null;
+  let nextInSameOrder: DbJob | null = null;
+
+  try {
+    if (dbRepository.isSupabase()) {
+      // 1. Authoritative atomic claim in PostgreSQL RPC (shop lock + FIFO + singleton check)
+      claimedJob = await dbRepository.claimNextJob(shopId, defaultPrinterName);
+      if (!claimedJob) {
+        console.log(`[DIAG][dispatchNextJob] Supabase claim_next_job returned empty for shop ${shopId}`);
+        return false;
+      }
+
+      // 2. Enforce 5-second inter-customer job delay boundary if needed
+      const lastOrderId = lastDispatchedOrderIdMap.get(shopId);
+      const isNewOrder = lastOrderId && claimedJob.orderId && claimedJob.orderId !== lastOrderId;
+      const lastCompletedTime = lastOrderCompletedTimeMap.get(shopId) || 0;
+      const elapsedMs = Date.now() - lastCompletedTime;
+
+      if (isNewOrder && lastCompletedTime > 0 && elapsedMs < 5000) {
+        const delayMs = 5000 - elapsedMs;
+        console.log(`[PERF][DISPATCH_DELAYED] 5-second inter-customer gap active for shop ${shopId}. Job ${claimedJob.id} delayed by ${delayMs}ms.`);
+        // Revert status to queued so it can be picked up after delay
+        await dbRepository.updateJob(claimedJob.id, { status: 'queued' });
+        setTimeout(() => dispatchNextJob(shopId), delayMs);
+        return false;
+      }
+
+      if (claimedJob.orderId) {
+        lastDispatchedOrderIdMap.set(shopId, claimedJob.orderId);
+      }
+
+      // 3. Resolve P1 N+1 prefetch candidate in the same customer order
+      if (claimedJob.orderId) {
+        nextInSameOrder = await dbRepository.getNextQueuedJobInOrder(claimedJob.orderId, claimedJob.id);
+      }
+    } else {
+      // Synchronous Local JSON fallback for test runners
+      const hasPrintingJob = db.jobs.some(j => j.shopId === shopId && j.status === 'printing');
+      if (hasPrintingJob) return false;
+
+      const now = new Date();
+      const next = db.jobs.find(j => {
+        if (j.status !== 'queued' || j.shopId !== shopId) return false;
+        if (j.scheduledFor) return now >= new Date(j.scheduledFor);
+        return true;
+      });
+      if (!next) return false;
+
+      const lastOrderId = lastDispatchedOrderIdMap.get(shopId);
+      const isNewOrder = lastOrderId && next.orderId && next.orderId !== lastOrderId;
+      const lastCompletedTime = lastOrderCompletedTimeMap.get(shopId) || 0;
+      const elapsedMs = Date.now() - lastCompletedTime;
+
+      if (isNewOrder && lastCompletedTime > 0 && elapsedMs < 5000) {
+        const delayMs = 5000 - elapsedMs;
+        setTimeout(() => dispatchNextJob(shopId), delayMs);
+        return false;
+      }
+
+      if (next.orderId) lastDispatchedOrderIdMap.set(shopId, next.orderId);
+
+      next.status = 'printing';
+      next.progressPercent = 0;
+      if (!next.timeline) next.timeline = [];
+      next.timeline.push({
+        stage: 'claimed',
+        at: new Date().toISOString(),
+        printerId: formatPrinterId(defaultPrinterName),
+        printerName: defaultPrinterName
+      });
+      writeDb(db);
+      claimedJob = next;
+
+      if (claimedJob.orderId) {
+        nextInSameOrder = db.jobs.find(j => j.status === 'queued' && j.shopId === shopId && j.orderId === claimedJob!.orderId && j.id !== claimedJob!.id) || null;
+      }
     }
+
+    if (!claimedJob) return false;
+
+    const t7 = Date.now();
+    console.log(`[PERF][T7] Job ${claimedJob.id} status changed to printing & db written at ${t7}`);
+
+    // Push job payload to agent via SSE (including nextJob for N+1 prefetching)
+    try {
+      const payload = `data: ${JSON.stringify({ type: 'dispatch_job', job: claimedJob, nextJob: nextInSameOrder || null })}\n\n`;
+      agentClient.res.write(payload);
+      const t8 = Date.now();
+      console.log(`[PERF][T8] SSE dispatch_job emitted for jobId=${claimedJob.id} at ${t8} (latency T8-T5 = ${t8 - t5}ms)`);
+      console.log(`[DISPATCH] Pushed job ${claimedJob.id} to agent ${agentClient.agentId} (shop: ${shopId}) | nextJob: ${nextInSameOrder?.id || 'none'}`);
+      console.log(`[DIAG][dispatchNextJob] dispatch_job SSE event sent for jobId=${claimedJob.id} (nextJobId=${nextInSameOrder?.id || 'none'})`);
+    } catch (err) {
+      console.error(`[DISPATCH] Failed to push job ${claimedJob.id} to agent:`, err);
+    }
+
+    // Broadcast update to all clients (admin UI)
+    broadcastSse({ type: 'job_updated', job: claimedJob });
+    console.log(`[DIAG][dispatchNextJob] Exiting — returning true`);
     return true;
-  });
-
-  const t6 = Date.now();
-  console.log(`[PERF][T6] First queued job selected: ${next ? next.id : 'none'} (token=${next?.token ?? 'none'}) at ${t6}`);
-  console.log(`[DIAG][dispatchNextJob] Selected job=${next ? next.id : 'none'} (token=${next?.token ?? 'none'})`);
-  if (!next) return false; // No queued jobs
-
-  // Enforce 5-second inter-customer job delay boundary:
-  // If next job belongs to a NEW customer order (different orderId from last completed/dispatched order)
-  const lastOrderId = lastDispatchedOrderIdMap.get(shopId);
-  const isNewOrder = lastOrderId && next.orderId && next.orderId !== lastOrderId;
-  const lastCompletedTime = lastOrderCompletedTimeMap.get(shopId) || 0;
-  const elapsedMs = Date.now() - lastCompletedTime;
-
-  if (isNewOrder && lastCompletedTime > 0 && elapsedMs < 5000) {
-    const delayMs = 5000 - elapsedMs;
-    console.log(`[PERF][DISPATCH_DELAYED] 5-second inter-customer gap active for shop ${shopId}. Next order ${next.orderId} scheduled in ${delayMs}ms.`);
-    console.log(`[DISPATCH] 5-second inter-customer gap active for shop ${shopId}. Next order ${next.orderId} scheduled in ${delayMs}ms.`);
-    setTimeout(() => dispatchNextJob(shopId), delayMs);
+  } catch (err) {
+    console.error(`[DISPATCH ERROR] Unexpected error in dispatchNextJob for shop ${shopId}:`, err);
     return false;
   }
-
-  if (next.orderId) {
-    lastDispatchedOrderIdMap.set(shopId, next.orderId);
-  }
-
-  // Atomic claim
-  next.status = 'printing';
-  next.progressPercent = 0;
-  if (!next.timeline) next.timeline = [];
-  const defaultPrinterName = db.printerSettings?.selectedPrinter || 'UNKNOWN';
-  next.timeline.push({
-    stage: 'claimed',
-    at: new Date().toISOString(),
-    printerId: formatPrinterId(defaultPrinterName),
-    printerName: defaultPrinterName
-  });
-
-  writeDb(db);
-  const t7 = Date.now();
-  console.log(`[PERF][T7] Job ${next.id} status changed to printing & db written at ${t7}`);
-
-  // Find next queued job in the SAME customer order for P1 N+1 prefetching
-  const nextInSameOrder = next.orderId ? db.jobs.find(j => {
-    if (j.status !== 'queued') return false;
-    if (j.shopId !== shopId) return false;
-    if (j.orderId !== next.orderId) return false;
-    if (j.id === next.id) return false;
-    if (j.scheduledFor) {
-      const scheduledTime = new Date(j.scheduledFor);
-      return now >= scheduledTime;
-    }
-    return true;
-  }) : null;
-
-  // Push job payload to agent via SSE (including nextJob for N+1 prefetching)
-  try {
-    const payload = `data: ${JSON.stringify({ type: 'dispatch_job', job: next, nextJob: nextInSameOrder || null })}\n\n`;
-    agentClient.res.write(payload);
-    const t8 = Date.now();
-    console.log(`[PERF][T8] SSE dispatch_job emitted for jobId=${next.id} at ${t8} (latency T8-T5 = ${t8 - t5}ms)`);
-    console.log(`[DISPATCH] Pushed job ${next.token} to agent ${agentClient.agentId} (shop: ${shopId}) | nextJob: ${nextInSameOrder?.token || 'none'}`);
-    console.log(`[DIAG][dispatchNextJob] dispatch_job SSE event sent for jobId=${next.id} (nextJobId=${nextInSameOrder?.id || 'none'})`);
-  } catch (err) {
-    console.error(`[DISPATCH] Failed to push job ${next.token} to agent:`, err);
-    // Job is already claimed — agent offline detection will recover it if needed
-  }
-
-  // Broadcast update to all clients (admin UI)
-  broadcastSse({ type: 'job_updated', job: next });
-
-  console.log(`[DIAG][dispatchNextJob] Exiting — returning true`);
-  return true;
 }
 
 // GET /api/jobs/stream - SSE connection for real-time updates
@@ -1627,17 +1712,41 @@ app.get('/api/jobs/stream', requireAdmin, (req, res) => {
   }
 });
 
-// Uploads directory
-const UPLOADS_DIR = process.env.NODE_ENV === 'test'
-  ? path.resolve(__dirname, './uploads-test')
-  : path.resolve(__dirname, './uploads');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-app.get('/uploads/:filename', requireAdmin, (req: express.Request, res: express.Response) => {
+app.get('/uploads/:filename', requireAdmin, async (req: express.Request, res: express.Response) => {
   const filename = path.basename(req.params.filename);
   const filePath = path.join(UPLOADS_DIR, filename);
-  if (fs.existsSync(filePath)) {
-    return res.sendFile(filePath);
+
+  const tokenShopId = (req as any).tokenShopId;
+  if (tokenShopId) {
+    let owningJob: DbJob | null = null;
+    if (dbRepository.isSupabase()) {
+      try {
+        const jobs = await dbRepository.getJobs();
+        owningJob = jobs.find(j => {
+          const jFile = j.serverFilePath ? path.basename(j.serverFilePath) : '';
+          const jOrig = j.originalFilePath ? path.basename(j.originalFilePath) : '';
+          return jFile === filename || jOrig === filename;
+        }) || null;
+      } catch {}
+    } else {
+      const db = (req as any).db || readDb();
+      owningJob = db.jobs.find(j => {
+        const jFile = j.serverFilePath ? path.basename(j.serverFilePath) : '';
+        const jOrig = j.originalFilePath ? path.basename(j.originalFilePath) : '';
+        return jFile === filename || jOrig === filename;
+      }) || null;
+    }
+
+    if (owningJob && owningJob.shopId !== tokenShopId) {
+      return res.status(403).json({ error: 'Forbidden: You do not have access to files from another shop.' });
+    }
+  }
+
+  const doc = await getDocumentStream(filename);
+  if (doc) {
+    res.setHeader('Content-Type', doc.contentType || 'application/pdf');
+    if (doc.contentLength) res.setHeader('Content-Length', doc.contentLength);
+    return doc.stream.pipe(res);
   }
   res.status(404).json({ error: 'File not found' });
 });
@@ -2233,10 +2342,23 @@ app.post('/api/shop/go-offline', requireAdmin, (req, res) => {
 });
 
 // GET /api/shops - list all print shops with dynamic heartbeat status checks
-app.get('/api/shops', (req, res) => {
-  const db = readDb();
+app.get('/api/shops', async (req, res) => {
+  let rawShops: Shop[];
+  let db: ReturnType<typeof readDbRaw>;
+
+  if (dbRepository.isSupabase()) {
+    try {
+      rawShops = await dbRepository.getShops();
+      db = readDb();
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  } else {
+    db = readDb();
+    rawShops = db.shops;
+  }
   
-  const mappedShops = db.shops.map(shop => {
+  const mappedShops = rawShops.map(shop => {
     const agent = db.agents?.find(a => a.shopId === shop.id);
     const now = Date.now();
     const lastSeenTime = agent && agent.lastSeen ? new Date(agent.lastSeen).getTime() : 0;
@@ -2256,19 +2378,32 @@ app.get('/api/shops', (req, res) => {
 });
 
 // GET /api/shops/:id - get shop details by ID
-app.get('/api/shops/:id', (req, res) => {
-  const db = readDb();
-  const shop = db.shops.find(s => s.id === req.params.id);
+app.get('/api/shops/:id', async (req, res) => {
+  let shop: Shop | null = null;
+  let db: ReturnType<typeof readDbRaw>;
+
+  if (dbRepository.isSupabase()) {
+    try {
+      shop = await dbRepository.getShop(req.params.id);
+      db = readDb();
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  } else {
+    db = readDb();
+    shop = db.shops.find(s => s.id === req.params.id) || null;
+  }
+
   if (!shop) return res.status(404).json({ error: 'Shop not found' });
   
-  const agent = db.agents?.find(a => a.shopId === shop.id);
+  const agent = db.agents?.find(a => a.shopId === shop!.id);
   const now = Date.now();
   const lastSeenTime = agent ? new Date(agent.lastSeen).getTime() : 0;
   const isOnline = agent && agent.onlineStatus === 'online' && (now - lastSeenTime) < 15000;
   const printerStatus = isOnline ? 'online' : 'offline';
 
-  const shopPrinters = db.printers?.filter(p => p.shopId === shop.id) || [];
-  const activePrinter = shopPrinters.find(p => p.printerId === shop.activePrinterId);
+  const shopPrinters = db.printers?.filter(p => p.shopId === shop!.id) || [];
+  const activePrinter = shopPrinters.find(p => p.printerId === shop!.activePrinterId);
 
   res.json({
     ...sanitizeShop(shop),
@@ -2967,13 +3102,41 @@ app.post('/api/shops/:id', requireAdmin, (req, res) => {
 });
 
 // GET /api/jobs - list all jobs (most recent first)
-// Public endpoint: only returns safe fields (no student PII)
-app.get('/api/jobs', (req, res) => {
+// Public endpoint: only returns safe fields (no student PII) unless authenticated as owner, shop admin, or student owner
+app.get('/api/jobs', async (req, res) => {
   const { shopId } = req.query;
-  const db = readDb();
-  let jobsList = db.jobs;
-  if (shopId) {
-    jobsList = jobsList.filter(j => j.shopId === shopId);
+
+  // Check if caller is authenticated as an admin
+  const adminToken = (req.headers['x-admin-token'] as string) || (req.headers.authorization ? req.headers.authorization.replace('Bearer ', '') : null);
+  let isGlobalAdmin = false;
+  let adminShopId: string | null = null;
+  if (adminToken) {
+    if (activeOwnerSessions.has(adminToken)) {
+      isGlobalAdmin = true;
+    } else {
+      adminShopId = verifyShopToken(adminToken);
+    }
+  }
+
+  // If authenticated as a shop admin, strictly enforce that shop's scope
+  const targetShopId = adminShopId ? adminShopId : (shopId as string);
+
+  let jobsList: DbJob[];
+  let studentsList: Student[] = [];
+
+  if (dbRepository.isSupabase()) {
+    try {
+      jobsList = await dbRepository.getJobs({ shopId: targetShopId });
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  } else {
+    const db = readDb();
+    jobsList = db.jobs.slice().reverse();
+    if (targetShopId) {
+      jobsList = jobsList.filter(j => j.shopId === targetShopId);
+    }
+    studentsList = db.students || [];
   }
 
   // Check if caller is authenticated as a student
@@ -2984,17 +3147,27 @@ app.get('/api/jobs', (req, res) => {
     const token = auth.replace('Bearer ', '');
     const studentId = verifySessionToken(token);
     if (studentId) {
-      const student = db.students?.find(s => s.id === studentId);
-      if (student) {
-        authStudentId = student.id;
-        authStudentEmail = student.email;
+      if (dbRepository.isSupabase()) {
+        try {
+          const student = await dbRepository.getStudent(studentId);
+          if (student) {
+            authStudentId = student.id;
+            authStudentEmail = student.email;
+          }
+        } catch {}
+      } else {
+        const student = studentsList.find(s => s.id === studentId);
+        if (student) {
+          authStudentId = student.id;
+          authStudentEmail = student.email;
+        }
       }
     }
   }
 
-  // Strip sensitive student data for public access, but preserve for own jobs
-  const safeJobs = jobsList.slice().reverse().map(j => {
-    const isOwner = (authStudentId && j.studentId === authStudentId) || (authStudentEmail && j.studentEmail === authStudentEmail);
+  // Strip sensitive student data for public access, but preserve for own jobs or shop admin
+  const safeJobs = jobsList.map(j => {
+    const isOwner = isGlobalAdmin || (adminShopId && j.shopId === adminShopId) || (authStudentId && j.studentId === authStudentId) || (authStudentEmail && j.studentEmail === authStudentEmail);
     if (isOwner) {
       return j; // Return full job record including studentName and studentEmail
     }
@@ -3019,12 +3192,41 @@ app.get('/api/jobs', (req, res) => {
 });
 
 // GET /api/orders - list all orders with their nested jobs
-app.get('/api/orders', (req, res) => {
+app.get('/api/orders', async (req, res) => {
   const { shopId } = req.query;
-  const db = readDb();
-  let ordersList = db.orders || [];
-  if (shopId) {
-    ordersList = ordersList.filter(o => o.shopId === shopId);
+
+  // Check if caller is authenticated as an admin
+  const adminToken = (req.headers['x-admin-token'] as string) || (req.headers.authorization ? req.headers.authorization.replace('Bearer ', '') : null);
+  let isGlobalAdmin = false;
+  let adminShopId: string | null = null;
+  if (adminToken) {
+    if (activeOwnerSessions.has(adminToken)) {
+      isGlobalAdmin = true;
+    } else {
+      adminShopId = verifyShopToken(adminToken);
+    }
+  }
+
+  // If authenticated as a shop admin, strictly enforce that shop's scope
+  const targetShopId = adminShopId ? adminShopId : (shopId as string);
+
+  let ordersList: DbPrintOrder[];
+  let allJobs: DbJob[];
+
+  if (dbRepository.isSupabase()) {
+    try {
+      ordersList = await dbRepository.getOrders({ shopId: targetShopId });
+      allJobs = await dbRepository.getJobs({ shopId: targetShopId });
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  } else {
+    const db = readDb();
+    ordersList = (db.orders || []).slice().reverse();
+    if (targetShopId) {
+      ordersList = ordersList.filter(o => o.shopId === targetShopId);
+    }
+    allJobs = db.jobs;
   }
 
   // Check if caller is authenticated as a student
@@ -3038,24 +3240,12 @@ app.get('/api/orders', (req, res) => {
     }
   }
 
-  // Check if caller is authenticated as an admin
-  const adminToken = req.headers['x-admin-token'] as string;
-  let isGlobalAdmin = false;
-  let adminShopId: string | null = null;
-  if (adminToken) {
-    if (activeOwnerSessions.has(adminToken)) {
-      isGlobalAdmin = true;
-    } else {
-      adminShopId = verifyShopToken(adminToken);
-    }
-  }
-
   // Map orders and attach jobs
-  const fullOrders = ordersList.slice().reverse().map(o => {
+  const fullOrders = ordersList.map(o => {
     const isOwner = isGlobalAdmin || (adminShopId === o.shopId) || (authStudentId && o.studentId === authStudentId);
     
     // Find nested jobs
-    const orderJobs = db.jobs.filter(j => j.orderId === o.id).map(j => {
+    const orderJobs = allJobs.filter(j => j.orderId === o.id).map(j => {
       if (isOwner) return j;
       return {
         id: j.id,
@@ -3165,12 +3355,12 @@ app.post('/api/jobs/pre-convert', requireAuth, uploadLimiter, (req, res, next) =
       finalPdfPath = path.join(UPLOADS_DIR, pdfFilename);
       
       try {
-        console.log(`[PRE-CONVERSION] Converting image to PDF: ${file.originalname}`);
+        console.log(`[PRE-CONVERSION] Converting image to PDF (${file.mimetype || 'image'})`);
         await convertImageToPdf(file.path, finalPdfPath);
         
         pageCount = await countPdfPages(finalPdfPath);
       } catch (err: any) {
-        console.error(`[PRE-CONVERSION ERROR] Image conversion failed for ${file.originalname}:`, err.message);
+        console.error(`[PRE-CONVERSION ERROR] Image conversion failed:`, err.message);
         try { if (fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch {}
         try { if (fs.existsSync(finalPdfPath)) fs.unlinkSync(finalPdfPath); } catch {}
         return res.status(400).json({ error: `Image conversion failed for "${file.originalname}": ${err.message}` });
@@ -3189,7 +3379,7 @@ app.post('/api/jobs/pre-convert', requireAuth, uploadLimiter, (req, res, next) =
   }
 });
 
-app.get('/api/jobs/pre-convert/preview/:filename', (req, res) => {
+app.get('/api/jobs/pre-convert/preview/:filename', requireAuth, (req, res) => {
   const filename = path.basename(req.params.filename);
   const filePath = path.join(UPLOADS_DIR, filename);
   if (fs.existsSync(filePath)) {
@@ -3386,14 +3576,14 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
           const finalPdfPath = path.join(UPLOADS_DIR, pdfFilename);
           
           try {
-            console.log(`[CONVERSION] Converting image to PDF: ${file.originalname}`);
+            console.log(`[CONVERSION] Converting image to PDF (${file.mimetype || 'image'})`);
             await convertImageToPdf(file.path, finalPdfPath);
             
             pageCount = await countPdfPages(finalPdfPath);
             finalServerFilePath = '/uploads/' + pdfFilename;
             finalOriginalFilePath = '/uploads/' + file.filename;
           } catch (err: any) {
-            console.error(`[CONVERSION ERROR] Image conversion failed for ${file.originalname}:`, err.message);
+            console.error(`[CONVERSION ERROR] Image conversion failed:`, err.message);
             cleanupUploadedFiles();
             return res.status(400).json({ error: `Image conversion failed for "${file.originalname}": ${err.message}` });
           }
@@ -3521,7 +3711,21 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
       db.jobs.push(job);
       createdJobs.push(job);
 
-      console.log(`[NEW JOB] ${job.token} (Order: ${orderToken}) | ${job.fileName} | ${job.pageCount} pages x ${job.copies} copies | Mode: ${job.printMode} | Shop: ${job.shopId}`);
+      console.log(`[NEW JOB] Job:${job.id} (Order:${orderToken.slice(0, 3)}***) | ${job.pageCount} pgs x ${job.copies} | Mode:${job.printMode} | Shop:${job.shopId}`);
+    }
+
+    // Upload files to private Supabase storage (fails safely in production)
+    for (const pf of parsedFiles) {
+      const fn = path.basename(pf.serverFilePath);
+      const diskPath = path.join(UPLOADS_DIR, fn);
+      try {
+        await uploadDocument(fn, diskPath, 'application/pdf');
+      } catch (err: any) {
+        if (process.env.NODE_ENV === 'production') {
+          cleanupUploadedFiles();
+          return res.status(503).json({ error: 'Private storage service unavailable.' });
+        }
+      }
     }
 
     const newOrder: DbPrintOrder = {
@@ -3542,6 +3746,19 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
 
     writeDb(db);
 
+    if (dbRepository.isSupabase()) {
+      try {
+        await dbRepository.insertOrder(newOrder);
+        await dbRepository.insertJobsBatch(createdJobs);
+      } catch (err: any) {
+        console.error('[SUPABASE ORDER/JOB PERSISTENCE ERROR]', err?.message || err);
+        await dbRepository.deleteOrder(newOrder.id).catch(() => {});
+        if (process.env.NODE_ENV === 'production') {
+          return res.status(503).json({ error: 'Database service unavailable' });
+        }
+      }
+    }
+
     // Broadcast real-time SSE event to print client and browsers for each job
     createdJobs.forEach(job => {
       broadcastSse({ type: 'new_job', job });
@@ -3559,12 +3776,28 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
 });
 
 // GET /api/jobs/next - get next queued job for print client (atomic claim)
-app.get('/api/jobs/next', requireAdmin, (req, res) => {
+app.get('/api/jobs/next', requireAdmin, async (req, res) => {
   const { shopId } = req.query;
+  const targetShopId = (shopId as string) || (req as any).tokenShopId || 'alliance_print';
+  const defaultPrinterName = (req as any).db?.printerSettings?.selectedPrinter || 'UNKNOWN';
+
+  if (dbRepository.isSupabase()) {
+    try {
+      const claimedJob = await dbRepository.claimNextJob(targetShopId, defaultPrinterName);
+      if (!claimedJob) {
+        return res.status(404).json({ message: 'No queued jobs' });
+      }
+      broadcastSse({ type: 'job_updated', job: claimedJob });
+      return res.json(claimedJob);
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  }
+
   const db = readDb();
 
   // Block if printer is offline
-  const resolved = getResolvedPrinterSettings(db, shopId as string);
+  const resolved = getResolvedPrinterSettings(db, targetShopId);
   if (resolved.status === 'offline') {
     return res.status(404).json({ message: 'Printer is offline. Queue is paused.' });
   }
@@ -3572,7 +3805,7 @@ app.get('/api/jobs/next', requireAdmin, (req, res) => {
   const now = new Date();
   const next = db.jobs.find(j => {
     if (j.status !== 'queued') return false;
-    if (shopId && j.shopId !== shopId) return false;
+    if (targetShopId && j.shopId !== targetShopId) return false;
     if (j.scheduledFor) {
       const scheduledTime = new Date(j.scheduledFor);
       return now >= scheduledTime;
@@ -3586,7 +3819,6 @@ app.get('/api/jobs/next', requireAdmin, (req, res) => {
   next.progressPercent = 0;
   if (!next.timeline) next.timeline = [];
   
-  const defaultPrinterName = db.printerSettings?.selectedPrinter || 'UNKNOWN';
   next.timeline.push({
     stage: 'claimed',
     at: new Date().toISOString(),
@@ -3601,7 +3833,7 @@ app.get('/api/jobs/next', requireAdmin, (req, res) => {
 });
 
 // POST /api/orders/:id/approve - approve print order (shop admin only)
-app.post('/api/orders/:id/approve', requireAdmin, (req, res) => {
+app.post('/api/orders/:id/approve', requireAdmin, async (req, res) => {
   const t1 = Date.now();
   console.log(`[PERF][T1] Backend received POST /api/orders/${req.params.id}/approve at ${t1} (${new Date(t1).toISOString()})`);
 
@@ -3615,6 +3847,11 @@ app.post('/api/orders/:id/approve', requireAdmin, (req, res) => {
   }
 
   const order = db.orders![orderIdx];
+  const tokenShopId = (req as any).tokenShopId;
+  if (tokenShopId && order.shopId !== tokenShopId) {
+    return res.status(403).json({ error: 'Forbidden: You do not have access to print orders of another shop.' });
+  }
+
   if (order.status !== 'pending_approval') {
     return res.status(400).json({ error: 'Order is not pending approval' });
   }
@@ -3645,6 +3882,20 @@ app.post('/api/orders/:id/approve', requireAdmin, (req, res) => {
   writeDb(db);
   const t4_5 = Date.now();
   console.log(`[PERF][T4.5] writeDb completed in ${t4_5 - t4}ms`);
+
+  if (dbRepository.isSupabase()) {
+    try {
+      await dbRepository.updateOrder(order.id, { status: 'printing' });
+      for (const j of orderJobs) {
+        await dbRepository.updateJob(j.id, { status: 'queued', timeline: j.timeline });
+      }
+    } catch (err: any) {
+      console.error('[SUPABASE ORDER APPROVAL ERROR]', err?.message || err);
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(503).json({ error: 'Database service unavailable' });
+      }
+    }
+  }
   
   // Event-driven dispatch: push next queued job to connected v2 agent
   dispatchNextJob(order.shopId);
@@ -3654,7 +3905,7 @@ app.post('/api/orders/:id/approve', requireAdmin, (req, res) => {
 });
 
 // POST /api/orders/:id/reject - reject print order (shop admin only)
-app.post('/api/orders/:id/reject', requireAdmin, (req, res) => {
+app.post('/api/orders/:id/reject', requireAdmin, async (req, res) => {
   const db = readDb();
   const orderIdx = (db.orders || []).findIndex(o => o.id === req.params.id);
   if (orderIdx === -1) {
@@ -3662,6 +3913,11 @@ app.post('/api/orders/:id/reject', requireAdmin, (req, res) => {
   }
 
   const order = db.orders![orderIdx];
+  const tokenShopId = (req as any).tokenShopId;
+  if (tokenShopId && order.shopId !== tokenShopId) {
+    return res.status(403).json({ error: 'Forbidden: You do not have access to print orders of another shop.' });
+  }
+
   if (order.status !== 'pending_approval') {
     return res.status(400).json({ error: 'Order is not pending approval' });
   }
@@ -3685,14 +3941,50 @@ app.post('/api/orders/:id/reject', requireAdmin, (req, res) => {
   });
 
   writeDb(db);
+
+  if (dbRepository.isSupabase()) {
+    try {
+      await dbRepository.updateOrder(order.id, { status: 'failed' });
+      for (const j of orderJobs) {
+        await dbRepository.updateJob(j.id, { status: 'failed', reason: j.reason, timeline: j.timeline });
+      }
+    } catch (err: any) {
+      console.error('[SUPABASE ORDER REJECT ERROR]', err?.message || err);
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(503).json({ error: 'Database service unavailable' });
+      }
+    }
+  }
+
   res.json({ ...order, jobs: orderJobs });
 });
 
 // GET /api/orders/token/:token - search print order by token (shop admin only)
-app.get('/api/orders/token/:token', requireAdmin, (req, res) => {
-  const db = readDb();
+app.get('/api/orders/token/:token', requireAdmin, async (req, res) => {
   const searchToken = req.params.token.toUpperCase();
-  const matchingOrder = (db.orders || []).find(o => o.token.toUpperCase() === searchToken);
+  let matchingOrder: DbPrintOrder | null = null;
+  let orderJobs: DbJob[] = [];
+
+  if (dbRepository.isSupabase()) {
+    try {
+      matchingOrder = await dbRepository.getOrderByToken(searchToken);
+      if (!matchingOrder) return res.status(404).json({ error: 'Order not found with this token' });
+      
+      const tokenShopId = (req as any).tokenShopId;
+      if (tokenShopId && matchingOrder.shopId !== tokenShopId) {
+        return res.status(403).json({ error: 'Forbidden: This order belongs to another shop.' });
+      }
+
+      orderJobs = await dbRepository.getJobs({ shopId: matchingOrder.shopId });
+      orderJobs = orderJobs.filter(j => j.orderId === matchingOrder!.id);
+      return res.json({ ...matchingOrder, jobs: orderJobs });
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  }
+
+  const db = readDb();
+  matchingOrder = (db.orders || []).find(o => o.token.toUpperCase() === searchToken) || null;
 
   if (!matchingOrder) {
     return res.status(404).json({ error: 'Order not found with this token' });
@@ -3703,15 +3995,31 @@ app.get('/api/orders/token/:token', requireAdmin, (req, res) => {
     return res.status(403).json({ error: 'Forbidden: This order belongs to another shop.' });
   }
 
-  const orderJobs = db.jobs.filter(j => j.orderId === matchingOrder.id);
+  orderJobs = db.jobs.filter(j => j.orderId === matchingOrder!.id);
   res.json({ ...matchingOrder, jobs: orderJobs });
 });
 
 // GET /api/jobs/token/:token - search print jobs by token (shop admin only)
-app.get('/api/jobs/token/:token', requireAdmin, (req, res) => {
-  const db = readDb();
+app.get('/api/jobs/token/:token', requireAdmin, async (req, res) => {
   const searchToken = req.params.token.toUpperCase();
   const tokenShopId = (req as any).tokenShopId;
+
+  if (dbRepository.isSupabase()) {
+    try {
+      const job = await dbRepository.getJobByToken(searchToken);
+      if (!job) return res.status(404).json({ error: 'Job not found with this token' });
+
+      if (tokenShopId && job.shopId !== tokenShopId) {
+        return res.status(403).json({ error: 'Forbidden: You do not have access to this job.' });
+      }
+
+      return res.json([job]);
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  }
+
+  const db = readDb();
 
   // Filter jobs by tokenId (or orderId token)
   const matchingJobs = db.jobs.filter(j => 
@@ -3783,7 +4091,7 @@ app.post('/api/jobs/:id/approve', requireAdmin, (req, res) => {
 });
 
 // POST /api/jobs/:id/status - update job status (used by print client)
-app.post('/api/jobs/:id/status', requireAdmin, (req, res) => {
+app.post('/api/jobs/:id/status', requireAdmin, async (req, res) => {
   const db = (req as any).db || readDb();
   const idx = db.jobs.findIndex(j => j.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Job not found' });
@@ -3839,33 +4147,32 @@ app.post('/api/jobs/:id/status', requireAdmin, (req, res) => {
 
   writeDb(db);
   
-  // If the job is completed, delete the server file to save disk space
+  if (dbRepository.isSupabase()) {
+    try {
+      await dbRepository.updateJob(req.params.id, {
+        status: db.jobs[idx].status,
+        progressPercent: db.jobs[idx].progressPercent,
+        reason: db.jobs[idx].reason,
+        timeline: db.jobs[idx].timeline,
+        metrics: db.jobs[idx].metrics
+      });
+    } catch (err: any) {
+      console.error('[SUPABASE JOB STATUS PERSISTENCE ERROR]', err?.message || err);
+    }
+  }
+
+  // If the job is completed, delete the document from storage immediately (T+0)
   if (status === 'completed') {
     const job = db.jobs[idx];
     if (job.serverFilePath) {
-      // Resolve path: serverFilePath starts with /uploads/
-      const fileName = path.basename(job.serverFilePath);
-      const fullUploadPath = path.join(UPLOADS_DIR, fileName);
-      try {
-        if (fs.existsSync(fullUploadPath)) {
-          fs.unlinkSync(fullUploadPath);
-          console.log(`[CLEANUP] Deleted completed job file from server disk: ${fileName}`);
-        }
-      } catch (err) {
-        console.error(`[CLEANUP] Failed to delete file ${fileName}:`, err);
-      }
+      deleteDocument(path.basename(job.serverFilePath)).catch(err => {
+        console.error('[STORAGE CLEANUP ERROR]', err.message);
+      });
     }
     if (job.originalFilePath) {
-      const origFileName = path.basename(job.originalFilePath);
-      const fullOrigPath = path.join(UPLOADS_DIR, origFileName);
-      try {
-        if (fs.existsSync(fullOrigPath)) {
-          fs.unlinkSync(fullOrigPath);
-          console.log(`[CLEANUP] Deleted completed job original file from server disk: ${origFileName}`);
-        }
-      } catch (err) {
-        console.error(`[CLEANUP] Failed to delete original file ${origFileName}:`, err);
-      }
+      deleteDocument(path.basename(job.originalFilePath)).catch(err => {
+        console.error('[STORAGE CLEANUP ERROR]', err.message);
+      });
     }
   }
 
@@ -3890,6 +4197,11 @@ app.post('/api/jobs/:id/status', requireAdmin, (req, res) => {
         if (orderObj) {
           orderObj.status = status === 'failed' ? 'rejected' : 'completed';
           writeDb(db);
+          if (dbRepository.isSupabase()) {
+            dbRepository.updateOrder(orderObj.id, { status: orderObj.status }).catch(err => {
+              console.error('[SUPABASE ORDER COMPLETION ERROR]', err?.message || err);
+            });
+          }
           broadcastSse({ type: 'order_updated', order: orderObj });
         }
       }
@@ -4004,18 +4316,40 @@ app.post('/api/jobs/:id/failure-snapshot', requireAdmin, (req, res) => {
 });
 
 // GET /api/admin/jobs - list all jobs with full telemetry (admin only)
-app.get('/api/admin/jobs', requireAdmin, (req, res) => {
-  const db = readDb();
+app.get('/api/admin/jobs', requireAdmin, async (req, res) => {
   const { shopId } = req.query;
+  const tokenShopId = (req as any).tokenShopId;
+  const targetShopId = (shopId as string) || tokenShopId;
+
+  if (dbRepository.isSupabase()) {
+    try {
+      const jobs = await dbRepository.getJobs({ shopId: targetShopId });
+      return res.json(jobs);
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  }
+
+  const db = readDb();
   let jobsList = db.jobs;
-  if (shopId) {
-    jobsList = jobsList.filter(j => j.shopId === shopId);
+  if (targetShopId) {
+    jobsList = jobsList.filter(j => j.shopId === targetShopId);
   }
   res.json(jobsList.slice().reverse());
 });
 
 // GET /api/admin/jobs/:id - get single job details with full telemetry (admin only)
-app.get('/api/admin/jobs/:id', requireAdmin, (req, res) => {
+app.get('/api/admin/jobs/:id', requireAdmin, async (req, res) => {
+  if (dbRepository.isSupabase()) {
+    try {
+      const job = await dbRepository.getJob(req.params.id);
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      return res.json(job);
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  }
+
   const db = readDb();
   const job = db.jobs.find(j => j.id === req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -4023,15 +4357,28 @@ app.get('/api/admin/jobs/:id', requireAdmin, (req, res) => {
 });
 
 // GET /api/admin/stats - get administrative dashboard statistics
-app.get('/api/admin/stats', requireAdmin, (req, res) => {
+app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   const { shopId } = req.query;
-  const db = (req as any).db || readDb();
+  const tokenShopId = (req as any).tokenShopId;
+  const targetShopId = (shopId as string) || tokenShopId;
+
+  let targetJobs: DbJob[] = [];
+
+  if (dbRepository.isSupabase()) {
+    try {
+      targetJobs = await dbRepository.getJobs({ shopId: targetShopId });
+    } catch (err: any) {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+  } else {
+    const db = (req as any).db || readDb();
+    targetJobs = targetShopId ? db.jobs.filter(j => j.shopId === targetShopId) : db.jobs;
+  }
+
   let revenue = 0;
   let completedJobs = 0;
   let failedJobs = 0;
   let pendingJobs = 0;
-
-  const targetJobs = shopId ? db.jobs.filter(j => j.shopId === shopId) : db.jobs;
 
   targetJobs.forEach(job => {
     if (job.status === 'completed') {
@@ -4180,6 +4527,26 @@ function migrateDuplicateAgents() {
 }
 
 migrateDuplicateAgents();
+
+// 7-Day Data Retention Purge Scheduler
+const RETENTION_PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000; // Daily
+if (!process.env.VITEST) {
+  setTimeout(() => {
+    executeRetentionPurge(7).then(res => {
+      console.log(`[RETENTION] Initial 7-day purge completed: ${res.purgedJobs} jobs, ${res.purgedOrders} orders, ${res.purgedFiles} files.`);
+    }).catch(err => {
+      console.error('[RETENTION ERROR] Retention purge failed:', err?.message || err);
+    });
+  }, 10000);
+
+  setInterval(() => {
+    executeRetentionPurge(7).then(res => {
+      console.log(`[RETENTION] Daily 7-day purge completed: ${res.purgedJobs} jobs, ${res.purgedOrders} orders, ${res.purgedFiles} files.`);
+    }).catch(err => {
+      console.error('[RETENTION ERROR] Daily retention purge failed:', err?.message || err);
+    });
+  }, RETENTION_PURGE_INTERVAL_MS);
+}
 
 if (!process.env.VITEST) {
   app.listen(PORT, () => {
