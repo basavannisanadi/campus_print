@@ -552,11 +552,11 @@ function verifySessionToken(token: string): string | null {
 const googleAuthClient = new OAuth2Client();
 
 const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const auth = req.headers.authorization;
+  const auth = req.headers.authorization || (req.query?.token ? `Bearer ${req.query.token}` : undefined);
   if (!auth) {
     return res.status(401).json({ error: 'Unauthorized: Missing authorization header.' });
   }
-  const token = auth.replace('Bearer ', '');
+  const token = (auth as string).replace('Bearer ', '');
   const studentId = verifySessionToken(token);
   if (!studentId) {
     return res.status(401).json({ error: 'Unauthorized: Invalid or expired session.' });

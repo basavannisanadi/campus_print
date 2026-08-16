@@ -26,7 +26,13 @@ export const PdfFirstPageCanvas: React.FC<PdfFirstPageCanvasProps> = ({ url, cla
         setLoading(true);
         setError(false);
 
-        loadingTask = pdfjsLib.getDocument(url);
+        const token = sessionStorage.getItem('studentSessionToken');
+        const documentInitParams: any = {
+          url,
+          httpHeaders: token ? { 'Authorization': `Bearer ${token}` } : {},
+          withCredentials: true
+        };
+        loadingTask = pdfjsLib.getDocument(documentInitParams);
         const pdf = await loadingTask.promise;
         
         if (!isMounted) return;

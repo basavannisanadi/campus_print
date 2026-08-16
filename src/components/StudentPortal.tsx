@@ -304,7 +304,8 @@ export default function StudentPortal({
         };
       });
 
-      const previewUrl = getApiUrl(`/api/jobs/pre-convert/preview/${result.pdfFilename}`);
+      const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+      const previewUrl = getApiUrl(`/api/jobs/pre-convert/preview/${result.pdfFilename}${tokenParam}`);
       setPreviewUrls(prev => ({
         ...prev,
         [file.name]: previewUrl
