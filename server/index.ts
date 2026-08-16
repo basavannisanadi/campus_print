@@ -552,11 +552,11 @@ function verifySessionToken(token: string): string | null {
 const googleAuthClient = new OAuth2Client();
 
 const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const auth = req.headers.authorization || (req.query?.token ? `Bearer ${req.query.token}` : undefined);
+  const auth = req.headers.authorization;
   if (!auth) {
     return res.status(401).json({ error: 'Unauthorized: Missing authorization header.' });
   }
-  const token = (auth as string).replace('Bearer ', '');
+  const token = auth.replace('Bearer ', '');
   const studentId = verifySessionToken(token);
   if (!studentId) {
     return res.status(401).json({ error: 'Unauthorized: Invalid or expired session.' });
@@ -2768,7 +2768,7 @@ app.post('/api/agent/register', requireAdmin, (req, res) => {
 
 // POST /api/agent/heartbeat - Update heartbeat for a remote print agent
 app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
-  const { agentId, shopId, printerName, daemonVersion, printers, printerStatus, printerIntelligence } = req.body;
+  const { agentId, shopId, machineName, printerName, daemonVersion, printers, printerStatus, printerIntelligence } = req.body;
 
   if (!agentId || !shopId) {
     return res.status(400).json({ error: 'Missing agentId or shopId' });
@@ -2785,14 +2785,31 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
   }
 
   const agentIdx = db.agents.findIndex(a => a.agentId === agentId);
-  if (agentIdx === -1) {
-    return res.status(404).json({ error: 'Agent not registered. Please register first.' });
-  }
-
-  const agent = db.agents[agentIdx];
+  let agent: Agent;
+  let isNewRegistration = false;
   let changed = false;
   let statusChanged = false;
   let intelChanged = false;
+
+  if (agentIdx === -1) {
+    // FIX 1: Safely recreate/upsert authenticated agent entry after server restart
+    agent = {
+      agentId,
+      shopId,
+      machineName: machineName || 'UNKNOWN',
+      printerName: printerName || 'UNKNOWN',
+      daemonVersion: daemonVersion || '1.0.0',
+      onlineStatus: 'online',
+      printerStatus: printerStatus || 'online',
+      lastSeen: now
+    };
+    db.agents.push(agent);
+    changed = true;
+    statusChanged = true;
+    isNewRegistration = true;
+  } else {
+    agent = db.agents[agentIdx];
+  }
 
   agent.lastSeen = now;
 
@@ -2936,6 +2953,13 @@ app.post('/api/agent/heartbeat', requireAdmin, (req, res) => {
     agentId,
     shopId
   });
+  if (isNewRegistration) {
+    broadcastSse({
+      type: 'agent_registered',
+      agentId,
+      shopId
+    });
+  }
   if (statusChanged) {
     broadcastSse({
       type: 'agent_online',

@@ -27,12 +27,11 @@ export const PdfFirstPageCanvas: React.FC<PdfFirstPageCanvasProps> = ({ url, cla
         setError(false);
 
         const token = sessionStorage.getItem('studentSessionToken');
-        const documentInitParams: any = {
-          url,
-          httpHeaders: token ? { 'Authorization': `Bearer ${token}` } : {},
-          withCredentials: true
-        };
-        loadingTask = pdfjsLib.getDocument(documentInitParams);
+        const isNetworkUrl = typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/'));
+        const docParams: any = isNetworkUrl
+          ? { url, httpHeaders: token ? { 'Authorization': `Bearer ${token}` } : {} }
+          : url;
+        loadingTask = pdfjsLib.getDocument(docParams);
         const pdf = await loadingTask.promise;
         
         if (!isMounted) return;

@@ -1447,6 +1447,14 @@ async function sendHeartbeat() {
     }
   } catch (err) {
     console.error('  [Heartbeat Error]', err.message);
+    if (err.message && (err.message.includes('404') || err.message.includes('not registered'))) {
+      console.log('  [HEARTBEAT RECOVERY] Backend restart detected. Re-synchronizing registration...');
+      try {
+        await registerAgent();
+      } catch (regErr) {
+        console.error('  [Registration Recovery Failed]', regErr.message);
+      }
+    }
   }
 }
 
