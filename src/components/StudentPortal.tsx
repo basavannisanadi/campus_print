@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Upload,
   FileText,
@@ -16,6 +16,7 @@ import {
   MapPin,
   Phone,
   ChevronDown,
+  ChevronRight,
   Check,
   LayoutDashboard,
   Settings,
@@ -124,6 +125,31 @@ interface FileConfig {
   preConvertedOriginalFilename?: string;
 }
 
+const isProductionShop = (s: any) => {
+  if (!s || !s.id) return false;
+  const id = String(s.id).toLowerCase();
+  const name = String(s.name || '').toLowerCase();
+  if (
+    id.includes('test') ||
+    id.includes('concurren') ||
+    id.includes('mock') ||
+    id.includes('bench') ||
+    id.includes('temp') ||
+    id.startsWith('shop_test')
+  ) {
+    return false;
+  }
+  if (
+    name.includes('test') ||
+    name.includes('concurrency') ||
+    name.includes('mock') ||
+    name.includes('benchmark')
+  ) {
+    return false;
+  }
+  return true;
+};
+
 export default function StudentPortal({
   orders,
   printerStatus,
@@ -138,6 +164,12 @@ export default function StudentPortal({
   systemHealth,
   health
 }: Props) {
+  // Production shops filtering
+  const visibleShops = useMemo(() => {
+    const filtered = shops.filter(isProductionShop);
+    return filtered.length > 0 ? filtered : shops;
+  }, [shops]);
+
   // Authentication states
   const isGlobalMaintenance = (!!shopInfo?.bwMaintenanceMode && !!shopInfo?.colorMaintenanceMode) || underMaintenance;
   const isUploadDisabled = isGlobalMaintenance || (systemHealth && !systemHealth.systemReady);
@@ -178,13 +210,18 @@ export default function StudentPortal({
   const [showNotifications, setShowNotifications] = useState(false);
   
   // Custom navigation modal states
-  const [activeModal, setActiveModal] = useState<'price_calc' | 'find_center' | 'guidelines' | null>(null);
+  const [activeModal, setActiveModal] = useState<'price_calc' | 'find_center' | 'guidelines' | 'select_shop' | null>(null);
+  const [pendingShopId, setPendingShopId] = useState<string>(selectedShopId);
   const [calcPages, setCalcPages] = useState<number>(1);
   const [calcCopies, setCalcCopies] = useState<number>(1);
   const [calcType, setCalcType] = useState<'bw' | 'color' | 'duplex'>('bw');
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setPendingShopId(selectedShopId);
+  }, [selectedShopId]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -728,33 +765,44 @@ export default function StudentPortal({
         <div className="flex-1 overflow-y-auto py-3 space-y-3.5 text-left no-scrollbar">
           
           {/* ─── PRINT SHOP SELECTOR (MOBILE ACCESSIBLE) ─── */}
-          {shops.length > 0 && (
-            <div className="space-y-1 pb-2.5 border-b border-[var(--border-subtle)]">
-              <span className="text-[10px] font-extrabold text-[var(--text-muted)]/60 tracking-widest font-mono select-none block px-3">
-                PRINT CENTER
-              </span>
-              <div className="space-y-0.5">
-                {shops.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      onSelectShop(s.id);
-                      setIsDrawerOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold transition-all border-none cursor-pointer flex items-center justify-between ${
-                      s.id === selectedShopId
-                        ? 'bg-purple-50 text-purple-600 font-bold border border-purple-200/50'
-                        : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)] bg-transparent'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <MapPin className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
-                      <span className="truncate">{s.name}</span>
-                    </div>
-                    {s.id === selectedShopId && <Check className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />}
-                  </button>
-                ))}
+          {visibleShops.length > 0 && (
+            <div className="space-y-1.5 pb-3 border-b border-[var(--border-subtle)]">
+              <div className="flex items-center justify-between px-3">
+                <span className="text-[10px] font-extrabold text-[var(--text-muted)]/70 tracking-widest font-mono select-none">
+                  PRINT CENTER
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingShopId(selectedShopId);
+                    setIsDrawerOpen(false);
+                    setActiveModal('select_shop');
+                  }}
+                  className="text-[10px] text-purple-600 hover:text-purple-700 font-bold border-none bg-transparent cursor-pointer"
+                >
+                  Change
+                </button>
+              </div>
+              <div
+                onClick={() => {
+                  setPendingShopId(selectedShopId);
+                  setIsDrawerOpen(false);
+                  setActiveModal('select_shop');
+                }}
+                className="p-3 rounded-xl bg-purple-50/70 border border-purple-200/60 flex items-center justify-between gap-2 cursor-pointer hover:bg-purple-50 transition-colors"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <MapPin className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                  <div className="min-w-0 text-left">
+                    <p className="text-xs font-extrabold text-[var(--text-primary)] truncate">
+                      {visibleShops.find(s => s.id === selectedShopId)?.name || shopInfo?.name || 'TJohn Print Center'}
+                    </p>
+                    <p className="text-[10px] text-[var(--text-muted)] font-medium truncate mt-0.5">
+                      {visibleShops.find(s => s.id === selectedShopId)?.address || 'Campus Location'}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
               </div>
             </div>
           )}
@@ -960,39 +1008,20 @@ export default function StudentPortal({
             </div>
 
             {/* Print Centre Selector Pill */}
-            <div className="relative hidden sm:block" ref={dropdownRef}>
+            <div className="relative hidden sm:block">
               <button
                 type="button"
-                onClick={() => setShowShopDropdown(!showShopDropdown)}
-                className="px-4 py-2.5 rounded-full border border-[var(--border-default)] bg-[var(--bg-card)]/80 hover:border-purple-300  text-xs font-bold text-[var(--text-primary)] flex items-center gap-2.5 shadow-2xs transition-all cursor-pointer"
+                onClick={() => {
+                  setPendingShopId(selectedShopId);
+                  setActiveModal('select_shop');
+                }}
+                className="px-4 py-2.5 rounded-full border border-[var(--border-default)] bg-[var(--bg-card)]/80 hover:border-purple-300 text-xs font-bold text-[var(--text-primary)] flex items-center gap-2.5 shadow-2xs transition-all cursor-pointer"
+                title="Change Print Center"
               >
                 <MapPin className="w-4 h-4 text-purple-500 flex-shrink-0" />
-                <span className="truncate max-w-[160px]">{shops.find(s => s.id === selectedShopId)?.name || shopInfo?.name || 'TJohn Print Center'}</span>
+                <span className="truncate max-w-[160px]">{visibleShops.find(s => s.id === selectedShopId)?.name || shopInfo?.name || 'TJohn Print Center'}</span>
                 <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" />
               </button>
-
-              {showShopDropdown && (
-                <div className="portal-card-elevated absolute left-0 mt-2 w-64 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-xl py-2 z-50 animate-modal-pop">
-                  {shops.map(s => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => {
-                        onSelectShop(s.id);
-                        setShowShopDropdown(false);
-                      }}
-                      className={`w-full text-left px-4 py-2.5 text-xs font-semibold transition-colors border-none cursor-pointer flex items-center justify-between ${
-                        s.id === selectedShopId 
-                          ? 'bg-purple-50  text-purple-600  font-bold' 
-                          : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
-                      }`}
-                    >
-                      <span className="truncate">{s.name}</span>
-                      {s.id === selectedShopId && <Check className="w-4 h-4 text-purple-600 flex-shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
 
@@ -1126,94 +1155,102 @@ export default function StudentPortal({
           ) : activeTab === 'dashboard' ? (
             /* STAGE 3: Main Dashboard View inside App Shell */
             <>
-              {/* System Health Blocker Warning Card */}
+              {/* System Health Blocker Warning Card (Compact) */}
               {systemHealth && !systemHealth.systemReady && (
-                <div className="p-5 bg-rose-50  border border-rose-250  text-rose-800  rounded-xl flex items-start gap-3" role="alert">
-                  <AlertTriangle className="w-5 h-5 text-rose-600  flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-sm font-bold">Printing service is currently unavailable.</h4>
-                    <p className="text-xs text-rose-700  mt-1 leading-normal font-semibold">
+                <div className="p-3 sm:p-3.5 bg-rose-50 border border-rose-200 text-rose-900 rounded-xl flex items-center gap-2.5 sm:gap-3" role="alert">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                  <div className="min-w-0 flex-1 text-left">
+                    <h4 className="text-xs font-bold leading-tight">Printing service is currently unavailable.</h4>
+                    <p className="text-[11px] text-rose-700 mt-0.5 leading-tight font-medium">
                       Please try again later or contact the print administrator.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Maintenance Mode Warning Card */}
+              {/* Maintenance Mode Warning Card (Compact) */}
               {isGlobalMaintenance && (
-                <div className="p-4 bg-amber-50  border border-amber-200  text-amber-800  rounded-xl flex items-start gap-3" role="alert">
-                  <AlertTriangle className="w-5 h-5 text-amber-600  flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-sm font-bold">⚠️ Shop Offline</h4>
-                    <p className="text-xs text-amber-700  mt-1 leading-normal font-bold">
+                <div className="p-3 sm:p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl flex items-center gap-2.5 sm:gap-3" role="alert">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <div className="min-w-0 flex-1 text-left">
+                    <h4 className="text-xs font-bold leading-tight">⚠️ Shop Offline</h4>
+                    <p className="text-[11px] text-amber-700 mt-0.5 leading-tight font-medium">
                       This print shop is currently under maintenance. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* B&W Maintenance Mode Warning Card */}
+              {/* B&W Maintenance Mode Warning Card (Compact) */}
               {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.bwMaintenanceMode && (
-                <div className="p-4 bg-amber-50  border border-amber-250  text-amber-850  rounded-xl flex items-start gap-3" role="alert">
-                  <AlertTriangle className="w-5 h-5 text-amber-600  flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-sm font-bold">⚠️ B&W Printing Offline</h4>
-                    <p className="text-xs text-amber-700  mt-1 leading-normal font-semibold">
+                <div className="p-3 sm:p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl flex items-center gap-2.5 sm:gap-3" role="alert">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <div className="min-w-0 flex-1 text-left">
+                    <h4 className="text-xs font-bold leading-tight">⚠️ B&W Printing Offline</h4>
+                    <p className="text-[11px] text-amber-700 mt-0.5 leading-tight font-medium">
                       Black & White printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.bwExpectedReturnTime || '06:02 PM'}</strong>.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Color Maintenance Mode Warning Card */}
+              {/* Color Maintenance Mode Warning Card (Compact) */}
               {agentOnlineStatus === 'online' && !isGlobalMaintenance && shopInfo?.colorMaintenanceMode && (
-                <div className="p-4 bg-amber-50  border border-amber-250  text-amber-850  rounded-xl flex items-start gap-3" role="alert">
-                  <AlertTriangle className="w-5 h-5 text-amber-600  flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-sm font-bold">⚠️ Color Printing Offline</h4>
-                    <p className="text-xs text-amber-700  mt-1 leading-normal font-semibold">
+                <div className="p-3 sm:p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl flex items-center gap-2.5 sm:gap-3" role="alert">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <div className="min-w-0 flex-1 text-left">
+                    <h4 className="text-xs font-bold leading-tight">⚠️ Color Printing Offline</h4>
+                    <p className="text-[11px] text-amber-700 mt-0.5 leading-tight font-medium">
                       Color printing is temporarily unavailable. Expected availability: <strong>{shopInfo?.colorExpectedReturnTime || '06:02 PM'}</strong>.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* ─── SPRINT 7: PREMIUM HERO SECTION (LANDING HERO + 4 INFO PILLS) ─── */}
-              <div className="space-y-3 text-left font-sans">
+              {/* ─── COMPACT HERO GREETING & STATUS PILLS ─── */}
+              <div className="space-y-2.5 text-left font-sans">
                 
-                {/* Premium Landing Hero Banner */}
-                <div className="px-3.5 sm:px-5 py-3 sm:py-4 rounded-2xl border border-purple-200/70  bg-gradient-to-r from-purple-600/10 via-indigo-600/5 to-purple-600/10    backdrop-blur-xl relative overflow-hidden shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                {/* Compact Landing Hero Banner */}
+                <div className="px-3.5 sm:px-5 py-2.5 sm:py-3.5 rounded-2xl border border-purple-200/70 bg-gradient-to-r from-purple-600/10 via-indigo-600/5 to-purple-600/10 backdrop-blur-xl relative overflow-hidden shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-2.5">
                   
                   {/* Decorative Background Glows */}
-                  <div className="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-purple-500/15  blur-3xl pointer-events-none" />
-                  <div className="absolute -bottom-24 -left-24 w-64 h-64 rounded-full bg-indigo-500/15  blur-3xl pointer-events-none" />
+                  <div className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-purple-500/10 blur-2xl pointer-events-none" />
 
                   {/* LEFT SIDE: Greeting, Subtitle & 4 Compact Information Pills */}
-                  <div className="space-y-2 max-w-2xl relative z-10 w-full">
+                  <div className="space-y-1.5 max-w-2xl relative z-10 w-full">
                     <div className="space-y-0.5">
-                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-purple-100  text-purple-600  text-[9px] font-extrabold uppercase tracking-widest font-mono border border-purple-200/50  mb-1">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-purple-100 text-purple-600 text-[8.5px] sm:text-[9px] font-extrabold uppercase tracking-widest font-mono border border-purple-200/50 mb-0.5">
                         <Sparkles className="w-2.5 h-2.5" />
                         <span>Campus High-Speed Spooler</span>
                       </div>
-                      <h1 className="text-base sm:text-xl lg:text-2xl font-black tracking-tight text-[var(--text-primary)] leading-tight flex flex-wrap items-center gap-1.5">
+                      <h1 className="text-sm sm:text-lg lg:text-xl font-black tracking-tight text-[var(--text-primary)] leading-tight flex flex-wrap items-center gap-1.5">
                         <span>Good Morning, {studentName || 'Student Test'}</span>
-                        <span className="text-lg sm:text-xl">👋</span>
+                        <span className="text-base sm:text-lg">👋</span>
                       </h1>
-                      <p className="text-[11px] sm:text-xs text-[var(--text-muted)] font-medium leading-tight pt-0.5">
+                      <p className="text-[11px] sm:text-xs text-[var(--text-muted)] font-medium leading-tight">
                         Let's get your documents printed and spooled for campus pickup.
                       </p>
                     </div>
 
                     {/* 4 Compact Information Pills Grid */}
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {/* Pill 1: Current Print Center */}
-                      <div className="px-2 py-1 rounded-lg bg-white/70  border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
-                        <MapPin className="w-3 h-3 text-purple-500 flex-shrink-0" />
-                        <span className="truncate max-w-[110px]">{shops.find(s => s.id === selectedShopId)?.name || shopInfo?.name || 'TJohn Print'}</span>
-                      </div>
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {/* Pill 1: Current Print Center (Clickable) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingShopId(selectedShopId);
+                          setActiveModal('select_shop');
+                        }}
+                        className="px-2 py-0.5 sm:py-1 rounded-lg bg-white/80 border border-[var(--border-subtle)] hover:border-purple-300 backdrop-blur-md flex items-center gap-1.5 font-mono text-[8.5px] sm:text-[9px] font-bold text-[var(--text-primary)] shadow-2xs transition-colors cursor-pointer"
+                        title="Change Print Center"
+                      >
+                        <MapPin className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-purple-500 flex-shrink-0" />
+                        <span className="truncate max-w-[110px]">{visibleShops.find(s => s.id === selectedShopId)?.name || shopInfo?.name || 'TJohn Print'}</span>
+                        <ChevronDown className="w-2.5 h-2.5 text-[var(--text-muted)] flex-shrink-0" />
+                      </button>
 
                       {/* Pill 2: Printer Status */}
-                      <div className="px-2 py-1 rounded-lg bg-white/70  border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
+                      <div className="px-2 py-0.5 sm:py-1 rounded-lg bg-white/80 border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[8.5px] sm:text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
                         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                           (() => {
                             if (health) {
@@ -1239,38 +1276,30 @@ export default function StudentPortal({
                       </div>
 
                       {/* Pill 3: Average Queue Time */}
-                      <div className="px-2 py-1 rounded-lg bg-white/70  border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
-                        <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                      <div className="px-2 py-0.5 sm:py-1 rounded-lg bg-white/80 border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[8.5px] sm:text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
+                        <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-500 flex-shrink-0" />
                         <span>{waitingJobsCount === 0 ? '0 Mins' : `~${estimatedMinutes} Mins`}</span>
                       </div>
 
                       {/* Pill 4: Opening Hours */}
-                      <div className="px-2 py-1 rounded-lg bg-white/70  border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
-                        <Zap className="w-3 h-3 text-sky-500 flex-shrink-0" />
+                      <div className="px-2 py-0.5 sm:py-1 rounded-lg bg-white/80 border border-[var(--border-subtle)] backdrop-blur-md flex items-center gap-1.5 font-mono text-[8.5px] sm:text-[9px] font-bold text-[var(--text-primary)] shadow-2xs">
+                        <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-sky-500 flex-shrink-0" />
                         <span>24/7 Service</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* RIGHT SIDE: Minimal Printer/Document Illustration */}
+                  {/* RIGHT SIDE: Minimal Printer Illustration (Desktop Only) */}
                   <div className="relative z-10 hidden md:flex items-center justify-center flex-shrink-0 pr-1">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600/20 via-indigo-600/15 to-purple-500/20 border border-purple-200/50  backdrop-blur-xl flex items-center justify-center relative shadow-lg shadow-purple-500/10 group transition-transform duration-300 hover:scale-105">
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-purple-500/30">
-                        <Printer className="w-4 h-4" />
-                      </div>
-                      <div className="absolute -top-1 -right-1 w-4 h-4 rounded-md bg-white  border border-purple-200  text-purple-600  flex items-center justify-center shadow-2xs">
-                        <FileText className="w-2 h-2" />
-                      </div>
-                      <div className="absolute -bottom-1 -left-1 w-4 h-4 rounded-md bg-white  border border-emerald-200  text-emerald-500 flex items-center justify-center shadow-2xs">
-                        <Check className="w-2 h-2 stroke-[3]" />
-                      </div>
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-purple-600/20 via-indigo-600/15 to-purple-500/20 border border-purple-200/50 backdrop-blur-xl flex items-center justify-center shadow-md shadow-purple-500/10">
+                      <Printer className="w-5 h-5 text-purple-600" />
                     </div>
                   </div>
 
                 </div>
 
-                {/* Compact Linear/Stripe-style Progress Stepper Bar (DIRECTLY BELOW HERO) */}
-                <div className="portal-card py-2.5 px-2.5 sm:py-3.5 sm:px-6 rounded-xl border border-[var(--border-subtle)]/70 bg-white/60  backdrop-blur-md shadow-2xs">
+                {/* Compact Linear Progress Stepper Bar */}
+                <div className="portal-card py-2 px-2.5 sm:py-3 sm:px-6 rounded-xl border border-[var(--border-subtle)]/70 bg-white/60 backdrop-blur-md shadow-2xs">
                   <div className="flex items-center justify-between gap-1 sm:gap-4">
                     {[
                       { num: 1, label: 'Upload', sub: 'Choose file' },
@@ -1291,16 +1320,16 @@ export default function StudentPortal({
                           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
                             {/* Circle Indicator */}
                             <div
-                              className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-extrabold text-[10px] sm:text-xs transition-all flex-shrink-0 relative z-10 ${
+                              className={`w-5.5 h-5.5 sm:w-7 sm:h-7 rounded-full flex items-center justify-center font-extrabold text-[9px] sm:text-xs transition-all flex-shrink-0 relative z-10 ${
                                 state === 'completed'
                                   ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-2xs'
                                   : state === 'active'
-                                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-2xs ring-2 sm:ring-3 ring-purple-100 '
-                                  : 'bg-[var(--bg-card)]  text-[var(--text-muted)] border border-[var(--border-subtle)]'
+                                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-2xs ring-2 ring-purple-100'
+                                  : 'bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-subtle)]'
                               }`}
                             >
                               {state === 'completed' ? (
-                                <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white stroke-[3]" />
+                                <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white stroke-[3]" />
                               ) : (
                                 step.num
                               )}
@@ -1309,9 +1338,9 @@ export default function StudentPortal({
                             {/* Step Title & Subtitle */}
                             <div className="text-left min-w-0">
                               <p
-                                className={`text-[10px] sm:text-[13px] font-bold tracking-tight leading-tight ${
+                                className={`text-[9.5px] sm:text-[12px] font-bold tracking-tight leading-tight ${
                                   state === 'active'
-                                    ? 'text-purple-600  font-extrabold'
+                                    ? 'text-purple-600 font-extrabold'
                                     : state === 'completed'
                                     ? 'text-[var(--text-primary)]'
                                     : 'text-[var(--text-secondary)]'
@@ -1319,15 +1348,15 @@ export default function StudentPortal({
                               >
                                 {step.label}
                               </p>
-                              <p className="text-[11px] text-[var(--text-muted)] font-medium truncate leading-tight mt-0.5 hidden sm:block">
+                              <p className="text-[10px] text-[var(--text-muted)] font-medium truncate leading-tight mt-0.5 hidden sm:block">
                                 {step.sub}
                               </p>
                             </div>
                           </div>
 
-                          {/* Shortened Connecting Line Segment spanning ONLY between adjacent circles */}
+                          {/* Shortened Connecting Line Segment */}
                           {!isLast && (
-                            <div className="flex-1 h-0.5 mx-0.5 sm:mx-3 rounded-full overflow-hidden bg-slate-200/70  min-w-[6px] sm:min-w-[12px]">
+                            <div className="flex-1 h-0.5 mx-0.5 sm:mx-2.5 rounded-full overflow-hidden bg-slate-200/70 min-w-[4px] sm:min-w-[10px]">
                               <div
                                 className={`h-full transition-all duration-300 ${
                                   isLineActive ? 'bg-gradient-to-r from-purple-600 to-indigo-600' : 'w-0'
@@ -1345,17 +1374,17 @@ export default function StudentPortal({
 
               {/* Main 2-Column Grid Layout */}
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 sm:gap-6 lg:gap-8">
-                {/* Left Column (Hero Upload Card - 3 Columns) */}
+                {/* Left Column (Hero Upload Card - Dominant Section) */}
                 <div className="lg:col-span-3 space-y-6">
                   {/* Hero Upload Card Shell */}
                   <div className="portal-card-lavender p-4 sm:p-6 md:p-8 rounded-2xl shadow-xl shadow-purple-500/5 space-y-5 sm:space-y-6 text-left border border-[var(--border-default)] relative overflow-hidden">
                     {/* Ambient Glow Accent */}
-                    <div className="absolute -top-24 -right-24 w-72 h-72 bg-purple-500/5  rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute -top-24 -right-24 w-72 h-72 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
 
                     {/* SECTION 1: Upload Header */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-[var(--border-subtle)] pb-3.5 sm:pb-4.5 relative z-10">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-[var(--border-subtle)] pb-3 sm:pb-4 relative z-10">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-600/10  border border-purple-200/80  flex items-center justify-center text-purple-600  shadow-xs flex-shrink-0">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-600/10 border border-purple-200/80 flex items-center justify-center text-purple-600 shadow-xs flex-shrink-0">
                           <FileUp className="w-4.5 h-4.5 sm:w-5 sm:h-5 stroke-[2.2]" />
                         </div>
                         <div className="min-w-0">
@@ -1363,36 +1392,36 @@ export default function StudentPortal({
                           <p className="text-[11px] sm:text-xs text-[var(--text-muted)] font-medium mt-0.5 truncate">Drag & drop your files or browse from device</p>
                         </div>
                       </div>
-                      <span className="self-start sm:self-auto px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-purple-50  text-purple-600  border border-purple-200/60  flex items-center gap-1.5 shadow-2xs font-mono flex-shrink-0">
-                        <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-purple-600 " />
+                      <span className="self-start sm:self-auto px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-purple-50 text-purple-600 border border-purple-200/60 flex items-center gap-1.5 shadow-2xs font-mono flex-shrink-0">
+                        <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-purple-600" />
                         Institutional Spooler
                       </span>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
-                      {/* SECTION 2: Student Information (Compact Horizontal Card) */}
-                      <div className="flex items-center justify-between p-3.5 sm:p-4 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] backdrop-blur-xs">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="w-8.5 h-8.5 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 text-white font-extrabold flex items-center justify-center text-xs flex-shrink-0 shadow-xs">
+                    <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6 relative z-10">
+                      {/* SECTION 2: Student Information (Compact Card) */}
+                      <div className="flex items-center justify-between p-2.5 sm:p-3.5 rounded-xl bg-[var(--bg-surface-secondary)]/50 border border-[var(--border-subtle)] backdrop-blur-xs">
+                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                          <div className="w-7.5 h-7.5 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 text-white font-extrabold flex items-center justify-center text-xs flex-shrink-0 shadow-xs">
                             {studentName ? studentName.charAt(0).toUpperCase() : 'S'}
                           </div>
                           <div className="min-w-0 flex-1 text-left">
                             <p className="text-xs font-bold text-[var(--text-primary)] truncate leading-tight">{studentName || 'Student Test'}</p>
-                            <p className="text-[11px] text-[var(--text-muted)] font-medium truncate mt-0.5">{studentEmail || 'student@university.edu'}</p>
+                            <p className="text-[10px] sm:text-[11px] text-[var(--text-muted)] font-medium truncate mt-0.5">{studentEmail || 'student@university.edu'}</p>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold text-emerald-600  bg-emerald-50  px-2.5 py-1 rounded-full border border-emerald-200/60  font-mono">
+                        <span className="text-[9.5px] sm:text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border border-emerald-200/60 font-mono flex-shrink-0">
                           Verified Student
                         </span>
                       </div>
 
-                      {/* SECTION 3: Drag & Drop Area (Height reduced by ~20%) */}
+                      {/* SECTION 3: Drag & Drop Area (Dominant Primary Action) */}
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <label className="block text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider font-mono">
                             Document Dropzone
                           </label>
-                          <span className="text-[11px] font-semibold text-[var(--text-muted)]">Max 50MB per file</span>
+                          <span className="text-[10px] sm:text-[11px] font-semibold text-[var(--text-muted)]">Max 50MB per file</span>
                         </div>
 
                         <div
@@ -1400,12 +1429,12 @@ export default function StudentPortal({
                           onDragLeave={(submitting || isUploadDisabled) ? undefined : handleDragLeave}
                           onDrop={(submitting || isUploadDisabled) ? undefined : handleDrop}
                           onClick={() => !(submitting || isUploadDisabled) && fileInputRef.current?.click()}
-                          className={`relative rounded-2xl border-2 border-dashed p-7 sm:p-9 text-center cursor-pointer transition-all duration-300 group overflow-hidden ${
+                          className={`relative rounded-2xl border-2 border-dashed p-6 sm:p-9 text-center cursor-pointer transition-all duration-300 group overflow-hidden ${
                             (submitting || isUploadDisabled)
                               ? 'border-[var(--border-subtle)] bg-[var(--bg-surface-secondary)]/40 cursor-not-allowed opacity-60'
                               : dragOver
-                              ? 'border-purple-600 bg-purple-100/60  shadow-2xl shadow-purple-500/20 scale-[1.01]'
-                              : 'border-purple-300/80  bg-gradient-to-b from-purple-50/50 via-slate-50/20 to-transparent    hover:border-purple-500 hover:bg-purple-50/80  hover:shadow-lg hover:shadow-purple-500/10'
+                              ? 'border-purple-600 bg-purple-100/70 shadow-2xl shadow-purple-500/20 scale-[1.01]'
+                              : 'border-purple-300 hover:border-purple-600 bg-gradient-to-b from-purple-50/60 via-purple-50/20 to-transparent hover:bg-purple-50/80 hover:shadow-xl hover:shadow-purple-500/10'
                           }`}
                         >
                           <input
@@ -1419,48 +1448,51 @@ export default function StudentPortal({
                           />
 
                           <div className="flex flex-col items-center justify-center">
-                            {/* Upload Icon */}
-                            <div className="w-13 h-13 rounded-2xl bg-white  border border-purple-200/80  shadow-md shadow-purple-500/10 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:border-purple-500 transition-all duration-300">
-                              <FileUp className="w-6.5 h-6.5 text-purple-600  stroke-[2]" />
+                            {/* Prominent Upload Icon */}
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white border border-purple-200/80 shadow-md shadow-purple-500/15 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:border-purple-500 transition-all duration-300">
+                              <FileUp className="w-6 h-6 sm:w-7 sm:h-7 text-purple-600 stroke-[2.2]" />
                             </div>
 
-                            {/* Headline */}
-                            <p className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
-                              Drop your files here, or <span className="text-purple-600  underline underline-offset-4 decoration-purple-400/50 hover:decoration-purple-600 transition-all">browse files</span>
-                            </p>
-                            
-                            {/* Supported formats */}
-                            <p className="text-[11px] text-[var(--text-muted)] font-medium mt-1">
-                              PDF & Images (PNG, JPG) up to 50MB
+                            {/* Main Headline */}
+                            <p className="text-sm sm:text-base font-black text-[var(--text-primary)] leading-snug">
+                              Upload Your Document
                             </p>
 
-                            {/* Choose Files button */}
+                            {/* Sub-instruction */}
+                            <p className="text-xs text-[var(--text-secondary)] font-medium mt-1">
+                              Drag & drop your files here or tap to browse
+                            </p>
+
+                            {/* Prominent Choose File Button */}
                             <button
                               type="button"
                               disabled={submitting || isUploadDisabled}
-                              className="mt-4 py-2.5 px-6 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white font-extrabold text-xs uppercase tracking-wider inline-flex items-center gap-2 border-none shadow-md shadow-purple-500/20 group-hover:shadow-purple-500/35 group-hover:scale-[1.02] transition-all cursor-pointer"
+                              className="mt-3.5 py-2.5 px-6 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white font-extrabold text-xs uppercase tracking-wider inline-flex items-center gap-2 border-none shadow-md shadow-purple-500/20 group-hover:shadow-purple-500/35 group-hover:scale-[1.02] transition-all cursor-pointer"
                             >
                               <FileUp className="w-3.5 h-3.5 stroke-[2.5]" />
-                              Choose Files
+                              Choose File
                             </button>
 
-                            {/* File format chips */}
-                            <div className="flex flex-wrap items-center justify-center gap-1.5 mt-4.5">
+                            {/* Supported formats & limits */}
+                            <div className="flex flex-wrap items-center justify-center gap-1.5 mt-3.5">
                               {['📄 PDF', '🖼️ PNG / JPG'].map((type) => (
                                 <span
                                   key={type}
-                                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/80 text-[var(--text-secondary)] border border-[var(--border-subtle)] shadow-2xs"
+                                  className="px-2 py-0.5 rounded-md text-[9.5px] font-bold bg-white/90 text-[var(--text-secondary)] border border-[var(--border-subtle)] shadow-2xs font-mono"
                                 >
                                   {type}
                                 </span>
                               ))}
+                              <span className="px-2 py-0.5 rounded-md text-[9.5px] font-semibold text-[var(--text-muted)] font-mono">
+                                Max 50MB
+                              </span>
                             </div>
                           </div>
                         </div>
 
                         {/* Student-facing Format Notice */}
-                        <div className="mt-2.5 px-3.5 py-2 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-center">
-                          <span className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+                        <div className="mt-2 px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-center">
+                          <span className="text-[10.5px] font-semibold text-purple-700 dark:text-purple-300">
                             ✦ PDF & Images only — DOC, DOCX, PPT & PPTX files are not supported.
                           </span>
                         </div>
@@ -2527,6 +2559,107 @@ export default function StudentPortal({
                       <span>Avoid screenshots: Upload vector documents directly to maintain razor-sharp text clarity.</span>
                     </p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeModal === 'select_shop' && (
+              <div className="space-y-4 sm:space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-600/10 text-purple-600 flex items-center justify-center flex-shrink-0">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-[var(--text-primary)] tracking-tight">Select Print Center</h3>
+                    <p className="text-[11px] text-[var(--text-muted)] font-medium">Choose a shop to continue</p>
+                  </div>
+                </div>
+
+                {/* Production Print Centers List */}
+                <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-0.5">
+                  {visibleShops.map((s) => {
+                    const isPending = (pendingShopId || selectedShopId) === s.id;
+                    const isCurrent = selectedShopId === s.id;
+                    const isOnline = s.printerStatus === 'online';
+
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setPendingShopId(s.id)}
+                        className={`w-full p-3.5 sm:p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 ${
+                          isPending
+                            ? 'border-purple-600 bg-purple-50/80 ring-2 ring-purple-500/20 shadow-sm'
+                            : 'border-[var(--border-default)] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)]'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs sm:text-sm font-extrabold text-[var(--text-primary)] truncate">
+                              {s.name}
+                            </span>
+                            {isCurrent && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold font-mono bg-purple-100 text-purple-700 flex-shrink-0">
+                                Current
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-[var(--text-muted)] font-medium truncate mt-0.5">
+                            📍 {s.address || 'Campus Location'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-full ${
+                              isOnline ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' : 'bg-rose-50 text-rose-700 border border-rose-200/60'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                              {isOnline ? 'Online' : 'Offline'}
+                            </span>
+                            <span className="text-[10px] text-[var(--text-muted)] font-mono font-medium">
+                              ₹{(s.bwPrice ?? 2).toFixed(0)} B&W · ₹{(s.colorPrice ?? 5).toFixed(0)} Color
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-center flex-shrink-0">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                            isPending
+                              ? 'bg-purple-600 text-white shadow-xs'
+                              : 'border border-[var(--border-subtle)] text-transparent'
+                          }`}>
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Confirmation Action Footer */}
+                <div className="pt-2 flex gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveModal(null);
+                      setPendingShopId(selectedShopId);
+                    }}
+                    className="flex-1 py-3 px-4 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!pendingShopId || pendingShopId === selectedShopId}
+                    onClick={() => {
+                      if (pendingShopId && pendingShopId !== selectedShopId) {
+                        onSelectShop(pendingShopId);
+                      }
+                      setActiveModal(null);
+                      setIsDrawerOpen(false);
+                    }}
+                    className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 disabled:opacity-40 text-white font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer border-none shadow-md shadow-purple-500/20"
+                  >
+                    Confirm Selection
+                  </button>
                 </div>
               </div>
             )}
