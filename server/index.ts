@@ -6,7 +6,6 @@ if (process.env.NODE_ENV === 'test') {
   process.env.OWNER_PASSWORD = 'campusprint_admin_123';
   process.env.ADMIN_API_KEY = 'campusprint_admin_123';
   process.env.AGENT_TOKEN = 'campusprint_agent_token_123';
-  process.env.ALLOW_MOCK_AUTH = 'true';
 }
 
 import helmet from 'helmet';
@@ -866,8 +865,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://accounts.google.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:", "https://lh3.googleusercontent.com"],
       connectSrc: ["'self'", "http://localhost:*", "ws://localhost:*", "https://accounts.google.com"],
@@ -875,6 +874,7 @@ app.use(helmet({
     }
   },
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
 }));
 
 app.use(cors({
@@ -990,12 +990,11 @@ app.post('/api/auth/google', async (req, res) => {
   let name: string;
   let picture: string;
 
-  const isProd = process.env.NODE_ENV === 'production';
+  const isTest = process.env.NODE_ENV === 'test';
   const googleClientId = process.env.GOOGLE_CLIENT_ID;
 
-  // Development/Test Mode Mock Bypass
-  const allowMockAuth = process.env.ALLOW_MOCK_AUTH === 'true' || (!isProd && (!googleClientId || idToken.startsWith('mock_token_')));
-  if (allowMockAuth && idToken.startsWith('mock_token_')) {
+  // Automated API Test Suite mock branch (strictly isolated to NODE_ENV === 'test')
+  if (isTest && idToken.startsWith('mock_token_')) {
     if (idToken === 'mock_token_basav') {
       googleId = 'google_id_basav_123';
       email = 'basav@university.edu';
@@ -1007,14 +1006,14 @@ app.post('/api/auth/google', async (req, res) => {
       name = 'Student Test';
       picture = 'https://lh3.googleusercontent.com/a/default-user=s96-c';
     } else {
-      const emailPart = idToken.startsWith('mock_token_') ? idToken.replace('mock_token_', '') : idToken;
+      const emailPart = idToken.replace('mock_token_', '');
       googleId = `google_id_${emailPart}`;
       email = emailPart.includes('@') ? emailPart : `${emailPart}@university.edu`;
       name = email.split('@')[0];
       picture = 'https://lh3.googleusercontent.com/a/default-user=s96-c';
     }
   } else {
-    // Production Token Verification
+    // Production & Non-Test Token Verification
     if (!googleClientId) {
       return res.status(500).json({ error: 'Google Client ID is not configured on the server.' });
     }
