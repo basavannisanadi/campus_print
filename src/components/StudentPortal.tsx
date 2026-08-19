@@ -203,7 +203,7 @@ export default function StudentPortal({
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [success, setSuccess] = useState<{ order?: any, jobs: any[] } | null>(null);
-  const [error, setError] = useState('');
+  const [submissionError, setSubmissionError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'jobs' | 'history' | 'settings' | 'help' | 'queue' | 'about' | 'status'>('dashboard');
@@ -290,7 +290,7 @@ export default function StudentPortal({
       setFileConfigs({});
       Object.values(previewUrls).forEach((url: string) => URL.revokeObjectURL(url));
       setPreviewUrls({});
-      setError('');
+      setSubmissionError('');
     }
   }, [selectedShopId]);
 
@@ -356,7 +356,7 @@ export default function StudentPortal({
       }
     } catch (err: any) {
       console.error('Pre-conversion failed for:', file.name, err);
-      setError(`Document conversion failed for "${file.name}": ${err.message}`);
+      setSubmissionError(`Document conversion failed for "${file.name}": ${err.message}`);
       setFiles(prev => prev.filter(f => f.name !== file.name));
       setFileConfigs(prev => {
         const copy = { ...prev };
@@ -381,11 +381,11 @@ export default function StudentPortal({
 
     for (const file of newFiles) {
       if (!isSupportedFile(file)) {
-        setError(`File "${file.name}" is not a supported format. Only PDF (.pdf) and images (.png, .jpg, .jpeg) are supported.`);
+        setSubmissionError(`File "${file.name}" is not a supported format. Only PDF (.pdf) and images (.png, .jpg, .jpeg) are supported.`);
         continue;
       }
       if (file.size > 50 * 1024 * 1024) {
-        setError(`File "${file.name}" exceeds the 50MB limit.`);
+        setSubmissionError(`File "${file.name}" exceeds the 50MB limit.`);
         continue;
       }
 
@@ -485,17 +485,17 @@ export default function StudentPortal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setSubmissionError('');
 
-    if (!studentName.trim()) return setError('Please enter your name.');
-    if (!studentEmail.trim()) return setError('Please enter your email.');
-    if (files.length === 0) return setError('Please upload at least one file to print.');
+    if (!studentName.trim()) return setSubmissionError('Please enter your name.');
+    if (!studentEmail.trim()) return setSubmissionError('Please enter your email.');
+    if (files.length === 0) return setSubmissionError('Please upload at least one file to print.');
 
     if (isUploadDisabled) {
       if (systemHealth && !systemHealth.systemReady) {
-        return setError(`Printing service is currently unavailable. Blockers: ${systemHealth.blockers.join(', ')}`);
+        return setSubmissionError(`Printing service is currently unavailable. Blockers: ${systemHealth.blockers.join(', ')}`);
       }
-      return setError('This print shop is currently under maintenance.');
+      return setSubmissionError('This print shop is currently under maintenance.');
     }
 
     let hasBw = false;
@@ -508,11 +508,11 @@ export default function StudentPortal({
     });
 
     if (hasBw && shopInfo.bwMaintenanceMode) {
-      return setError('Black & White printing is temporarily unavailable.');
+      return setSubmissionError('Black & White printing is temporarily unavailable.');
     }
 
     if (hasColor && shopInfo.colorMaintenanceMode) {
-      return setError('Color printing is temporarily unavailable.');
+      return setSubmissionError('Color printing is temporarily unavailable.');
     }
 
     setSubmitting(true);
@@ -607,20 +607,20 @@ export default function StudentPortal({
         xhr.send(formData);
       });
 
-      if (result && !Array.isArray(result) && result.order) {
-        setSuccess({ order: result.order, jobs: Array.isArray(result.jobs) ? result.jobs : [] });
-      } else if (Array.isArray(result)) {
-        const firstJob = result[0];
-        const synthOrder = firstJob ? {
-          id: firstJob.orderId || 'UNKNOWN',
-          token: firstJob.tokenId || firstJob.token || 'UNKNOWN'
-        } : null;
-        setSuccess({ order: synthOrder, jobs: result });
-      } else {
-        setSuccess(null);
-      }
+      // Clear any prior submission error immediately upon successful 2xx response
+      setSubmissionError('');
+      setUploadProgress(100);
+
+      const order = (result && !Array.isArray(result) && result.order)
+        ? result.order
+        : (Array.isArray(result) && result[0] ? { id: result[0].orderId || 'UNKNOWN', token: result[0].tokenId || result[0].token || 'UNKNOWN' } : { id: 'PRNT-ORDER', token: 'PRNT-PENDING' });
+      const jobs = (result && Array.isArray(result.jobs))
+        ? result.jobs
+        : (Array.isArray(result) ? result : []);
+
+      setSuccess({ order, jobs });
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+      setSubmissionError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
       setUploadProgress(0);
     } finally {
       setSubmitting(false);
@@ -634,7 +634,7 @@ export default function StudentPortal({
     setFileConfigs({});
     setActiveFileName(null);
     setSuccess(null);
-    setError('');
+    setSubmissionError('');
     setUploadProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -1519,9 +1519,9 @@ export default function StudentPortal({
                         </div>
                       </div>
 
-                      {error && (
-                        <div className="p-3.5 bg-rose-50 bg-red-50  border border-rose-150  text-rose-600  text-xs font-semibold rounded-xl leading-relaxed">
-                          {error}
+                      {submissionError && (
+                        <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-600 text-xs font-semibold rounded-xl leading-relaxed">
+                          {submissionError}
                         </div>
                       )}
 
@@ -1936,7 +1936,7 @@ export default function StudentPortal({
                                 {files.reduce((sum, f) => sum + ((fileConfigs[f.name]?.pageCount || 1) * (fileConfigs[f.name]?.copies || 1)), 0)} Total Pages
                               </span>
                               {activeConf && (
-                                <span className="px-2 py-0.5 sm:px-2.5 rounded-md text-[9px] sm:text-[10px] font-extrabold bg-purple-100  text-purple-600 ">
+                                <span className="px-2 py-0.5 sm:px-2.5 rounded-md text-[9px] sm:text-[10px] font-extrabold bg-purple-100 text-purple-600">
                                   {activeConf.printType === 'color' ? 'Color' : 'B&W'} · {activeConf.sides === 'double' ? 'Duplex' : 'Simplex'}
                                 </span>
                               )}
@@ -1949,10 +1949,10 @@ export default function StudentPortal({
                       )}
 
                       {/* Inline Error Message directly above CTA */}
-                      {error && (
+                      {submissionError && (
                         <div className="p-3 sm:p-3.5 rounded-xl bg-rose-50 border border-rose-200/70 text-rose-600 text-xs font-semibold flex items-start gap-2.5 text-left leading-relaxed">
                           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-500" />
-                          <span>{error}</span>
+                          <span>{submissionError}</span>
                         </div>
                       )}
 
@@ -2708,7 +2708,6 @@ export default function StudentPortal({
                 </div>
               </div>
             )}
-
             {activeModal === 'find_center' && (
               <div className="space-y-4 sm:space-y-5">
                 <div className="flex items-center gap-3">
@@ -2996,51 +2995,49 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
                 </div>
               </div>
             ) : selectedDetails && (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3.5 text-xs font-sans">
-                  <div className="space-y-0.5 sm:space-y-1">
-                    <span className="block text-[9px] sm:text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Currently Printing</span>
-                    <p className="font-bold text-slate-800  truncate" title={selectedDetails.currentlyPrinting}>
-                      {selectedDetails.currentlyPrinting}
-                    </p>
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3.5 text-xs font-sans">
+                <div className="space-y-0.5 sm:space-y-1">
+                  <span className="block text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">Currently Printing</span>
+                  <p className="font-bold text-slate-800 truncate" title={selectedDetails.currentlyPrinting}>
+                    {selectedDetails.currentlyPrinting}
+                  </p>
+                </div>
 
-                  <div className="space-y-0.5 sm:space-y-1">
-                    <span className="block text-[9px] sm:text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Queue Position</span>
-                    <p className="font-bold text-slate-800 ">
-                      #{selectedDetails.position} <span className="text-[10px] text-slate-450  font-normal">({selectedDetails.jobsAhead} ahead)</span>
-                    </p>
-                  </div>
+                <div className="space-y-0.5 sm:space-y-1">
+                  <span className="block text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">Queue Position</span>
+                  <p className="font-bold text-slate-800">
+                    #{selectedDetails.position} <span className="text-[10px] text-slate-400 font-normal">({selectedDetails.jobsAhead} ahead)</span>
+                  </p>
+                </div>
 
-                  <div className="space-y-0.5 sm:space-y-1">
-                    <span className="block text-[9px] sm:text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Estimated Start</span>
-                    <p className="font-bold text-indigo-600  font-mono">
-                      {selectedJob.status === 'printing' ? 'Now Printing' : selectedDetails.estimatedStart}
-                    </p>
-                  </div>
+                <div className="space-y-0.5 sm:space-y-1">
+                  <span className="block text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">Estimated Start</span>
+                  <p className="font-bold text-indigo-600 font-mono">
+                    {selectedJob.status === 'printing' ? 'Now Printing' : selectedDetails.estimatedStart}
+                  </p>
+                </div>
 
-                  <div className="space-y-0.5 sm:space-y-1">
-                    <span className="block text-[9px] sm:text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Estimated Completion</span>
-                    <p className="font-bold text-indigo-600  font-mono">
-                      {selectedDetails.estimatedCompletion}
-                    </p>
-                  </div>
+                <div className="space-y-0.5 sm:space-y-1">
+                  <span className="block text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">Estimated Completion</span>
+                  <p className="font-bold text-indigo-600 font-mono">
+                    {selectedDetails.estimatedCompletion}
+                  </p>
                 </div>
                 
-                <div className="bg-indigo-50/30  border border-indigo-100/40  p-2.5 sm:p-3 rounded-lg flex flex-wrap items-center justify-between gap-1 text-xs text-indigo-700  font-semibold font-mono">
+                <div className="col-span-full bg-indigo-50/30 border border-indigo-100/40 p-2.5 sm:p-3 rounded-lg flex flex-wrap items-center justify-between gap-1 text-xs text-indigo-700 font-semibold font-mono">
                   <span>ESTIMATED WAITING TIME:</span>
                   <span className="text-xs sm:text-sm font-black">{selectedDetails.waitingMinutes} MINUTES</span>
                 </div>
-              </>
+              </div>
             )}
           </div>
         )}
 
         {/* Student's recent jobs */}
         <div className="space-y-2.5 sm:space-y-3 text-left">
-          <h4 className="text-[10px] font-extrabold text-slate-455  uppercase tracking-wider font-mono">Your Recent Print Jobs</h4>
+          <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">Your Recent Print Jobs</h4>
           {recentJobs.length === 0 ? (
-            <div className="p-6 sm:p-8 text-center text-slate-400  border border-dashed border-slate-200  rounded-xl bg-slate-50/20  text-xs font-mono">
+            <div className="p-6 sm:p-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/20 text-xs font-mono">
               No print jobs submitted from your account yet.
             </div>
           ) : (
@@ -3065,27 +3062,27 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
                       isActive ? 'cursor-pointer' : ''
                     } ${
                       activeTabJobId === job.id
-                        ? 'border-indigo-500  bg-indigo-50/10  shadow-2xs'
-                        : 'bg-white  border-slate-200  hover:bg-slate-50 '
+                        ? 'border-indigo-500 bg-indigo-50/10 shadow-2xs'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
                     }`}
                   >
                     <div className="min-w-0 flex-1 pr-1 sm:pr-3">
                       <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1 flex-wrap">
-                        <span className="font-mono font-black text-indigo-600 ">{job.token}</span>
+                        <span className="font-mono font-black text-indigo-600">{job.token}</span>
                         {activeTabJobId === job.id && (
-                          <span className="text-[8px] sm:text-[9px] bg-indigo-100  text-indigo-700  px-1.5 py-0.5 rounded font-bold font-mono border border-indigo-200/30 ">TRACKING</span>
+                          <span className="text-[8px] sm:text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold font-mono border border-indigo-200/30">TRACKING</span>
                         )}
                       </div>
-                      <p className="font-bold text-slate-800  truncate text-xs" title={job.fileName}>{job.fileName}</p>
-                      <p className="text-[9px] sm:text-[10px] text-slate-455  font-mono mt-0.5 truncate">{job.pageCount} pgs · {timeAgo(job.createdAt)}</p>
+                      <p className="font-bold text-slate-800 truncate text-xs" title={job.fileName}>{job.fileName}</p>
+                      <p className="text-[9px] sm:text-[10px] text-slate-400 font-mono mt-0.5 truncate">{job.pageCount} pgs · {timeAgo(job.createdAt)}</p>
                     </div>
                     
                     <span className={`inline-flex px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold border uppercase tracking-wider font-mono flex-shrink-0 ${
-                      job.status === 'completed' ? 'bg-emerald-50/20  text-emerald-700  border-emerald-200/50 ' :
-                      job.status === 'printing' ? 'bg-indigo-50/20  text-indigo-700  border-indigo-200/50  animate-pulse' :
-                      job.status === 'queued' ? 'bg-amber-50/20  text-amber-700  border-amber-200/50 ' :
-                      job.status === 'pending_approval' ? 'bg-orange-50/20  text-orange-700  border-orange-200/50 ' :
-                      'bg-rose-50/20  text-rose-700  border-rose-200/50 '
+                      job.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/50' :
+                      job.status === 'printing' ? 'bg-indigo-50 text-indigo-700 border-indigo-200/50 animate-pulse' :
+                      job.status === 'queued' ? 'bg-amber-50 text-amber-700 border-amber-200/50' :
+                      job.status === 'pending_approval' ? 'bg-orange-50 text-orange-700 border-orange-200/50' :
+                      'bg-rose-50 text-rose-700 border-rose-200/50'
                     }`}>
                       {statusLabels[job.status] || job.status}
                     </span>
@@ -3108,14 +3105,14 @@ function StudentPrintHistoryView({ onStartPrint }: StudentPrintHistoryViewProps)
   const { studentSessionToken } = useAuth();
   const [history, setHistory] = useState<StudentPrintHistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'active' | 'failed'>('all');
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setHistoryError(null);
     try {
       const headers: HeadersInit = {};
       const token = studentSessionToken || sessionStorage.getItem('studentSessionToken');
@@ -3129,8 +3126,8 @@ function StudentPrintHistoryView({ onStartPrint }: StudentPrintHistoryViewProps)
       const data = await res.json();
       setHistory(Array.isArray(data) ? data : []);
     } catch (err: any) {
-      console.error('Print history fetch failed:', err);
-      setError(err.message || 'Unable to retrieve your print history.');
+      console.warn('Print history fetch note:', err?.message || err);
+      setHistoryError(err.message || 'Unable to retrieve your print history.');
     } finally {
       setLoading(false);
     }
@@ -3227,7 +3224,24 @@ function StudentPrintHistoryView({ onStartPrint }: StudentPrintHistoryViewProps)
         </div>
       </div>
 
-      {/* 2. Lifetime Metric Stats Cards */}
+      {/* 2. Non-blocking error banner if history is already loaded */}
+      {historyError && history.length > 0 && (
+        <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Unable to refresh recent history. Showing latest available records.</span>
+          </div>
+          <button
+            type="button"
+            onClick={fetchHistory}
+            className="px-3 py-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer border-none transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* 3. Lifetime Metric Stats Cards */}
       {history.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
           <div className="p-3.5 sm:p-4 rounded-2xl bg-white/80 border border-slate-200/70 shadow-2xs">
@@ -3265,7 +3279,7 @@ function StudentPrintHistoryView({ onStartPrint }: StudentPrintHistoryViewProps)
         </div>
       )}
 
-      {/* 3. Search & Filter Toolbar */}
+      {/* 4. Search & Filter Toolbar */}
       {history.length > 0 && (
         <div className="p-3 sm:p-4 rounded-2xl bg-white/80 backdrop-blur-xl border border-slate-200/70 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="relative flex-1">
@@ -3312,27 +3326,29 @@ function StudentPrintHistoryView({ onStartPrint }: StudentPrintHistoryViewProps)
         </div>
       )}
 
-      {/* 4. History Job List Cards */}
-      {loading ? (
+      {/* 5. History Job List Cards */}
+      {loading && history.length === 0 ? (
         <div className="p-12 text-center bg-white/80 rounded-3xl border border-slate-200 flex flex-col items-center justify-center gap-3">
           <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
           <p className="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider">
             Loading lifetime print history...
           </p>
         </div>
-      ) : error ? (
-        <div className="p-6 rounded-3xl bg-rose-50 border border-rose-200 text-left space-y-3">
-          <div className="flex items-center gap-2 text-rose-700 font-bold text-sm">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>Unable to load history</span>
+      ) : historyError && history.length === 0 ? (
+        <div className="p-6 sm:p-8 rounded-3xl bg-amber-50 border border-amber-200 text-left space-y-3">
+          <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>History Temporarily Unavailable</span>
           </div>
-          <p className="text-xs text-rose-600 font-medium">{error}</p>
+          <p className="text-xs text-amber-700 font-medium leading-relaxed">
+            We couldn't retrieve your previous print jobs right now. Your print jobs are safely recorded in our database.
+          </p>
           <button
             type="button"
             onClick={fetchHistory}
-            className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs cursor-pointer border-none shadow-xs hover:bg-rose-700 transition-colors"
+            className="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs cursor-pointer border-none shadow-xs hover:bg-amber-700 transition-colors"
           >
-            Try Again
+            Retry History
           </button>
         </div>
       ) : filteredHistory.length === 0 ? (
