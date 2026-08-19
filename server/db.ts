@@ -303,12 +303,31 @@ export const DEFAULT_PRINTER_SETTINGS: PrinterSettings = {
 // ========================================================
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
+// Specifically resolve the service-role key for server-side trusted DB & private storage operations
+export const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ||
+                                      process.env.SUPABASE_SERVICE_KEY;
+
+export const isServiceRoleConfigured = Boolean(supabaseUrl && supabaseServiceRoleKey);
+
+// Public / anon key fallback for read-only / public operations if service role not provided
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+export const isSupabaseConfigured = Boolean(supabaseUrl && (supabaseServiceRoleKey || supabaseAnonKey));
+
+if (process.env.NODE_ENV === 'production') {
+  if (!supabaseUrl) {
+    console.error('[SUPABASE CONFIG ERROR] SUPABASE_URL is missing in environment variables.');
+  }
+  if (!isServiceRoleConfigured) {
+    console.error('[SUPABASE SECURITY ERROR] No service-role key found (SUPABASE_SERVICE_ROLE_KEY). Private storage operations on bucket "print-documents" will fail closed.');
+  }
+}
+
+const activeKey = supabaseServiceRoleKey || supabaseAnonKey;
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl!, supabaseKey!, {
+  ? createClient(supabaseUrl!, activeKey!, {
       auth: { persistSession: false, autoRefreshToken: false }
     })
   : null;

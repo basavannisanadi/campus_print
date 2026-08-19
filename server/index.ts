@@ -866,10 +866,13 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://accounts.google.com"],
+      scriptSrcElem: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:", "https://lh3.googleusercontent.com"],
-      connectSrc: ["'self'", "http://localhost:*", "ws://localhost:*", "https://accounts.google.com"],
+      connectSrc: ["'self'", "blob:", "http://localhost:*", "ws://localhost:*", "https://accounts.google.com", process.env.SUPABASE_URL || ''].filter(Boolean),
+      workerSrc: ["'self'", "blob:"],
+      childSrc: ["'self'", "blob:", "https://accounts.google.com"],
       frameSrc: ["'self'", "https://accounts.google.com"],
     }
   },
@@ -3773,6 +3776,7 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
       try {
         await uploadDocument(fn, diskPath, 'application/pdf');
       } catch (err: any) {
+        console.error(`[STORAGE UPLOAD ERROR] Failed to upload "${fn}" to private storage:`, err?.message || err, err?.cause || '');
         if (process.env.NODE_ENV === 'production') {
           cleanupUploadedFiles();
           return res.status(503).json({ error: 'Private storage service unavailable.' });

@@ -1648,10 +1648,10 @@ export default function StudentPortal({
                           </div>
 
                           {/* Neutral Table Surface Container */}
-                          <div className="p-4 sm:p-8 bg-slate-100/90  rounded-2xl border border-slate-200/80  flex flex-col items-center justify-center shadow-inner relative overflow-hidden">
+                          <div className="p-3 sm:p-8 bg-slate-100/90  rounded-2xl border border-slate-200/80  flex flex-col items-center justify-center shadow-inner relative overflow-hidden">
                             
                             {/* White Paper Sheet Placed on Table */}
-                            <div className="w-full max-w-[290px] sm:max-w-[390px] aspect-[1/1.414] bg-white rounded-xl shadow-2xl shadow-slate-900/25 border border-slate-200/90 flex items-center justify-center relative overflow-hidden pointer-events-none select-none transition-transform duration-300">
+                            <div className="w-full max-w-[280px] sm:max-w-[390px] aspect-[1/1.414] bg-white rounded-xl shadow-2xl shadow-slate-900/25 border border-slate-200/90 flex items-center justify-center relative overflow-hidden pointer-events-none select-none transition-transform duration-300">
                               {fileConfigs[activeFileName]?.isConverting ? (
                                 <div className="w-full h-full flex flex-col items-center justify-center p-6 sm:p-8 bg-slate-50 text-center select-none">
                                   <Loader2 className="w-7 h-7 sm:w-8 sm:h-8 text-purple-600 animate-spin mb-3 sm:mb-4" />

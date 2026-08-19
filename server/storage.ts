@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Readable } from 'stream';
-import { supabase, isSupabaseConfigured, readDb, writeDb, DbJob } from './db.js';
+import { supabase, isSupabaseConfigured, isServiceRoleConfigured, readDb, writeDb, DbJob } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,17 +24,58 @@ export class StorageError extends Error {
   }
 }
 
+let bucketInitAttempted = false;
+
+/**
+ * Ensures the private storage bucket exists (fails gracefully if lacks permission).
+ * If the bucket already exists, it is NOT mutated or recreated.
+ */
+async function ensurePrivateBucketExists(): Promise<void> {
+  if (bucketInitAttempted || !supabase) return;
+  bucketInitAttempted = true;
+
+  try {
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+    if (listError) {
+      console.warn('[STORAGE] Bucket listing note:', listError.message);
+      return;
+    }
+
+    const bucketExists = buckets?.some(b => b.name === STORAGE_BUCKET || b.id === STORAGE_BUCKET);
+    if (!bucketExists) {
+      console.log(`[STORAGE] Bucket "${STORAGE_BUCKET}" not found in list. Creating private bucket...`);
+      const { error: createError } = await supabase.storage.createBucket(STORAGE_BUCKET, {
+        public: false,
+        fileSizeLimit: 52428800,
+        allowedMimeTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg']
+      });
+
+      if (createError) {
+        console.warn(`[STORAGE] Auto-create bucket note: ${createError.message}`);
+      } else {
+        console.log(`[STORAGE] Private bucket "${STORAGE_BUCKET}" created successfully.`);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[STORAGE] Bucket verification exception:', err?.message);
+  }
+}
+
 /**
  * Checks whether remote Supabase storage is active.
+ * CRITICAL SECURITY RULE:
+ * Private document uploads MUST require a real service-role credential.
+ * If only an anon key is present, remote storage MUST fail closed to prevent
+ * unauthorized or failing public key usage on private buckets.
  */
 export function isRemoteStorageActive(): boolean {
   if (process.env.NODE_ENV === 'production') {
-    if (!isSupabaseConfigured || !supabase) {
-      throw new StorageError('FATAL: Supabase configuration is required in production environment.');
+    if (!isSupabaseConfigured || !supabase || !isServiceRoleConfigured) {
+      throw new StorageError('FATAL: Supabase configuration with valid service-role key (SUPABASE_SERVICE_ROLE_KEY) is required in production environment.');
     }
     return true;
   }
-  return isSupabaseConfigured && supabase !== null;
+  return isSupabaseConfigured && isServiceRoleConfigured && supabase !== null;
 }
 
 /**
@@ -49,6 +90,8 @@ export async function uploadDocument(
   const cleanFilename = path.basename(filename);
 
   if (isRemoteStorageActive()) {
+    await ensurePrivateBucketExists();
+
     const fileBuffer = typeof content === 'string' ? fs.readFileSync(content) : content;
 
     const { data, error } = await supabase!.storage
