@@ -1,4 +1,4 @@
-import { DbJob, DbPrintOrder, Shop, Agent, Student, Printer, PrinterSettings, TimelineEntry, FailureSnapshot, JobMetrics } from '../db.js';
+import { DbJob, DbPrintOrder, Shop, Agent, Student, Printer, PrinterSettings, TimelineEntry, FailureSnapshot, JobMetrics, DbStudentPrintHistory } from '../db.js';
 
 // ========================================================
 // CAMPUS PRINT — PURE BIDIRECTIONAL REPOSITORY MAPPER
@@ -281,5 +281,57 @@ export function printerSettingsToDb(settings: PrinterSettings, shopId = 'tjohn_p
     under_maintenance: Boolean(settings.underMaintenance),
     scan_requested: Boolean(settings.scanRequested),
     last_heartbeat: settings.lastHeartbeat || null
+  };
+}
+
+export function studentHistoryFromDb(row: any): DbStudentPrintHistory {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    jobId: row.job_id || undefined,
+    orderToken: row.order_token,
+    jobToken: row.job_token || undefined,
+    studentId: row.student_id,
+    shopId: row.shop_id,
+    shopName: row.shop_name || 'Campus Print Center',
+    fileName: row.file_name,
+    fileSize: Number(row.file_size || 0),
+    pageCount: Number(row.page_count || 1),
+    copies: Number(row.copies || 1),
+    printMode: row.print_mode || 'mono',
+    printType: row.print_type || 'bw',
+    sides: row.sides || 'single',
+    paperSize: row.paper_size || 'A4',
+    pageRange: row.page_range || undefined,
+    chargedAmount: Number(row.charged_amount || 0),
+    status: row.status || 'completed',
+    createdAt: typeof row.created_at === 'string' ? row.created_at : new Date(row.created_at).toISOString(),
+    completedAt: row.completed_at ? (typeof row.completed_at === 'string' ? row.completed_at : new Date(row.completed_at).toISOString()) : undefined
+  };
+}
+
+export function studentHistoryToDb(hist: DbStudentPrintHistory): any {
+  return {
+    id: hist.id,
+    order_id: hist.orderId,
+    job_id: hist.jobId || null,
+    order_token: hist.orderToken,
+    job_token: hist.jobToken || null,
+    student_id: hist.studentId,
+    shop_id: hist.shopId,
+    shop_name: hist.shopName,
+    file_name: hist.fileName,
+    file_size: hist.fileSize || 0,
+    page_count: hist.pageCount || 1,
+    copies: hist.copies || 1,
+    print_mode: hist.printMode || 'mono',
+    print_type: hist.printType || 'bw',
+    sides: hist.sides || 'single',
+    paper_size: hist.paperSize || 'A4',
+    page_range: hist.pageRange || null,
+    charged_amount: hist.chargedAmount !== undefined ? hist.chargedAmount : 0,
+    status: hist.status || 'completed',
+    created_at: hist.createdAt || new Date().toISOString(),
+    completed_at: hist.completedAt || null
   };
 }

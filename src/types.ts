@@ -86,3 +86,26 @@ export interface Shop {
   lastHeartbeat?: string;
 }
 
+export interface StudentPrintHistoryItem {
+  id: string;
+  orderId: string;
+  jobId?: string;
+  orderToken: string;
+  jobToken?: string;
+  studentId: string;
+  shopId: string;
+  shopName: string;
+  fileName: string;
+  fileSize: number;
+  pageCount: number;
+  copies: number;
+  printMode: 'mono' | 'color' | string;
+  printType?: 'bw' | 'color' | string;
+  sides: 'single' | 'double' | string;
+  paperSize?: string;
+  pageRange?: string;
+  chargedAmount: number;
+  status: 'pending_approval' | 'queued' | 'printing' | 'completed' | 'failed' | 'cancelled' | string;
+  createdAt: string;
+  completedAt?: string;
+}

@@ -12,6 +12,7 @@ import {
   User,
   Lock,
   ArrowRight,
+  ArrowLeft,
   LogOut,
   MapPin,
   Phone,
@@ -37,11 +38,14 @@ import {
   ShieldCheck,
   Layers,
   Activity,
-  Heart
+  Heart,
+  Search,
+  Copy,
+  RotateCcw
 } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 import { PdfFirstPageCanvas } from './PdfFirstPageCanvas';
-import { PrintJob } from '../types';
+import { PrintJob, StudentPrintHistoryItem } from '../types';
 import { getApiUrl } from '../config';
 import { useAuth } from '../context/AuthContext';
 
@@ -202,7 +206,7 @@ export default function StudentPortal({
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'jobs' | 'history' | 'settings' | 'help'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'jobs' | 'history' | 'settings' | 'help' | 'queue' | 'about' | 'status'>('dashboard');
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showShopDropdown, setShowShopDropdown] = useState(false);
@@ -830,11 +834,28 @@ export default function StudentPortal({
               <span>Dashboard</span>
             </button>
 
+            {/* Print Hub Status */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('status'); setIsDrawerOpen(false); }}
+              style={{ transitionDelay: isDrawerOpen ? '80ms' : '0ms' }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer ${
+                isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
+              } ${
+                activeTab === 'status'
+                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white shadow-xs border border-purple-500/20'
+                  : 'text-[var(--text-secondary)] hover:bg-purple-500/10 hover:text-purple-600  bg-transparent'
+              }`}
+            >
+              <Activity className={`w-4 h-4 ${activeTab === 'status' ? 'text-white' : 'text-[var(--text-muted)]'}`} />
+              <span>Print Hub Status</span>
+            </button>
+
             {/* My Jobs */}
             <button
               type="button"
               onClick={() => { setActiveTab('jobs'); setIsDrawerOpen(false); }}
-              style={{ transitionDelay: isDrawerOpen ? '80ms' : '0ms' }}
+              style={{ transitionDelay: isDrawerOpen ? '110ms' : '0ms' }}
               className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer ${
                 isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
               } ${
@@ -851,7 +872,7 @@ export default function StudentPortal({
             <button
               type="button"
               onClick={() => { setActiveTab('queue'); setIsDrawerOpen(false); }}
-              style={{ transitionDelay: isDrawerOpen ? '110ms' : '0ms' }}
+              style={{ transitionDelay: isDrawerOpen ? '140ms' : '0ms' }}
               className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold border-none transition-all duration-300 ease-out cursor-pointer ${
                 isDrawerOpen ? 'translate-x-0 opacity-100' : '-translate-x-3 opacity-0'
               } ${
@@ -1962,8 +1983,8 @@ export default function StudentPortal({
                   </div>
                 </div>
 
-                {/* ─── SPRINT 6: PREMIUM RIGHT SIDEBAR COLUMN ─── */}
-                <div className="lg:col-span-2 space-y-5 text-left font-sans">
+                {/* ─── SPRINT 6: PREMIUM RIGHT SIDEBAR COLUMN (DESKTOP ONLY) ─── */}
+                <div className="hidden lg:block lg:col-span-2 space-y-5 text-left font-sans">
 
                   {/* 1. REDESIGNED PREMIUM PRINT HUB STATUS PANEL */}
                   <div className="p-4 sm:p-6 rounded-2xl border border-purple-200/80  bg-white/80  backdrop-blur-xl shadow-sm space-y-4 sm:space-y-5 hover:scale-[1.002] transition-all duration-200">
@@ -2093,7 +2114,238 @@ export default function StudentPortal({
               </div>
 
             </>
-          ) : (activeTab === 'jobs' || activeTab === 'queue') ? (
+          ) : activeTab === 'status' ? (
+            <div className="max-w-4xl mx-auto w-full pb-8 animate-fadeIn space-y-4 sm:space-y-5 text-left font-sans">
+              {/* 1. Header with Back button */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-purple-600/10 via-indigo-600/5 to-purple-600/10 border border-purple-200/50 relative overflow-hidden">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('dashboard')}
+                    className="w-9 h-9 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)]/80 text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all cursor-pointer flex items-center justify-center shadow-2xs flex-shrink-0"
+                    title="Back to Dashboard"
+                  >
+                    <ArrowLeft className="w-4.5 h-4.5" />
+                  </button>
+                  <div className="w-10 h-10 rounded-xl bg-purple-600/10 text-purple-600 flex items-center justify-center flex-shrink-0">
+                    <Activity className="w-5 h-5 stroke-[2.2]" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-black text-[var(--text-primary)] tracking-tight">Print Hub Status</h2>
+                    <p className="text-xs text-[var(--text-muted)] font-medium">Real-time Telemetry & Performance</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('dashboard')}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer border-none shadow-xs flex items-center gap-1.5"
+                  >
+                    <span>Upload & Print</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Currently Selected Print Center Card */}
+              <div className="p-4 sm:p-5 rounded-2xl border border-purple-200/80 bg-white/80 backdrop-blur-xl shadow-xs space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-[var(--border-subtle)] pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-xs flex-shrink-0">
+                      <Printer className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm sm:text-base font-black text-[var(--text-primary)] truncate">
+                          {visibleShops.find(s => s.id === selectedShopId)?.name || shopInfo?.name || 'TJohn Print Center'}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded text-[9.5px] font-extrabold font-mono bg-purple-100 text-purple-700 flex-shrink-0">
+                          Selected Shop
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)] font-medium truncate mt-0.5">
+                        📍 {visibleShops.find(s => s.id === selectedShopId)?.address || shopInfo?.address || 'Campus Print Hub Location'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingShopId(selectedShopId);
+                        setActiveModal('select_shop');
+                      }}
+                      className="px-3 py-1.5 rounded-xl border border-purple-300 text-purple-700 bg-purple-50/80 hover:bg-purple-100 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Change Shop</span>
+                      <ChevronRight className="w-3 h-3 text-purple-500" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status Pills Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5">
+                  <div className="p-2.5 rounded-xl bg-[var(--bg-surface-secondary)]/70 border border-[var(--border-subtle)] text-left">
+                    <p className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Hub Status</p>
+                    <div className="flex items-center gap-1.5 mt-1 font-mono text-xs font-black">
+                      <span className={`w-2 h-2 rounded-full ${agentOnlineStatus === 'online' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      <span className={agentOnlineStatus === 'online' ? 'text-emerald-700' : 'text-rose-700'}>
+                        {agentOnlineStatus === 'online' ? 'Online' : 'Offline'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-[var(--bg-surface-secondary)]/70 border border-[var(--border-subtle)] text-left">
+                    <p className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Queue Load</p>
+                    <p className="text-xs font-black text-[var(--text-primary)] mt-1 font-mono">
+                      {waitingJobsCount} {waitingJobsCount === 1 ? 'Job' : 'Jobs'}
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-[var(--bg-surface-secondary)]/70 border border-[var(--border-subtle)] text-left">
+                    <p className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Est. Wait</p>
+                    <p className="text-xs font-black text-[var(--text-primary)] mt-1 font-mono">
+                      {waitingJobsCount === 0 ? '0 Mins' : `~${estimatedMinutes} Mins`}
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-[var(--bg-surface-secondary)]/70 border border-[var(--border-subtle)] text-left">
+                    <p className="text-[9px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest font-mono">Spool Speed</p>
+                    <p className="text-xs font-black text-[var(--text-primary)] mt-1 font-mono">
+                      {averagePrintSpeed || 20} ppm
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Detailed Telemetry Rows */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Panel 1: Hardware & Engine Telemetry */}
+                <div className="p-4 sm:p-5 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-card)] shadow-2xs space-y-3">
+                  <div className="flex items-center gap-2.5 pb-2 border-b border-[var(--border-subtle)]">
+                    <Zap className="w-4 h-4 text-purple-600" />
+                    <h4 className="text-xs font-extrabold text-[var(--text-primary)] uppercase tracking-wider font-mono">
+                      Hardware & Spooler Status
+                    </h4>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                      <span className="text-xs font-bold text-[var(--text-secondary)]">Printer Engine</span>
+                      <div className="flex items-center gap-1.5 font-mono text-xs font-extrabold">
+                        <span className={`w-2 h-2 rounded-full ${
+                          (() => {
+                            if (health) {
+                              const isBlocked = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'].includes(health.printerHealth);
+                              if (isBlocked) return 'bg-rose-500';
+                              if (health.shopHealth === 'Busy') return 'bg-amber-500 animate-pulse';
+                              return 'bg-emerald-500';
+                            }
+                            return agentOnlineStatus === 'online' ? (currentlyPrintingDocName ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500') : 'bg-rose-500';
+                          })()
+                        }`} />
+                        <span>
+                          {(() => {
+                            if (health) {
+                              const isBlocked = ['OFFLINE', 'UNREACHABLE', 'PAPER_EMPTY', 'PAPER_JAM', 'COVER_OPEN', 'UNKNOWN'].includes(health.printerHealth);
+                              if (isBlocked) return 'Offline';
+                              if (health.shopHealth === 'Busy') return 'Busy';
+                              return 'Ready';
+                            }
+                            return agentOnlineStatus === 'online' ? (currentlyPrintingDocName ? 'Busy' : 'Ready') : 'Offline';
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                      <span className="text-xs font-bold text-[var(--text-secondary)]">B&W Printing</span>
+                      <span className={`font-mono text-xs font-extrabold ${shopInfo?.bwMaintenanceMode ? 'text-amber-700' : 'text-emerald-700'}`}>
+                        {shopInfo?.bwMaintenanceMode ? 'Under Maintenance' : 'Operational'}
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                      <span className="text-xs font-bold text-[var(--text-secondary)]">Color Printing</span>
+                      <span className={`font-mono text-xs font-extrabold ${shopInfo?.colorMaintenanceMode ? 'text-amber-700' : 'text-emerald-700'}`}>
+                        {shopInfo?.colorMaintenanceMode ? 'Under Maintenance' : 'Operational'}
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                      <span className="text-xs font-bold text-[var(--text-secondary)]">Current Spool</span>
+                      <span className="font-mono text-xs font-extrabold text-[var(--text-primary)] truncate max-w-[160px]">
+                        {currentlyPrintingDocName ? `📄 ${currentlyPrintingDocName}` : 'Idle (Ready)'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Panel 2: Rates & Service Parameters */}
+                <div className="p-4 sm:p-5 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-card)] shadow-2xs space-y-3">
+                  <div className="flex items-center gap-2.5 pb-2 border-b border-[var(--border-subtle)]">
+                    <CreditCard className="w-4 h-4 text-indigo-500" />
+                    <h4 className="text-xs font-extrabold text-[var(--text-primary)] uppercase tracking-wider font-mono">
+                      Pricing & Service Rates
+                    </h4>
+                  </div>
+
+                  <div className="space-y-2">
+                    {(() => {
+                      const cur = visibleShops.find(s => s.id === selectedShopId) || shopInfo;
+                      return (
+                        <>
+                          <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                            <span className="text-xs font-bold text-[var(--text-secondary)]">Black & White (A4)</span>
+                            <span className="font-mono text-xs font-black text-purple-700">₹{(cur?.bwPrice ?? 2).toFixed(2)} / page</span>
+                          </div>
+                          <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                            <span className="text-xs font-bold text-[var(--text-secondary)]">Color (A4)</span>
+                            <span className="font-mono text-xs font-black text-purple-700">₹{(cur?.colorPrice ?? 5).toFixed(2)} / page</span>
+                          </div>
+                          <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                            <span className="text-xs font-bold text-[var(--text-secondary)]">Duplex (Double-sided)</span>
+                            <span className="font-mono text-xs font-black text-purple-700">₹{(cur?.duplexPrice ?? 3).toFixed(2)} / sheet</span>
+                          </div>
+                          <div className="p-3 rounded-xl bg-[var(--bg-surface-secondary)]/60 border border-[var(--border-subtle)] flex items-center justify-between">
+                            <span className="text-xs font-bold text-[var(--text-secondary)]">Service Hours</span>
+                            <span className="font-mono text-xs font-extrabold text-emerald-700">24/7 Institutional Spooler</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Action Banner */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-purple-500/10 border border-purple-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-left">
+                  <h4 className="text-xs sm:text-sm font-extrabold text-[var(--text-primary)]">Ready to print documents?</h4>
+                  <p className="text-[11px] text-[var(--text-muted)] font-medium mt-0.5">
+                    Upload PDFs or images to start spooling at {visibleShops.find(s => s.id === selectedShopId)?.name || 'this center'}.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer border-none shadow-md shadow-purple-500/20 flex items-center justify-center gap-2"
+                >
+                  <FileUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Go to Upload</span>
+                </button>
+              </div>
+            </div>
+          ) : activeTab === 'jobs' ? (
+            <div className="max-w-4xl mx-auto w-full min-h-[600px] pb-8 animate-fadeIn">
+              <StudentPrintHistoryView
+                onStartPrint={() => setActiveTab('dashboard')}
+              />
+            </div>
+          ) : activeTab === 'queue' ? (
             <div className="max-w-4xl mx-auto w-full h-[calc(100vh-140px)] min-h-[600px] pb-8 animate-fadeIn">
               <QueueSummaryView 
                 waitingCount={waitingJobsCount} 
@@ -2844,6 +3096,396 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+interface StudentPrintHistoryViewProps {
+  onStartPrint: () => void;
+}
+
+function StudentPrintHistoryView({ onStartPrint }: StudentPrintHistoryViewProps) {
+  const { studentSessionToken } = useAuth();
+  const [history, setHistory] = useState<StudentPrintHistoryItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'active' | 'failed'>('all');
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+  const fetchHistory = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const headers: HeadersInit = {};
+      const token = studentSessionToken || sessionStorage.getItem('studentSessionToken');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(getApiUrl('/api/student/history'), { headers });
+      if (!res.ok) {
+        throw new Error('Failed to load print history');
+      }
+      const data = await res.json();
+      setHistory(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error('Print history fetch failed:', err);
+      setError(err.message || 'Unable to retrieve your print history.');
+    } finally {
+      setLoading(false);
+    }
+  }, [studentSessionToken]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  const handleCopyToken = (token: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      navigator.clipboard.writeText(token);
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(null), 2000);
+    } catch {}
+  };
+
+  const formatHistoryDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      }) + ' • ' + d.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const filteredHistory = useMemo(() => {
+    return history.filter(item => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q ||
+        (item.orderToken && item.orderToken.toLowerCase().includes(q)) ||
+        (item.jobToken && item.jobToken.toLowerCase().includes(q)) ||
+        (item.fileName && item.fileName.toLowerCase().includes(q)) ||
+        (item.shopName && item.shopName.toLowerCase().includes(q));
+
+      if (!matchesSearch) return false;
+
+      if (statusFilter === 'completed') return item.status === 'completed';
+      if (statusFilter === 'active') return ['pending_approval', 'queued', 'printing'].includes(item.status);
+      if (statusFilter === 'failed') return ['failed', 'cancelled', 'rejected'].includes(item.status);
+      return true;
+    });
+  }, [history, searchQuery, statusFilter]);
+
+  const stats = useMemo(() => {
+    const totalJobs = history.length;
+    const completedJobs = history.filter(h => h.status === 'completed').length;
+    const totalSpent = history
+      .filter(h => h.status === 'completed')
+      .reduce((sum, h) => sum + (h.chargedAmount || 0), 0);
+    const totalPages = history
+      .filter(h => h.status === 'completed')
+      .reduce((sum, h) => sum + ((h.pageCount || 1) * (h.copies || 1)), 0);
+    return { totalJobs, completedJobs, totalSpent, totalPages };
+  }, [history]);
+
+  return (
+    <div className="space-y-4 sm:space-y-6 text-left font-sans">
+      {/* 1. Header & Refresh */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-white/80 backdrop-blur-xl border border-purple-200/50 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-[10px] font-extrabold uppercase tracking-widest font-mono border border-purple-200 mb-2">
+            <FileText className="w-3 h-3" />
+            <span>Lifetime Account Ledger</span>
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black text-[var(--text-primary)] tracking-tight">
+            My Print History
+          </h2>
+          <p className="text-xs text-[var(--text-muted)] font-medium mt-0.5">
+            Permanent record of your print orders across all campus print centers.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={fetchHistory}
+            disabled={loading}
+            className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+            title="Refresh history"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Lifetime Metric Stats Cards */}
+      {history.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-white/80 border border-slate-200/70 shadow-2xs">
+            <span className="block text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">
+              Total Prints
+            </span>
+            <p className="text-xl sm:text-2xl font-black text-slate-800 mt-0.5 font-mono">
+              {stats.totalJobs}
+            </p>
+          </div>
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-white/80 border border-slate-200/70 shadow-2xs">
+            <span className="block text-[9px] sm:text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider font-mono">
+              Completed
+            </span>
+            <p className="text-xl sm:text-2xl font-black text-emerald-600 mt-0.5 font-mono">
+              {stats.completedJobs}
+            </p>
+          </div>
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-white/80 border border-slate-200/70 shadow-2xs">
+            <span className="block text-[9px] sm:text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider font-mono">
+              Pages Printed
+            </span>
+            <p className="text-xl sm:text-2xl font-black text-indigo-600 mt-0.5 font-mono">
+              {stats.totalPages}
+            </p>
+          </div>
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-white/80 border border-slate-200/70 shadow-2xs">
+            <span className="block text-[9px] sm:text-[10px] font-extrabold text-purple-600 uppercase tracking-wider font-mono">
+              Total Spent
+            </span>
+            <p className="text-xl sm:text-2xl font-black text-purple-700 mt-0.5 font-mono">
+              ₹{stats.totalSpent}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Search & Filter Toolbar */}
+      {history.length > 0 && (
+        <div className="p-3 sm:p-4 rounded-2xl bg-white/80 backdrop-blur-xl border border-slate-200/70 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by token, file name, or print center..."
+              className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold border-none bg-transparent cursor-pointer p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'completed', label: 'Completed' },
+              { id: 'active', label: 'In Progress' },
+              { id: 'failed', label: 'Failed' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setStatusFilter(tab.id as any)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
+                  statusFilter === tab.id
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 4. History Job List Cards */}
+      {loading ? (
+        <div className="p-12 text-center bg-white/80 rounded-3xl border border-slate-200 flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
+          <p className="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider">
+            Loading lifetime print history...
+          </p>
+        </div>
+      ) : error ? (
+        <div className="p-6 rounded-3xl bg-rose-50 border border-rose-200 text-left space-y-3">
+          <div className="flex items-center gap-2 text-rose-700 font-bold text-sm">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>Unable to load history</span>
+          </div>
+          <p className="text-xs text-rose-600 font-medium">{error}</p>
+          <button
+            type="button"
+            onClick={fetchHistory}
+            className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs cursor-pointer border-none shadow-xs hover:bg-rose-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : filteredHistory.length === 0 ? (
+        history.length === 0 ? (
+          /* Empty Lifetime Ledger */
+          <div className="p-8 sm:p-12 text-center rounded-3xl bg-white/80 backdrop-blur-xl border border-dashed border-purple-200/80 shadow-sm space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-purple-100 via-indigo-50 to-purple-100 text-purple-600 flex items-center justify-center mx-auto shadow-inner">
+              <Printer className="w-8 h-8 stroke-[1.75]" />
+            </div>
+            <div className="space-y-1 max-w-sm mx-auto">
+              <h3 className="text-base sm:text-lg font-black text-slate-800">
+                No print history yet
+              </h3>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Your completed and in-progress print jobs will appear here across all campus print centers.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onStartPrint}
+              className="py-2.5 px-6 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer border-none shadow-md shadow-purple-500/20 hover:scale-[1.02] active:scale-[0.98] inline-flex items-center gap-2"
+            >
+              <FileUp className="w-4 h-4 stroke-[2.5]" />
+              <span>Start a Print</span>
+            </button>
+          </div>
+        ) : (
+          /* Search Filter Empty State */
+          <div className="p-8 text-center rounded-2xl bg-white/60 border border-slate-200 space-y-3">
+            <p className="text-xs font-bold text-slate-600 font-mono">
+              No print jobs match your search/filter criteria.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}
+              className="text-xs font-bold text-purple-600 hover:underline cursor-pointer bg-transparent border-none"
+            >
+              Clear filters
+            </button>
+          </div>
+        )
+      ) : (
+        <div className="space-y-3">
+          {filteredHistory.map(item => {
+            const isCompleted = item.status === 'completed';
+            const isPrinting = item.status === 'printing';
+            const isQueued = item.status === 'queued';
+            const isPending = item.status === 'pending_approval';
+            const isFailed = item.status === 'failed' || item.status === 'cancelled' || item.status === 'rejected';
+
+            const displayToken = item.jobToken || item.orderToken;
+
+            return (
+              <div
+                key={item.id}
+                className="p-4 sm:p-5 rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200/80 hover:border-purple-300 shadow-2xs hover:shadow-sm transition-all text-left space-y-3"
+              >
+                {/* Card Top Row: Token, Shop, Price, Status */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Token Pill */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleCopyToken(displayToken, e)}
+                      className="px-2.5 py-1 rounded-lg bg-indigo-50/80 hover:bg-indigo-100/80 border border-indigo-200/70 font-mono font-black text-xs text-indigo-700 flex items-center gap-1.5 cursor-pointer transition-colors"
+                      title="Click to copy token"
+                    >
+                      <span>{displayToken}</span>
+                      {copiedToken === displayToken ? (
+                        <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                      ) : (
+                        <Copy className="w-3 h-3 text-indigo-500 opacity-70" />
+                      )}
+                    </button>
+
+                    {/* Shop Center Badge */}
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700">
+                      <MapPin className="w-3 h-3 text-purple-600 shrink-0" />
+                      <span>{item.shopName}</span>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Charged Price */}
+                    <span className="font-mono font-black text-sm sm:text-base text-slate-900">
+                      ₹{item.chargedAmount || 0}
+                    </span>
+
+                    {/* Status Badge */}
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono border ${
+                      isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200/70' :
+                      isPrinting ? 'bg-indigo-50 text-indigo-700 border-indigo-200/70 animate-pulse' :
+                      isQueued ? 'bg-amber-50 text-amber-700 border-amber-200/70' :
+                      isPending ? 'bg-orange-50 text-orange-700 border-orange-200/70' :
+                      'bg-rose-50 text-rose-700 border-rose-200/70'
+                    }`}>
+                      {isCompleted && <CheckCircle className="w-3 h-3 text-emerald-600" />}
+                      {isPrinting && <Loader2 className="w-3 h-3 text-indigo-600 animate-spin" />}
+                      {isQueued && <Clock className="w-3 h-3 text-amber-600" />}
+                      {isPending && <AlertCircle className="w-3 h-3 text-orange-600" />}
+                      {isFailed && <AlertTriangle className="w-3 h-3 text-rose-600" />}
+                      <span>
+                        {isCompleted ? 'Completed' :
+                         isPrinting ? 'Printing' :
+                         isQueued ? 'In Queue' :
+                         isPending ? 'Pending' :
+                         'Failed'}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Card Middle: File Name & Timestamp */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div className="min-w-0 flex-1 pr-2">
+                    <p className="font-bold text-slate-800 text-xs sm:text-sm truncate" title={item.fileName}>
+                      {item.fileName}
+                    </p>
+                  </div>
+                  <span className="text-[10px] sm:text-[11px] text-slate-400 font-mono shrink-0">
+                    {formatHistoryDate(item.createdAt)}
+                  </span>
+                </div>
+
+                {/* Card Bottom: Specification Tags */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] font-semibold text-slate-600">
+                  <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/60 font-mono">
+                    {item.pageCount} {item.pageCount === 1 ? 'page' : 'pages'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/60 font-mono">
+                    {item.copies} {item.copies === 1 ? 'copy' : 'copies'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-md border font-mono ${
+                    item.printType === 'color' || item.printMode === 'color'
+                      ? 'bg-purple-50 text-purple-700 border-purple-200/60 font-bold'
+                      : 'bg-slate-100 text-slate-700 border-slate-200/60'
+                  }`}>
+                    {item.printType === 'color' || item.printMode === 'color' ? '🎨 Color' : '📄 B&W'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/60 font-mono">
+                    {item.sides === 'double' ? 'Double-sided' : 'Single-sided'}
+                  </span>
+                  {item.pageRange && (
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/60 font-mono">
+                      Pages: {item.pageRange}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

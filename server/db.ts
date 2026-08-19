@@ -9,7 +9,8 @@ import {
   agentFromDb, agentToDb,
   studentFromDb, studentToDb,
   printerSettingsFromDb, printerSettingsToDb,
-  printerFromDb, printerToDb
+  printerFromDb, printerToDb,
+  studentHistoryFromDb, studentHistoryToDb
 } from './repository/mapper.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -195,6 +196,30 @@ export interface Printer {
   discoveredAt: string;
 }
 
+export interface DbStudentPrintHistory {
+  id: string;
+  orderId: string;
+  jobId?: string;
+  orderToken: string;
+  jobToken?: string;
+  studentId: string;
+  shopId: string;
+  shopName: string;
+  fileName: string;
+  fileSize: number;
+  pageCount: number;
+  copies: number;
+  printMode: 'mono' | 'color' | string;
+  printType?: 'bw' | 'color' | string;
+  sides: 'single' | 'double' | string;
+  paperSize?: string;
+  pageRange?: string;
+  chargedAmount: number;
+  status: 'pending_approval' | 'queued' | 'printing' | 'completed' | 'failed' | 'cancelled' | string;
+  createdAt: string;
+  completedAt?: string;
+}
+
 export interface Db {
   orders?: DbPrintOrder[];
   jobs: DbJob[];
@@ -203,6 +228,7 @@ export interface Db {
   printerSettings?: PrinterSettings;
   agents?: Agent[];
   printers?: Printer[];
+  studentPrintHistory?: DbStudentPrintHistory[];
 }
 
 export const DEFAULT_SHOPS: Shop[] = [
@@ -681,6 +707,89 @@ export const dbRepository = {
     const { data, error } = await supabase!.from('students').upsert(row).select().single();
     if (error) throw new DatabaseError(`upsertStudent failed: ${error.message}`, error);
     return studentFromDb(data);
+  },
+
+  async insertStudentHistory(record: DbStudentPrintHistory): Promise<DbStudentPrintHistory> {
+    if (!this.isSupabase()) {
+      const db = readDb();
+      if (!db.studentPrintHistory) db.studentPrintHistory = [];
+      const idx = db.studentPrintHistory.findIndex(h => (record.jobId && h.jobId === record.jobId) || h.id === record.id);
+      if (idx >= 0) {
+        db.studentPrintHistory[idx] = record;
+      } else {
+        db.studentPrintHistory.push(record);
+      }
+      writeDb(db);
+      return record;
+    }
+    const row = studentHistoryToDb(record);
+    const { data, error } = await supabase!.from('student_print_history').upsert(row, { onConflict: 'job_id' }).select().single();
+    if (error) throw new DatabaseError(`insertStudentHistory failed: ${error.message}`, error);
+    return studentHistoryFromDb(data);
+  },
+
+  async insertStudentHistoryBatch(records: DbStudentPrintHistory[]): Promise<DbStudentPrintHistory[]> {
+    if (!this.isSupabase()) {
+      const db = readDb();
+      if (!db.studentPrintHistory) db.studentPrintHistory = [];
+      for (const record of records) {
+        const idx = db.studentPrintHistory.findIndex(h => (record.jobId && h.jobId === record.jobId) || h.id === record.id);
+        if (idx >= 0) {
+          db.studentPrintHistory[idx] = record;
+        } else {
+          db.studentPrintHistory.push(record);
+        }
+      }
+      writeDb(db);
+      return records;
+    }
+    if (records.length === 0) return [];
+    const rows = records.map(studentHistoryToDb);
+    const { data, error } = await supabase!.from('student_print_history').upsert(rows, { onConflict: 'job_id' }).select();
+    if (error) throw new DatabaseError(`insertStudentHistoryBatch failed: ${error.message}`, error);
+    if (!data) return [];
+    return data.map(studentHistoryFromDb);
+  },
+
+  async updateStudentHistoryStatus(jobId: string, status: string, completedAt?: string): Promise<DbStudentPrintHistory | null> {
+    if (!this.isSupabase()) {
+      const db = readDb();
+      if (!db.studentPrintHistory) db.studentPrintHistory = [];
+      const h = db.studentPrintHistory.find(x => x.jobId === jobId);
+      if (!h) return null;
+      h.status = status;
+      if (completedAt) h.completedAt = completedAt;
+      writeDb(db);
+      return h;
+    }
+    const updates: any = { status };
+    if (completedAt) updates.completed_at = completedAt;
+    const { data, error } = await supabase!.from('student_print_history').update(updates).eq('job_id', jobId).select().single();
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw new DatabaseError(`updateStudentHistoryStatus(${jobId}) failed: ${error.message}`, error);
+    }
+    if (!data) return null;
+    return studentHistoryFromDb(data);
+  },
+
+  async getStudentHistory(studentId: string, limit = 50, offset = 0): Promise<DbStudentPrintHistory[]> {
+    if (!this.isSupabase()) {
+      const db = readDb();
+      return (db.studentPrintHistory || [])
+        .filter(h => h.studentId === studentId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(offset, offset + limit);
+    }
+    const { data, error } = await supabase!
+      .from('student_print_history')
+      .select('*')
+      .eq('student_id', studentId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (error) throw new DatabaseError(`getStudentHistory failed: ${error.message}`, error);
+    if (!data) return [];
+    return data.map(studentHistoryFromDb);
   }
 };
 
@@ -689,7 +798,7 @@ export const dbRepository = {
 // ========================================================
 
 export function readDb(): Db {
-  if (!fs.existsSync(DB_PATH)) return { jobs: [], shops: DEFAULT_SHOPS, students: [], printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [] };
+  if (!fs.existsSync(DB_PATH)) return { jobs: [], shops: DEFAULT_SHOPS, students: [], printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [], studentPrintHistory: [] };
   try {
     const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
     if (!data.shops) {
@@ -756,9 +865,12 @@ export function readDb(): Db {
     if (!data.orders) {
       data.orders = [];
     }
+    if (!data.studentPrintHistory) {
+      data.studentPrintHistory = [];
+    }
     return data;
   } catch {
-    return { orders: [], jobs: [], shops: DEFAULT_SHOPS, students: [], printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [] };
+    return { orders: [], jobs: [], shops: DEFAULT_SHOPS, students: [], printerSettings: DEFAULT_PRINTER_SETTINGS, agents: [], printers: [], studentPrintHistory: [] };
   }
 }
 

@@ -18,7 +18,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { PDFDocument } from 'pdf-lib';
-import { readDb as readDbRaw, writeDb as writeDbRaw, DbJob, DbPrintOrder, Agent, Shop, Student, dbRepository } from './db.js';
+import { readDb as readDbRaw, writeDb as writeDbRaw, DbJob, DbPrintOrder, Agent, Shop, Student, dbRepository, DbStudentPrintHistory } from './db.js';
 import { uploadDocument, getDocumentStream, deleteDocument, executeRetentionPurge, UPLOADS_DIR, isRemoteStorageActive } from './storage.js';
 import rateLimit from 'express-rate-limit';
 import compression from 'compression';
@@ -1087,6 +1087,35 @@ app.get('/api/me', requireAuth, (req, res) => {
     picture: user.picture,
     role: user.role
   });
+});
+
+// GET /api/student/history - get lifetime print history for authenticated student
+app.get('/api/student/history', requireAuth, async (req, res) => {
+  try {
+    const studentId = (req as any).user.id;
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
+
+    if (dbRepository.isSupabase()) {
+      try {
+        const history = await dbRepository.getStudentHistory(studentId, limit, offset);
+        return res.json(history);
+      } catch (err: any) {
+        console.error('[SUPABASE HISTORY RETRIEVAL ERROR]', err?.message || err);
+      }
+    }
+
+    const db = readDb();
+    const history = (db.studentPrintHistory || [])
+      .filter(h => h.studentId === studentId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(offset, offset + limit);
+
+    return res.json(history);
+  } catch (err: any) {
+    console.error('History retrieval error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve print history' });
+  }
 });
 
 // POST /api/auth/logout - destroy student session
@@ -3767,12 +3796,44 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
     if (!db.orders) db.orders = [];
     db.orders.push(newOrder);
 
+    // Record lifetime metadata in student_print_history
+    const historyRecords: DbStudentPrintHistory[] = createdJobs.map(job => ({
+      id: 'hist-' + job.id,
+      orderId: orderId,
+      jobId: job.id,
+      orderToken: orderToken,
+      jobToken: job.token,
+      studentId: studentId,
+      shopId: targetShopId,
+      shopName: shop.name || 'Campus Print Center',
+      fileName: job.fileName,
+      fileSize: job.fileSize,
+      pageCount: job.pageCount,
+      copies: job.copies,
+      printMode: job.printMode,
+      printType: job.printType,
+      sides: job.sides,
+      paperSize: 'A4',
+      pageRange: job.pageRange,
+      chargedAmount: job.chargedAmount || 0,
+      status: job.status,
+      createdAt: job.createdAt
+    }));
+
+    if (!db.studentPrintHistory) db.studentPrintHistory = [];
+    historyRecords.forEach(h => {
+      const idx = db.studentPrintHistory!.findIndex(x => (h.jobId && x.jobId === h.jobId) || x.id === h.id);
+      if (idx >= 0) db.studentPrintHistory![idx] = h;
+      else db.studentPrintHistory!.push(h);
+    });
+
     writeDb(db);
 
     if (dbRepository.isSupabase()) {
       try {
         await dbRepository.insertOrder(newOrder);
         await dbRepository.insertJobsBatch(createdJobs);
+        await dbRepository.insertStudentHistoryBatch(historyRecords);
       } catch (err: any) {
         console.error('[SUPABASE ORDER/JOB PERSISTENCE ERROR]', err?.message || err);
         await dbRepository.deleteOrder(newOrder.id).catch(() => {});
@@ -3894,6 +3955,11 @@ app.post('/api/orders/:id/approve', requireAdmin, async (req, res) => {
       printerId: formatPrinterId(db.printerSettings?.selectedPrinter || 'UNKNOWN'),
       printerName: db.printerSettings?.selectedPrinter || 'UNKNOWN'
     });
+
+    if (db.studentPrintHistory) {
+      const hist = db.studentPrintHistory.find(h => h.jobId === job.id);
+      if (hist) hist.status = 'queued';
+    }
     
     // Broadcast job updated to client/admin
     broadcastSse({ type: 'job_updated', job });
@@ -3911,6 +3977,7 @@ app.post('/api/orders/:id/approve', requireAdmin, async (req, res) => {
       await dbRepository.updateOrder(order.id, { status: 'printing' });
       for (const j of orderJobs) {
         await dbRepository.updateJob(j.id, { status: 'queued', timeline: j.timeline });
+        await dbRepository.updateStudentHistoryStatus(j.id, 'queued').catch(() => {});
       }
     } catch (err: any) {
       console.error('[SUPABASE ORDER APPROVAL ERROR]', err?.message || err);
@@ -3946,6 +4013,7 @@ app.post('/api/orders/:id/reject', requireAdmin, async (req, res) => {
   }
 
   order.status = 'failed';
+  const rejectTime = new Date().toISOString();
 
   // Cascade failed status to all associated jobs
   const orderJobs = db.jobs.filter(j => j.orderId === order.id);
@@ -3956,14 +4024,37 @@ app.post('/api/orders/:id/reject', requireAdmin, async (req, res) => {
     job.timeline.push({
       stage: 'failed',
       reason: 'Rejected by Admin',
-      at: new Date().toISOString(),
+      at: rejectTime,
       printerId: formatPrinterId(db.printerSettings?.selectedPrinter || 'UNKNOWN'),
       printerName: db.printerSettings?.selectedPrinter || 'UNKNOWN'
     });
+
+    if (db.studentPrintHistory) {
+      const hist = db.studentPrintHistory.find(h => h.jobId === job.id);
+      if (hist) {
+        hist.status = 'failed';
+        hist.completedAt = rejectTime;
+      }
+    }
     broadcastSse({ type: 'job_updated', job });
   });
 
   writeDb(db);
+
+  if (dbRepository.isSupabase()) {
+    try {
+      await dbRepository.updateOrder(order.id, { status: 'failed' });
+      for (const j of orderJobs) {
+        await dbRepository.updateJob(j.id, { status: 'failed', reason: 'Rejected by Admin', timeline: j.timeline });
+        await dbRepository.updateStudentHistoryStatus(j.id, 'failed', rejectTime).catch(() => {});
+      }
+    } catch (err: any) {
+      console.error('[SUPABASE ORDER REJECT ERROR]', err?.message || err);
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(503).json({ error: 'Database service unavailable' });
+      }
+    }
+  }
 
   if (dbRepository.isSupabase()) {
     try {
@@ -4104,9 +4195,18 @@ app.post('/api/jobs/:id/approve', requireAdmin, (req, res) => {
     }
   }
 
+  if (db.studentPrintHistory) {
+    const hist = db.studentPrintHistory.find(h => h.jobId === job.id);
+    if (hist) hist.status = 'queued';
+  }
+
   writeDb(db);
   broadcastSse({ type: 'job_updated', job });
   
+  if (dbRepository.isSupabase()) {
+    dbRepository.updateStudentHistoryStatus(job.id, 'queued').catch(() => {});
+  }
+
   // Event-driven dispatch: push next queued job to connected v2 agent
   dispatchNextJob(job.shopId);
 
@@ -4168,6 +4268,14 @@ app.post('/api/jobs/:id/status', requireAdmin, async (req, res) => {
     updateJobMetrics(db.jobs[idx]);
   }
 
+  const completedAt = (status === 'completed' || status === 'failed') ? new Date().toISOString() : undefined;
+  if (!db.studentPrintHistory) db.studentPrintHistory = [];
+  const hist = db.studentPrintHistory.find(h => h.jobId === req.params.id);
+  if (hist && status) {
+    hist.status = status;
+    if (completedAt) hist.completedAt = completedAt;
+  }
+
   writeDb(db);
   
   if (dbRepository.isSupabase()) {
@@ -4179,6 +4287,9 @@ app.post('/api/jobs/:id/status', requireAdmin, async (req, res) => {
         timeline: db.jobs[idx].timeline,
         metrics: db.jobs[idx].metrics
       });
+      if (status) {
+        await dbRepository.updateStudentHistoryStatus(req.params.id, status, completedAt).catch(() => {});
+      }
     } catch (err: any) {
       console.error('[SUPABASE JOB STATUS PERSISTENCE ERROR]', err?.message || err);
     }
