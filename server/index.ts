@@ -3837,13 +3837,30 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
       try {
         await dbRepository.insertOrder(newOrder);
         await dbRepository.insertJobsBatch(createdJobs);
-        await dbRepository.insertStudentHistoryBatch(historyRecords);
       } catch (err: any) {
         console.error('[SUPABASE ORDER/JOB PERSISTENCE ERROR]', err?.message || err);
+        // Roll back in-memory & local DB state on primary persistence failure
+        db.orders = (db.orders || []).filter(o => o.id !== newOrder.id);
+        db.jobs = (db.jobs || []).filter(j => !createdJobs.some(cj => cj.id === j.id));
+        if (db.studentPrintHistory) {
+          db.studentPrintHistory = db.studentPrintHistory.filter(h => h.orderId !== newOrder.id);
+        }
+        writeDb(db);
         await dbRepository.deleteOrder(newOrder.id).catch(() => {});
         if (process.env.NODE_ENV === 'production') {
           return res.status(503).json({ error: 'Database service unavailable' });
         }
+      }
+
+      // Non-blocking secondary sync for lifetime student print history ledger
+      try {
+        const studentUser = (req as any).user;
+        if (studentUser) {
+          await dbRepository.upsertStudent(studentUser).catch(() => {});
+        }
+        await dbRepository.insertStudentHistoryBatch(historyRecords);
+      } catch (err: any) {
+        console.warn('[SUPABASE STUDENT HISTORY SYNC WARNING] Failed to persist student history records (non-fatal):', err?.message || err);
       }
     }
 
@@ -4051,20 +4068,6 @@ app.post('/api/orders/:id/reject', requireAdmin, async (req, res) => {
       for (const j of orderJobs) {
         await dbRepository.updateJob(j.id, { status: 'failed', reason: 'Rejected by Admin', timeline: j.timeline });
         await dbRepository.updateStudentHistoryStatus(j.id, 'failed', rejectTime).catch(() => {});
-      }
-    } catch (err: any) {
-      console.error('[SUPABASE ORDER REJECT ERROR]', err?.message || err);
-      if (process.env.NODE_ENV === 'production') {
-        return res.status(503).json({ error: 'Database service unavailable' });
-      }
-    }
-  }
-
-  if (dbRepository.isSupabase()) {
-    try {
-      await dbRepository.updateOrder(order.id, { status: 'failed' });
-      for (const j of orderJobs) {
-        await dbRepository.updateJob(j.id, { status: 'failed', reason: j.reason, timeline: j.timeline });
       }
     } catch (err: any) {
       console.error('[SUPABASE ORDER REJECT ERROR]', err?.message || err);

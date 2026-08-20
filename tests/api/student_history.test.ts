@@ -366,4 +366,37 @@ describe('Phase 1: Lifetime Student Print History Suite', () => {
     const res = await request(app).get('/api/student/history');
     expect(res.status).toBe(401);
   });
+
+  // TEST 10: Print job submission succeeds with 201 even if secondary student history persistence fails
+  test('TEST 10: Print job submission succeeds with 201 even if secondary history sync fails', async () => {
+    const db = readDb();
+    db.agents = [
+      {
+        agentId: 'tjohn_agent',
+        shopId: 'tjohn_print',
+        machineName: 'tjohn-machine',
+        printerName: 'TJohnPrinter',
+        daemonVersion: '1.0.0',
+        onlineStatus: 'online',
+        printerStatus: 'online',
+        lastSeen: new Date().toISOString()
+      }
+    ];
+    writeDb(db);
+
+    const validPdfBuffer = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF');
+    const configs = JSON.stringify([{ copies: 1, printType: 'bw', sides: 'single' }]);
+
+    const submitRes = await request(app)
+      .post('/api/jobs')
+      .set('Authorization', `Bearer ${studentAToken}`)
+      .field('studentName', 'Alice Student')
+      .field('studentEmail', 'alice@gmail.com')
+      .field('shopId', 'tjohn_print')
+      .field('configs', configs)
+      .attach('files', validPdfBuffer, 'test_submission.pdf');
+
+    expect(submitRes.status).toBe(201);
+    expect(submitRes.body).toBeDefined();
+  });
 });

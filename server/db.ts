@@ -608,10 +608,14 @@ export const dbRepository = {
       const db = readDb();
       if (db.orders) {
         db.orders = db.orders.filter(o => o.id !== id);
+        if (db.jobs) {
+          db.jobs = db.jobs.filter(j => j.orderId !== id);
+        }
         writeDb(db);
       }
       return true;
     }
+    await supabase!.from('jobs').delete().eq('order_id', id).catch(() => {});
     const { error } = await supabase!.from('orders').delete().eq('id', id);
     if (error) throw new DatabaseError(`deleteOrder(${id}) failed: ${error.message}`, error);
     return true;
