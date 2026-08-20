@@ -163,4 +163,89 @@ describe('Approval Token Consistency Across Student Submission, My Jobs, and Adm
     expect(historyRes.body[0].orderToken).toBe(canonicalOrderToken);
     expect(historyRes.body[1].orderToken).toBe(canonicalOrderToken);
   });
+
+  it('3. Admin Token Search resolves order by canonical order token or any child job token', async () => {
+    const studentEmail = `search_token_${Date.now()}@university.edu`;
+    const loginRes = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: `mock_token_${studentEmail}` });
+
+    const sessionToken = loginRes.body.sessionToken;
+
+    const configs = JSON.stringify([
+      { copies: 1, printType: 'bw', sides: 'single' }
+    ]);
+
+    const submitRes = await request(app)
+      .post('/api/jobs')
+      .set('Authorization', `Bearer ${sessionToken}`)
+      .field('studentName', 'Search Student')
+      .field('studentEmail', studentEmail)
+      .field('shopId', 'alliance_print')
+      .field('configs', configs)
+      .attach('files', mockPdfBuffer, 'search_doc.pdf');
+
+    expect(submitRes.status).toBe(201);
+    const token = submitRes.body[0].token;
+
+    // Search by token via admin endpoint
+    const adminLogin = await request(app)
+      .post('/api/auth/login')
+      .send({
+        shopId: 'alliance_print',
+        username: 'alliance_admin',
+        password: 'tjohn_password123'
+      });
+    const adminToken = adminLogin.body.token;
+
+    const searchRes = await request(app)
+      .get(`/api/orders/token/${token}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(searchRes.status).toBe(200);
+    expect(searchRes.body.token).toBe(token);
+    expect(searchRes.body.jobs[0].token).toBe(token);
+  });
+
+  it('4. Student reload/re-login maintains exact canonical token across multiple history re-fetches', async () => {
+    const studentEmail = `reload_student_${Date.now()}@university.edu`;
+
+    // Initial login
+    const loginRes1 = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: `mock_token_${studentEmail}` });
+    const sessionToken1 = loginRes1.body.sessionToken;
+
+    // Submit print job
+    const configs = JSON.stringify([{ copies: 1, printType: 'bw', sides: 'single' }]);
+    const submitRes = await request(app)
+      .post('/api/jobs')
+      .set('Authorization', `Bearer ${sessionToken1}`)
+      .field('studentName', 'Reload Student')
+      .field('studentEmail', studentEmail)
+      .field('shopId', 'alliance_print')
+      .field('configs', configs)
+      .attach('files', mockPdfBuffer, 'reload_doc.pdf');
+
+    expect(submitRes.status).toBe(201);
+    const originalToken = submitRes.body[0].token;
+
+    // Simulate browser reload and re-login (new session token)
+    const loginRes2 = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: `mock_token_${studentEmail}` });
+    const sessionToken2 = loginRes2.body.sessionToken;
+
+    // Fetch history multiple times
+    for (let i = 0; i < 3; i++) {
+      const historyRes = await request(app)
+        .get('/api/student/history')
+        .set('Authorization', `Bearer ${sessionToken2}`);
+
+      expect(historyRes.status).toBe(200);
+      expect(historyRes.body.length).toBe(1);
+      expect(historyRes.body[0].orderToken).toBe(originalToken);
+      expect(historyRes.body[0].jobToken).toBe(originalToken);
+    }
+  });
 });

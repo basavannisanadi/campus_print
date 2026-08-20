@@ -556,7 +556,13 @@ export default function AdminPortal({
     if (!query) return;
 
     // First try to match locally in pendingOrders
-    const matched = pendingOrders.find(o => o.token.toLowerCase() === query.toLowerCase());
+    const matched = pendingOrders.find(o =>
+      o.token.toLowerCase() === query.toLowerCase() ||
+      o.jobs?.some((j: any) =>
+        (j.token && j.token.toLowerCase() === query.toLowerCase()) ||
+        (j.tokenId && j.tokenId.toLowerCase() === query.toLowerCase())
+      )
+    );
     if (matched) {
       handleSelectSuggestion(matched);
       return;
@@ -1717,7 +1723,7 @@ export default function AdminPortal({
                       <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                       <input
                         type="text"
-                        placeholder="Type token to search (e.g. CP-7528)"
+                        placeholder="Type token to search (e.g. PRNT-A529B41C)"
                         value={searchTokenQuery}
                         onChange={(e) => handleSearchChange(e.target.value)}
                         onFocus={() => {
@@ -1733,11 +1739,23 @@ export default function AdminPortal({
                   {/* Autocomplete Suggestions */}
                   {showSuggestions && searchTokenQuery.trim().length >= 3 && (
                     <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto font-mono text-xs text-left">
-                      {pendingOrders.filter(o => o.token.toLowerCase().includes(searchTokenQuery.toLowerCase())).length === 0 ? (
+                      {pendingOrders.filter(o =>
+                        o.token.toLowerCase().includes(searchTokenQuery.toLowerCase()) ||
+                        o.jobs?.some((j: any) =>
+                          (j.token && j.token.toLowerCase().includes(searchTokenQuery.toLowerCase())) ||
+                          (j.tokenId && j.tokenId.toLowerCase().includes(searchTokenQuery.toLowerCase()))
+                        )
+                      ).length === 0 ? (
                         <div className="p-3 text-slate-400 text-center font-sans">No matching pending orders</div>
                       ) : (
                         pendingOrders
-                          .filter(o => o.token.toLowerCase().includes(searchTokenQuery.toLowerCase()))
+                          .filter(o =>
+                            o.token.toLowerCase().includes(searchTokenQuery.toLowerCase()) ||
+                            o.jobs?.some((j: any) =>
+                              (j.token && j.token.toLowerCase().includes(searchTokenQuery.toLowerCase())) ||
+                              (j.tokenId && j.tokenId.toLowerCase().includes(searchTokenQuery.toLowerCase()))
+                            )
+                          )
                           .map(order => (
                             <div
                               key={order.id}

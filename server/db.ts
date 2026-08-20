@@ -832,15 +832,68 @@ export const dbRepository = {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(offset, offset + limit);
     }
-    const { data, error } = await supabase!
-      .from('student_print_history')
-      .select('*')
-      .eq('student_id', studentId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-    if (error) throw new DatabaseError(`getStudentHistory failed: ${error.message}`, error);
-    if (!data) return [];
-    return data.map(studentHistoryFromDb);
+
+    // 1. Attempt retrieval from dedicated student_print_history table
+    try {
+      const { data, error } = await supabase!
+        .from('student_print_history')
+        .select('*')
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (!error && data && data.length > 0) {
+        return data.map(studentHistoryFromDb);
+      }
+    } catch {
+      // Non-fatal, proceed to authoritative jobs table fallback below
+    }
+
+    // 2. Fallback: query authoritative jobs table directly from Supabase
+    try {
+      const { data: jobsData, error: jobsError } = await supabase!
+        .from('jobs')
+        .select('*')
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (!jobsError && jobsData && jobsData.length > 0) {
+        const shops = await this.getShops().catch(() => []);
+        const shopMap = new Map<string, string>(shops.map(s => [s.id, s.name]));
+
+        return jobsData.map((row: any): DbStudentPrintHistory => {
+          const canonicalToken = row.token_id || row.token;
+          return {
+            id: 'hist-' + row.id,
+            orderId: row.order_id || row.id,
+            jobId: row.id,
+            orderToken: canonicalToken,
+            jobToken: row.token || canonicalToken,
+            studentId: row.student_id,
+            shopId: row.shop_id,
+            shopName: shopMap.get(row.shop_id) || 'Campus Print Center',
+            fileName: row.file_name,
+            fileSize: Number(row.file_size || 0),
+            pageCount: Number(row.page_count || 1),
+            copies: Number(row.copies || 1),
+            printMode: row.print_mode || 'mono',
+            printType: row.print_type || (row.print_mode === 'color' ? 'color' : 'bw'),
+            sides: row.sides || 'single',
+            paperSize: row.paper_size || 'A4',
+            pageRange: row.page_range || undefined,
+            chargedAmount: Number(row.charged_amount || 0),
+            status: row.status || 'completed',
+            createdAt: typeof row.created_at === 'string' ? row.created_at : new Date(row.created_at).toISOString(),
+            completedAt: row.completed_at ? (typeof row.completed_at === 'string' ? row.completed_at : new Date(row.completed_at).toISOString()) : undefined
+          };
+        });
+      }
+    } catch (err: any) {
+      throw new DatabaseError(`getStudentHistory failed: ${err.message}`, err);
+    }
+
+    return [];
   },
 
   async bootstrapShops(): Promise<void> {

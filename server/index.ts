@@ -4151,6 +4151,12 @@ app.get('/api/orders/token/:token', requireAdmin, async (req, res) => {
   if (dbRepository.isSupabase()) {
     try {
       matchingOrder = await dbRepository.getOrderByToken(searchToken);
+      if (!matchingOrder) {
+        const job = await dbRepository.getJobByToken(searchToken);
+        if (job && job.orderId) {
+          matchingOrder = await dbRepository.getOrder(job.orderId);
+        }
+      }
       if (!matchingOrder) return res.status(404).json({ error: 'Order not found with this token' });
       
       const tokenShopId = (req as any).tokenShopId;
@@ -4167,7 +4173,10 @@ app.get('/api/orders/token/:token', requireAdmin, async (req, res) => {
   }
 
   const db = readDb();
-  matchingOrder = (db.orders || []).find(o => o.token.toUpperCase() === searchToken) || null;
+  matchingOrder = (db.orders || []).find(o =>
+    o.token.toUpperCase() === searchToken ||
+    db.jobs.some(j => j.orderId === o.id && (j.token.toUpperCase() === searchToken || (j.tokenId && j.tokenId.toUpperCase() === searchToken)))
+  ) || null;
 
   if (!matchingOrder) {
     return res.status(404).json({ error: 'Order not found with this token' });
