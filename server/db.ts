@@ -718,18 +718,44 @@ export const dbRepository = {
     return studentFromDb(data);
   },
 
+  async getStudentByGoogleId(googleId: string): Promise<Student | null> {
+    if (!this.isSupabase()) {
+      return (readDb().students || []).find(s => s.googleId === googleId) || null;
+    }
+    const { data, error } = await supabase!.from('students').select('*').eq('google_id', googleId).single();
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw new DatabaseError(`getStudentByGoogleId(${googleId}) failed: ${error.message}`, error);
+    }
+    if (!data) return null;
+    return studentFromDb(data);
+  },
+
+  async getStudentByEmail(email: string): Promise<Student | null> {
+    if (!this.isSupabase()) {
+      return (readDb().students || []).find(s => s.email?.toLowerCase() === email.toLowerCase()) || null;
+    }
+    const { data, error } = await supabase!.from('students').select('*').ilike('email', email).single();
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw new DatabaseError(`getStudentByEmail(${email}) failed: ${error.message}`, error);
+    }
+    if (!data) return null;
+    return studentFromDb(data);
+  },
+
   async upsertStudent(student: Student): Promise<Student> {
     if (!this.isSupabase()) {
       const db = readDb();
       if (!db.students) db.students = [];
-      const idx = db.students.findIndex(s => s.id === student.id);
-      if (idx >= 0) db.students[idx] = student;
+      const idx = db.students.findIndex(s => s.id === student.id || s.googleId === student.googleId || (s.email && s.email.toLowerCase() === student.email.toLowerCase()));
+      if (idx >= 0) db.students[idx] = { ...db.students[idx], ...student };
       else db.students.push(student);
       writeDb(db);
       return student;
     }
     const row = studentToDb(student);
-    const { data, error } = await supabase!.from('students').upsert(row).select().single();
+    const { data, error } = await supabase!.from('students').upsert(row, { onConflict: 'google_id' }).select().single();
     if (error) throw new DatabaseError(`upsertStudent failed: ${error.message}`, error);
     return studentFromDb(data);
   },

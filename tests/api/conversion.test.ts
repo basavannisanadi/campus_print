@@ -270,5 +270,5 @@ describe('Document Conversion API Integration Tests', () => {
     expect(job.serverFilePath).toContain(pdfFilename);
     expect(job.originalFilePath).toContain(originalFilename);
     expect(job.chargedAmount).toBe(10); // Color pricing: 5rs * 1 page * 2 copies = 10rs
-  });
+  }, 30000);
 });

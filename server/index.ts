@@ -551,7 +551,7 @@ function verifySessionToken(token: string): string | null {
 
 const googleAuthClient = new OAuth2Client();
 
-const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const auth = req.headers.authorization;
   if (!auth) {
     return res.status(401).json({ error: 'Unauthorized: Missing authorization header.' });
@@ -562,18 +562,42 @@ const requireAuth = (req: express.Request, res: express.Response, next: express.
     return res.status(401).json({ error: 'Unauthorized: Invalid or expired session.' });
   }
   
-  const db = readDb();
-  const student = db.students?.find(s => s.id === studentId);
+  let student: Student | null = null;
+
+  if (dbRepository.isSupabase()) {
+    try {
+      student = await dbRepository.getStudent(studentId);
+    } catch (err: any) {
+      console.error('[AUTH ERROR] Failed to fetch student from Supabase:', err?.message || err);
+    }
+  }
+
+  if (!student) {
+    const db = readDb();
+    student = db.students?.find(s => s.id === studentId) || null;
+  }
+
   if (!student || !student.isActive) {
     return res.status(401).json({ error: 'Unauthorized: Student record not found or inactive.' });
   }
 
   // Update lastSeen property on database student record
   student.lastSeen = new Date().toISOString();
-  try {
-    writeDb(db);
-  } catch (err) {
-    console.error('[AUTH WARNING] Failed to update student lastSeen:', err);
+  if (dbRepository.isSupabase()) {
+    dbRepository.upsertStudent(student).catch(err => {
+      console.error('[AUTH WARNING] Failed to update student lastSeen in Supabase:', err);
+    });
+  } else {
+    try {
+      const db = readDb();
+      const idx = (db.students || []).findIndex(s => s.id === student!.id);
+      if (idx >= 0) {
+        db.students![idx].lastSeen = student.lastSeen;
+        writeDb(db);
+      }
+    } catch (err) {
+      console.error('[AUTH WARNING] Failed to update student lastSeen:', err);
+    }
   }
 
   (req as any).user = student;
@@ -1039,16 +1063,33 @@ app.post('/api/auth/google', async (req, res) => {
   }
 
   // Create or update student record
-  const db = readDb();
-  db.students = db.students || [];
-  let student = db.students.find(s => s.googleId === googleId);
+  let student: Student | null = null;
+  if (dbRepository.isSupabase()) {
+    try {
+      student = await dbRepository.getStudentByGoogleId(googleId);
+      if (!student && email) {
+        student = await dbRepository.getStudentByEmail(email);
+      }
+    } catch (err: any) {
+      console.error('[SUPABASE STUDENT LOOKUP ERROR]', err?.message || err);
+    }
+  }
+
+  if (!student) {
+    const db = readDb();
+    student = (db.students || []).find(s => s.googleId === googleId || (s.email && s.email.toLowerCase() === email.toLowerCase())) || null;
+  }
+
   const now = new Date().toISOString();
 
   if (student) {
+    student.googleId = googleId;
     student.name = name;
+    student.email = email;
     student.picture = picture;
     student.lastLogin = now;
     student.lastSeen = now;
+    student.isActive = true;
   } else {
     student = {
       id: `student_${crypto.randomUUID()}`,
@@ -1062,13 +1103,23 @@ app.post('/api/auth/google', async (req, res) => {
       isActive: true,
       lastSeen: now
     };
-    db.students.push(student);
   }
+
+  // Persist to local DB for fast caching
+  const db = readDb();
+  if (!db.students) db.students = [];
+  const localIdx = db.students.findIndex(s => s.id === student!.id || s.googleId === googleId);
+  if (localIdx >= 0) db.students[localIdx] = student;
+  else db.students.push(student);
   writeDb(db);
 
+  // Persist to Supabase
   if (dbRepository.isSupabase()) {
     try {
-      await dbRepository.upsertStudent(student);
+      const persisted = await dbRepository.upsertStudent(student);
+      if (persisted && persisted.id) {
+        student = persisted;
+      }
     } catch (err: any) {
       console.error('[SUPABASE STUDENT SYNC ERROR]', err?.message || err);
     }
