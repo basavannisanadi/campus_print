@@ -3364,7 +3364,10 @@ app.get('/api/orders', async (req, res) => {
         sides: j.sides,
         status: j.status,
         progressPercent: j.progressPercent,
-        reason: j.reason
+        reason: j.reason,
+        shopId: j.shopId || o.shopId,
+        orderId: o.id,
+        tokenId: o.token
       };
     });
 

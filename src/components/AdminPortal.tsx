@@ -471,12 +471,12 @@ export default function AdminPortal({
   const prevPendingOrdersRef = useRef<any[]>([]);
 
   // Derive pendingOrders list grouped by order
-  const pendingJobs = jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId);
+  const pendingJobs = jobs.filter(j => j.status === 'pending_approval' && (!j.shopId || j.shopId === activeShopId));
   const ordersMap = new Map<string, { orderId: string; token: string; jobs: any[] }>();
   pendingJobs.forEach(j => {
-    const oid = j.orderId || 'unknown';
+    const oid = j.orderId || j.id || 'unknown';
     if (!ordersMap.has(oid)) {
-      ordersMap.set(oid, { orderId: oid, token: j.tokenId || 'UNKNOWN', jobs: [] });
+      ordersMap.set(oid, { orderId: oid, token: j.tokenId || j.token || 'UNKNOWN', jobs: [] });
     }
     ordersMap.get(oid)!.jobs.push(j);
   });
@@ -1462,7 +1462,7 @@ export default function AdminPortal({
           <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-mono ${
             activeTab === 'queues' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
           }`}>
-            {jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId).length}
+            {jobs.filter(j => j.status === 'pending_approval' && (!j.shopId || j.shopId === activeShopId)).length}
           </span>
         </button>
 
@@ -1701,7 +1701,7 @@ export default function AdminPortal({
                 <span>Pending Approvals & Release</span>
               </h3>
               <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-orange-50 text-orange-700 border border-orange-200 uppercase tracking-widest font-mono">
-                {jobs.filter(j => j.status === 'pending_approval' && j.shopId === activeShopId).length} Pending
+                {jobs.filter(j => j.status === 'pending_approval' && (!j.shopId || j.shopId === activeShopId)).length} Pending
               </span>
             </div>
 
