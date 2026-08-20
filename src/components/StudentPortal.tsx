@@ -3453,7 +3453,7 @@ function StudentPrintHistoryView({ onStartPrint }: StudentPrintHistoryViewProps)
             const isPending = item.status === 'pending_approval';
             const isFailed = item.status === 'failed' || item.status === 'cancelled' || item.status === 'rejected';
 
-            const displayToken = item.jobToken || item.orderToken;
+            const displayToken = item.orderToken || item.jobToken || 'UNKNOWN';
 
             return (
               <div

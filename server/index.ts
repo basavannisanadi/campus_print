@@ -1952,25 +1952,24 @@ function genToken(dbJobs: DbJob[]): string {
   return `PRNT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 }
 
-// Generate unique approval token in CP-XXXX format
-function genApprovalToken(dbOrders: DbPrintOrder[]): string {
-  const activeTokens = new Set(
-    (dbOrders || [])
-      .filter(o => ['pending_approval', 'queued', 'printing'].includes(o.status))
-      .map(o => o.token)
-      .filter(Boolean)
-  );
+// Generate unique approval token in PRNT-XXXXXXXX format
+function genApprovalToken(dbOrders: DbPrintOrder[], dbJobs?: DbJob[]): string {
+  const existingTokens = new Set([
+    ...(dbOrders || []).map(o => o.token),
+    ...(dbJobs || []).map(j => j.token),
+    ...(dbJobs || []).map(j => j.tokenId)
+  ].filter(Boolean));
 
   let attempts = 0;
   while (attempts < 1000) {
-    const num = Math.floor(1000 + Math.random() * 9000);
-    const token = `CP-${num}`;
-    if (!activeTokens.has(token)) {
+    const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
+    const token = `PRNT-${hex}`;
+    if (!existingTokens.has(token)) {
       return token;
     }
     attempts++;
   }
-  return `CP-${Math.floor(1000 + Math.random() * 9000)}`;
+  return `PRNT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 }
 
 // Helper function to calculate next opening time
@@ -3774,7 +3773,7 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
     }
 
     const createdJobs: DbJob[] = [];
-    const orderToken = genApprovalToken(db.orders || []);
+    const orderToken = genApprovalToken(db.orders || [], db.jobs || []);
     const orderId = 'order-' + Date.now() + '-' + Math.round(Math.random() * 1e5);
     let totalAmount = 0;
 
@@ -3783,9 +3782,11 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
       const chargedAmount = calculateJobPrice({ pageCount, copies: copiesNum, printType, printMode, sides, pageRange }, shop);
       totalAmount += chargedAmount;
 
+      const jobToken = (parsedFiles.length === 1 && createdJobs.length === 0) ? orderToken : genToken(db.jobs);
+
       const job: DbJob = {
         id: 'job-' + Date.now() + '-' + Math.round(Math.random() * 1e5),
-        token: genToken(db.jobs),
+        token: jobToken,
         orderId,
         fileName: file.originalname,
         fileSize: file.size,
@@ -3797,7 +3798,7 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
         pageRange,
         status: 'pending_approval',
         chargedAmount,
-        tokenId: orderToken, // legacy field fallback
+        tokenId: orderToken, // canonical order approval token
         studentName: studentName || 'Student',
         studentEmail: studentEmail || '',
         studentId: studentId,
