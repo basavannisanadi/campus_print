@@ -3835,6 +3835,13 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
 
     if (dbRepository.isSupabase()) {
       try {
+        const studentUser = (req as any).user;
+        if (studentUser) {
+          await dbRepository.upsertStudent(studentUser).catch(() => {});
+        }
+        if (shop) {
+          await dbRepository.updateShop(shop.id, shop).catch(() => {});
+        }
         await dbRepository.insertOrder(newOrder);
         await dbRepository.insertJobsBatch(createdJobs);
       } catch (err: any) {
@@ -4668,6 +4675,10 @@ function migrateDuplicateAgents() {
 }
 
 migrateDuplicateAgents();
+
+if (!process.env.VITEST) {
+  dbRepository.bootstrapShops().catch(() => {});
+}
 
 // 7-Day Data Retention Purge Scheduler
 const RETENTION_PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000; // Daily

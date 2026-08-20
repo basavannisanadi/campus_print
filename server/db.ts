@@ -615,7 +615,9 @@ export const dbRepository = {
       }
       return true;
     }
-    await supabase!.from('jobs').delete().eq('order_id', id).catch(() => {});
+    try {
+      await supabase!.from('jobs').delete().eq('order_id', id);
+    } catch {}
     const { error } = await supabase!.from('orders').delete().eq('id', id);
     if (error) throw new DatabaseError(`deleteOrder(${id}) failed: ${error.message}`, error);
     return true;
@@ -813,6 +815,34 @@ export const dbRepository = {
     if (error) throw new DatabaseError(`getStudentHistory failed: ${error.message}`, error);
     if (!data) return [];
     return data.map(studentHistoryFromDb);
+  },
+
+  async bootstrapShops(): Promise<void> {
+    if (!this.isSupabase()) return;
+    try {
+      for (const shop of DEFAULT_SHOPS) {
+        const row = shopToDb(shop);
+        try {
+          await supabase!.from('shops').upsert(row, { onConflict: 'id' });
+        } catch {}
+        const psRow = {
+          shop_id: shop.id,
+          status: 'offline',
+          expected_return_time: '2:00 PM',
+          average_print_speed: 5,
+          admin_override_status: 'none',
+          available_printers: [],
+          selected_printer: null,
+          under_maintenance: false,
+          scan_requested: false
+        };
+        try {
+          await supabase!.from('printer_settings').upsert(psRow, { onConflict: 'shop_id' });
+        } catch {}
+      }
+    } catch (err: any) {
+      console.warn('[BOOTSTRAP WARNING] Supabase shop bootstrap warning:', err?.message || err);
+    }
   }
 };
 
