@@ -204,6 +204,7 @@ export default function StudentPortal({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [success, setSuccess] = useState<{ order?: any, jobs: any[] } | null>(null);
   const [submissionError, setSubmissionError] = useState('');
+  const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'preparing' | 'submitting' | 'error' | 'success'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'jobs' | 'history' | 'settings' | 'help' | 'queue' | 'about' | 'status'>('dashboard');
@@ -291,12 +292,35 @@ export default function StudentPortal({
       Object.values(previewUrls).forEach((url: string) => URL.revokeObjectURL(url));
       setPreviewUrls({});
       setSubmissionError('');
+      setSubmissionStatus('idle');
     }
   }, [selectedShopId]);
+
+  // Clear any stale submission error whenever switching tabs
+  useEffect(() => {
+    setSubmissionError('');
+    setSubmissionStatus(prev => (prev === 'error' ? (files.length > 0 ? 'preparing' : 'idle') : prev));
+  }, [activeTab]);
 
   const handleSignOut = () => {
     logout();
     resetForm();
+  };
+
+  // Helper to update active file configuration and auto-clear any prior submission error
+  const updateActiveConfig = (updater: Partial<FileConfig> | ((prev: FileConfig) => Partial<FileConfig>)) => {
+    if (!activeFileName) return;
+    setSubmissionError('');
+    setSubmissionStatus('preparing');
+    setFileConfigs(prev => {
+      const current = prev[activeFileName];
+      if (!current) return prev;
+      const updated = typeof updater === 'function' ? updater(current) : { ...current, ...updater };
+      return {
+        ...prev,
+        [activeFileName]: updated as FileConfig
+      };
+    });
   };
 
   // Parse PDF page count
@@ -357,6 +381,7 @@ export default function StudentPortal({
     } catch (err: any) {
       console.error('Pre-conversion failed for:', file.name, err);
       setSubmissionError(`Document conversion failed for "${file.name}": ${err.message}`);
+      setSubmissionStatus('error');
       setFiles(prev => prev.filter(f => f.name !== file.name));
       setFileConfigs(prev => {
         const copy = { ...prev };
@@ -374,6 +399,10 @@ export default function StudentPortal({
   };
 
   const addFiles = async (newFiles: File[]) => {
+    // Reset submission errors at the start of every new file selection workflow
+    setSubmissionError('');
+    setSubmissionStatus('preparing');
+
     const updatedFiles = [...files];
     const updatedConfigs = { ...fileConfigs };
     const updatedUrls = { ...previewUrls };
@@ -382,10 +411,12 @@ export default function StudentPortal({
     for (const file of newFiles) {
       if (!isSupportedFile(file)) {
         setSubmissionError(`File "${file.name}" is not a supported format. Only PDF (.pdf) and images (.png, .jpg, .jpeg) are supported.`);
+        setSubmissionStatus('error');
         continue;
       }
       if (file.size > 50 * 1024 * 1024) {
         setSubmissionError(`File "${file.name}" exceeds the 50MB limit.`);
+        setSubmissionStatus('error');
         continue;
       }
 
@@ -461,7 +492,12 @@ export default function StudentPortal({
   };
 
   const removeFile = (name: string) => {
-    setFiles(prev => prev.filter(f => f.name !== name));
+    setSubmissionError('');
+    setFiles(prev => {
+      const remaining = prev.filter(f => f.name !== name);
+      setSubmissionStatus(remaining.length > 0 ? 'preparing' : 'idle');
+      return remaining;
+    });
     setFileConfigs(prev => {
       const next = { ...prev };
       delete next[name];
@@ -486,12 +522,23 @@ export default function StudentPortal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmissionError('');
+    setSubmissionStatus('submitting');
 
-    if (!studentName.trim()) return setSubmissionError('Please enter your name.');
-    if (!studentEmail.trim()) return setSubmissionError('Please enter your email.');
-    if (files.length === 0) return setSubmissionError('Please upload at least one file to print.');
+    if (!studentName.trim()) {
+      setSubmissionStatus('error');
+      return setSubmissionError('Please enter your name.');
+    }
+    if (!studentEmail.trim()) {
+      setSubmissionStatus('error');
+      return setSubmissionError('Please enter your email.');
+    }
+    if (files.length === 0) {
+      setSubmissionStatus('error');
+      return setSubmissionError('Please upload at least one file to print.');
+    }
 
     if (isUploadDisabled) {
+      setSubmissionStatus('error');
       if (systemHealth && !systemHealth.systemReady) {
         return setSubmissionError(`Printing service is currently unavailable. Blockers: ${systemHealth.blockers.join(', ')}`);
       }
@@ -508,10 +555,12 @@ export default function StudentPortal({
     });
 
     if (hasBw && shopInfo.bwMaintenanceMode) {
+      setSubmissionStatus('error');
       return setSubmissionError('Black & White printing is temporarily unavailable.');
     }
 
     if (hasColor && shopInfo.colorMaintenanceMode) {
+      setSubmissionStatus('error');
       return setSubmissionError('Color printing is temporarily unavailable.');
     }
 
@@ -563,6 +612,10 @@ export default function StudentPortal({
             try {
               resolve(JSON.parse(xhr.responseText));
             } catch {
+              console.error('[StudentPortal API ERROR] JSON parse failure:', {
+                endpoint: '/api/jobs',
+                status: xhr.status
+              });
               reject(new Error('Failed to parse server response.'));
             }
           } else {
@@ -583,19 +636,38 @@ export default function StudentPortal({
                 errMsg = `Submission failed (${xhr.status}). Please try again.`;
               }
             }
+            console.error('[StudentPortal API ERROR]', {
+              endpoint: '/api/jobs',
+              status: xhr.status,
+              error: errMsg
+            });
             reject(new Error(errMsg));
           }
         });
 
         xhr.addEventListener('error', () => {
+          console.error('[StudentPortal API ERROR]', {
+            endpoint: '/api/jobs',
+            status: 'NETWORK_ERROR',
+            error: 'Network connection failure during upload.'
+          });
           reject(new Error('Unable to reach the print service. Please check your connection and try again.'));
         });
 
         xhr.addEventListener('timeout', () => {
+          console.error('[StudentPortal API ERROR]', {
+            endpoint: '/api/jobs',
+            status: 'TIMEOUT',
+            error: 'Request timed out after 60 seconds.'
+          });
           reject(new Error('The print service took too long to respond. Please try again.'));
         });
 
         xhr.addEventListener('abort', () => {
+          console.warn('[StudentPortal API NOTE]', {
+            endpoint: '/api/jobs',
+            status: 'ABORTED'
+          });
           reject(new Error('Print job upload was cancelled.'));
         });
 
@@ -609,6 +681,7 @@ export default function StudentPortal({
 
       // Clear any prior submission error immediately upon successful 2xx response
       setSubmissionError('');
+      setSubmissionStatus('success');
       setUploadProgress(100);
 
       const order = (result && !Array.isArray(result) && result.order)
@@ -620,6 +693,7 @@ export default function StudentPortal({
 
       setSuccess({ order, jobs });
     } catch (err: any) {
+      setSubmissionStatus('error');
       setSubmissionError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
       setUploadProgress(0);
     } finally {
@@ -635,6 +709,7 @@ export default function StudentPortal({
     setActiveFileName(null);
     setSuccess(null);
     setSubmissionError('');
+    setSubmissionStatus('idle');
     setUploadProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -1519,7 +1594,7 @@ export default function StudentPortal({
                         </div>
                       </div>
 
-                      {submissionError && (
+                      {submissionError && submissionStatus === 'error' && (
                         <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-600 text-xs font-semibold rounded-xl leading-relaxed">
                           {submissionError}
                         </div>
@@ -1724,10 +1799,7 @@ export default function StudentPortal({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], copies: Math.max(1, prev[activeFileName].copies - 1) }
-                                    }));
+                                    updateActiveConfig(c => ({ copies: Math.max(1, c.copies - 1) }));
                                   }}
                                   className="w-8 h-8 rounded-lg bg-[var(--bg-surface-secondary)] font-bold flex items-center justify-center cursor-pointer border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
                                 >
@@ -1739,20 +1811,14 @@ export default function StudentPortal({
                                   value={activeConf.copies}
                                   onChange={(e) => {
                                     const val = Math.max(1, parseInt(e.target.value) || 1);
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], copies: val }
-                                    }));
+                                    updateActiveConfig({ copies: val });
                                   }}
                                   className="w-12 text-center bg-transparent border-none font-mono font-black text-sm text-[var(--text-primary)] focus:outline-none focus:ring-0"
                                 />
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], copies: prev[activeFileName].copies + 1 }
-                                    }));
+                                    updateActiveConfig(c => ({ copies: c.copies + 1 }));
                                   }}
                                   className="w-8 h-8 rounded-lg bg-[var(--bg-surface-secondary)] font-bold flex items-center justify-center cursor-pointer border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
                                 >
@@ -1768,10 +1834,7 @@ export default function StudentPortal({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], sides: 'single' }
-                                    }));
+                                    updateActiveConfig({ sides: 'single' });
                                   }}
                                   className={`py-1.5 px-1 rounded-md font-bold text-[10px] sm:text-[11px] transition-all text-center cursor-pointer border-none truncate ${
                                     activeConf.sides === 'single'
@@ -1784,10 +1847,7 @@ export default function StudentPortal({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], sides: 'double' }
-                                    }));
+                                    updateActiveConfig({ sides: 'double' });
                                   }}
                                   className={`py-1.5 px-1 rounded-md font-bold text-[10px] sm:text-[11px] transition-all text-center cursor-pointer border-none truncate ${
                                     activeConf.sides === 'double'
@@ -1808,10 +1868,7 @@ export default function StudentPortal({
                                   type="button"
                                   disabled={shopInfo?.bwMaintenanceMode}
                                   onClick={() => {
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], printType: 'bw', printMode: 'mono' }
-                                    }));
+                                    updateActiveConfig({ printType: 'bw', printMode: 'mono' });
                                   }}
                                   className={`py-1.5 px-1 rounded-md font-bold text-[10px] sm:text-[11px] transition-all text-center cursor-pointer border-none truncate ${
                                     activeConf.printType === 'bw'
@@ -1825,10 +1882,7 @@ export default function StudentPortal({
                                   type="button"
                                   disabled={shopInfo?.colorMaintenanceMode}
                                   onClick={() => {
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], printType: 'color', printMode: 'color' }
-                                    }));
+                                    updateActiveConfig({ printType: 'color', printMode: 'color' });
                                   }}
                                   className={`py-1.5 px-1 rounded-md font-bold text-[10px] sm:text-[11px] transition-all text-center cursor-pointer border-none truncate ${
                                     activeConf.printType === 'color'
@@ -1858,10 +1912,7 @@ export default function StudentPortal({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], choosePagesType: 'all' }
-                                    }));
+                                    updateActiveConfig({ choosePagesType: 'all' });
                                   }}
                                   className={`py-1.5 px-1 rounded-md font-bold text-[10px] sm:text-[11px] transition-all text-center cursor-pointer border-none truncate ${
                                     activeConf.choosePagesType === 'all'
@@ -1874,10 +1925,7 @@ export default function StudentPortal({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], choosePagesType: 'custom' }
-                                    }));
+                                    updateActiveConfig({ choosePagesType: 'custom' });
                                   }}
                                   className={`py-1.5 px-1 rounded-md font-bold text-[10px] sm:text-[11px] transition-all text-center cursor-pointer border-none truncate ${
                                     activeConf.choosePagesType === 'custom'
@@ -1896,10 +1944,7 @@ export default function StudentPortal({
                                   placeholder="e.g. 1-3, 5, 7-9"
                                   value={activeConf.customPages || ''}
                                   onChange={(e) => {
-                                    setFileConfigs(prev => ({
-                                      ...prev,
-                                      [activeFileName]: { ...prev[activeFileName], customPages: e.target.value }
-                                    }));
+                                    updateActiveConfig({ customPages: e.target.value });
                                   }}
                                   className="w-full px-3 py-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-purple-500 font-bold"
                                 />
@@ -1949,7 +1994,7 @@ export default function StudentPortal({
                       )}
 
                       {/* Inline Error Message directly above CTA */}
-                      {submissionError && (
+                      {submissionError && submissionStatus === 'error' && (
                         <div className="p-3 sm:p-3.5 rounded-xl bg-rose-50 border border-rose-200/70 text-rose-600 text-xs font-semibold flex items-start gap-2.5 text-left leading-relaxed">
                           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-500" />
                           <span>{submissionError}</span>
@@ -3121,12 +3166,21 @@ function StudentPrintHistoryView({ onStartPrint }: StudentPrintHistoryViewProps)
       }
       const res = await fetch(getApiUrl('/api/student/history'), { headers });
       if (!res.ok) {
-        throw new Error('Failed to load print history');
+        let errDetail = '';
+        try {
+          const errJson = await res.json();
+          if (errJson.error) errDetail = errJson.error;
+        } catch {}
+        console.warn('[StudentPortal API ERROR]', {
+          endpoint: '/api/student/history',
+          status: res.status,
+          error: errDetail || `HTTP ${res.status}`
+        });
+        throw new Error(errDetail || 'Failed to load print history');
       }
       const data = await res.json();
       setHistory(Array.isArray(data) ? data : []);
     } catch (err: any) {
-      console.warn('Print history fetch note:', err?.message || err);
       setHistoryError(err.message || 'Unable to retrieve your print history.');
     } finally {
       setLoading(false);

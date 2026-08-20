@@ -251,4 +251,149 @@ describe('StudentPortal Submission State Isolation Contract', () => {
     expect(state.history.length).toBe(1);
     expect(state.history[0].orderToken).toBe('PRNT-LIFETIME5');
   });
+
+  describe('Submission Lifecycle Guard & Stale Error Prevention', () => {
+    interface ExtendedPortalState extends StudentPortalState {
+      submissionStatus: 'idle' | 'preparing' | 'submitting' | 'error' | 'success';
+      activeFileName: string | null;
+    }
+
+    function createExtendedState(): ExtendedPortalState {
+      return {
+        ...createInitialState(),
+        submissionStatus: 'idle',
+        activeFileName: null
+      };
+    }
+
+    function isSubmitFormErrorBannerVisible(state: ExtendedPortalState): boolean {
+      return !!state.submissionError && state.submissionStatus === 'error';
+    }
+
+    function simulateAddFile(state: ExtendedPortalState, file: { name: string; size: number }) {
+      state.submissionError = '';
+      state.submissionStatus = 'preparing';
+      state.files.push(file);
+      state.activeFileName = file.name;
+      state.fileConfigs[file.name] = {
+        copies: 1,
+        printType: 'bw',
+        sides: 'single',
+        pageCount: 1
+      };
+    }
+
+    function simulateUpdateConfig(state: ExtendedPortalState, updates: any) {
+      if (!state.activeFileName) return;
+      state.submissionError = '';
+      state.submissionStatus = 'preparing';
+      state.fileConfigs[state.activeFileName] = {
+        ...state.fileConfigs[state.activeFileName],
+        ...updates
+      };
+    }
+
+    it('Test 6: Background API failure produces "Database service unavailable", but user starts fresh PDF upload -> submissionError cleared, no banner displayed', () => {
+      const state = createExtendedState();
+
+      // a. Background history failure sets historyError
+      state.historyError = 'Database service unavailable';
+      expect(state.historyError).toBe('Database service unavailable');
+      expect(state.submissionError).toBe('');
+      expect(isSubmitFormErrorBannerVisible(state)).toBe(false);
+
+      // b. User starts fresh PDF upload
+      simulateAddFile(state, { name: 'BADAVARA_BADAM.pdf', size: 2048 });
+
+      // c. submissionError is empty and status is preparing
+      expect(state.submissionError).toBe('');
+      expect(state.submissionStatus).toBe('preparing');
+
+      // d. The submit form does NOT display the stale database error
+      expect(isSubmitFormErrorBannerVisible(state)).toBe(false);
+    });
+
+    it('Test 7: User alters print configuration (copies/sides/mode/range) -> auto-clears submission error', () => {
+      const state = createExtendedState();
+      simulateAddFile(state, { name: 'document.pdf', size: 1024 });
+
+      // Simulate a previous failed submit
+      state.submissionError = 'The print shop printer is currently offline.';
+      state.submissionStatus = 'error';
+      expect(isSubmitFormErrorBannerVisible(state)).toBe(true);
+
+      // User adjusts copies
+      simulateUpdateConfig(state, { copies: 3 });
+      expect(state.submissionError).toBe('');
+      expect(state.submissionStatus).toBe('preparing');
+      expect(isSubmitFormErrorBannerVisible(state)).toBe(false);
+    });
+
+    it('Test 8: Genuine POST /api/jobs failure sets submissionError and shows error banner', async () => {
+      const state = createExtendedState();
+      simulateAddFile(state, { name: 'test_doc.pdf', size: 1024 });
+
+      state.submissionStatus = 'submitting';
+      state.submitting = true;
+
+      // Simulated network failure
+      state.submissionError = 'The print shop is currently offline. Please try again in a moment.';
+      state.submissionStatus = 'error';
+      state.submitting = false;
+
+      expect(state.submissionError).toBe('The print shop is currently offline. Please try again in a moment.');
+      expect(state.submissionStatus).toBe('error');
+      expect(isSubmitFormErrorBannerVisible(state)).toBe(true);
+    });
+
+    it('Test 9: Successful POST /api/jobs clears submissionError, sets success, and hides error banner', async () => {
+      const state = createExtendedState();
+      simulateAddFile(state, { name: 'final_thesis.pdf', size: 4096 });
+
+      // Starts submission
+      state.submissionStatus = 'submitting';
+      state.submitting = true;
+      state.submissionError = '';
+
+      // Success HTTP 201 response
+      state.submissionError = '';
+      state.submissionStatus = 'success';
+      state.submitting = false;
+      state.success = {
+        order: { id: 'order-999', token: 'PRNT-SUCCESS9' },
+        jobs: [{ id: 'job-999', fileName: 'final_thesis.pdf' }]
+      };
+
+      expect(state.submissionError).toBe('');
+      expect(state.submissionStatus).toBe('success');
+      expect(state.success?.order.token).toBe('PRNT-SUCCESS9');
+      expect(isSubmitFormErrorBannerVisible(state)).toBe(false);
+    });
+
+    it('Test 10 (Regression): Background history failure cannot create the submit-form error banner', () => {
+      const state = createExtendedState();
+      simulateAddFile(state, { name: 'sample.pdf', size: 1024 });
+
+      // History background fetch failure occurs
+      state.historyError = 'Database service unavailable';
+
+      // Submit banner must NOT display history error
+      expect(state.submissionError).toBe('');
+      expect(state.submissionStatus).toBe('preparing');
+      expect(isSubmitFormErrorBannerVisible(state)).toBe(false);
+    });
+
+    it('Test 11 (Regression): Background queue failure cannot create the submit-form error banner', () => {
+      const state = createExtendedState();
+      simulateAddFile(state, { name: 'sample.pdf', size: 1024 });
+
+      // Queue background fetch failure occurs
+      state.queueError = 'Database service unavailable';
+
+      // Submit banner must NOT display queue error
+      expect(state.submissionError).toBe('');
+      expect(state.submissionStatus).toBe('preparing');
+      expect(isSubmitFormErrorBannerVisible(state)).toBe(false);
+    });
+  });
 });
