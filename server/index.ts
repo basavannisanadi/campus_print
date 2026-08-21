@@ -4544,6 +4544,53 @@ app.post('/api/jobs/:id/failure-snapshot', requireAdmin, (req, res) => {
   res.json(db.jobs[idx]);
 });
 
+// DELETE /api/admin/jobs/pending - remove all currently pending approval jobs from database (admin only)
+const handleClearPendingJobs = async (req: express.Request, res: express.Response) => {
+  const { shopId } = req.query;
+  const tokenShopId = (req as any).tokenShopId;
+  const targetShopId = tokenShopId || (shopId as string) || (req.body && req.body.shopId) || undefined;
+
+  try {
+    const result = await dbRepository.clearPendingApprovalJobs(targetShopId);
+
+    // Asynchronously delete document files from disk/storage for cleaned pending jobs
+    if (result.deletedJobPaths && result.deletedJobPaths.length > 0) {
+      for (const fp of result.deletedJobPaths) {
+        if (fp) {
+          const fn = path.basename(fp);
+          deleteDocument(fn).catch(() => {});
+          const diskPath = path.join(UPLOADS_DIR, fn);
+          if (fs.existsSync(diskPath)) {
+            try { fs.unlinkSync(diskPath); } catch {}
+          }
+        }
+      }
+    }
+
+    // Broadcast SSE queue update event to all connected admin/student clients
+    broadcastSse({ type: 'job_updated' });
+
+    console.log(`[ADMIN] Admin cleared ${result.deletedJobsCount} pending approval jobs (${result.deletedOrdersCount} orders) for shop: ${targetShopId || 'ALL'}`);
+
+    return res.json({
+      success: true,
+      deletedJobsCount: result.deletedJobsCount,
+      deletedOrdersCount: result.deletedOrdersCount,
+      message: `Successfully cleared ${result.deletedJobsCount} pending approval job${result.deletedJobsCount === 1 ? '' : 's'}.`
+    });
+  } catch (err: any) {
+    console.error('[ADMIN CLEAR PENDING JOBS ERROR]', err?.message || err);
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ error: 'Database service unavailable' });
+    }
+    return res.status(500).json({ error: 'Failed to clear pending approval jobs' });
+  }
+};
+
+app.delete('/api/admin/jobs/pending', requireAdmin, handleClearPendingJobs);
+app.post('/api/admin/jobs/clear-pending', requireAdmin, handleClearPendingJobs);
+app.delete('/api/jobs/pending', requireAdmin, handleClearPendingJobs);
+
 // GET /api/admin/jobs - list all jobs with full telemetry (admin only)
 app.get('/api/admin/jobs', requireAdmin, async (req, res) => {
   const { shopId } = req.query;

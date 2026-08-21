@@ -623,6 +623,93 @@ export const dbRepository = {
     return true;
   },
 
+  async clearPendingApprovalJobs(shopId?: string): Promise<{ deletedJobsCount: number; deletedOrdersCount: number; deletedJobPaths: string[] }> {
+    if (!this.isSupabase()) {
+      const db = readDb();
+      if (!db.jobs) db.jobs = [];
+      if (!db.orders) db.orders = [];
+
+      const pendingJobs = db.jobs.filter(j => j.status === 'pending_approval' && (!shopId || j.shopId === shopId));
+      if (pendingJobs.length === 0) {
+        return { deletedJobsCount: 0, deletedOrdersCount: 0, deletedJobPaths: [] };
+      }
+
+      const pendingJobIds = new Set(pendingJobs.map(j => j.id));
+      const pendingOrderIds = new Set(pendingJobs.map(j => j.orderId).filter(Boolean) as string[]);
+      const deletedJobPaths = pendingJobs.map(j => j.serverFilePath).filter(Boolean) as string[];
+
+      // Remove pending jobs
+      db.jobs = db.jobs.filter(j => !pendingJobIds.has(j.id));
+
+      // Remove empty orders
+      let deletedOrdersCount = 0;
+      if (pendingOrderIds.size > 0) {
+        const remainingOrderIds = new Set(db.jobs.map(j => j.orderId).filter(Boolean));
+        const initialOrderCount = db.orders.length;
+        db.orders = db.orders.filter(o => {
+          if (pendingOrderIds.has(o.id) && !remainingOrderIds.has(o.id)) {
+            return false;
+          }
+          if (pendingOrderIds.has(o.id)) {
+            o.jobIds = (o.jobIds || []).filter(jid => !pendingJobIds.has(jid));
+          }
+          return true;
+        });
+        deletedOrdersCount = initialOrderCount - db.orders.length;
+      }
+
+      writeDb(db);
+      return { deletedJobsCount: pendingJobs.length, deletedOrdersCount, deletedJobPaths };
+    }
+
+    // Supabase Mode
+    let jobsQuery = supabase!.from('jobs').select('id, order_id, server_file_path').eq('status', 'pending_approval');
+    if (shopId) {
+      jobsQuery = jobsQuery.eq('shop_id', shopId);
+    }
+    const { data: pendingJobs, error: jobsFetchErr } = await jobsQuery;
+    if (jobsFetchErr) throw new DatabaseError(`clearPendingApprovalJobs fetch failed: ${jobsFetchErr.message}`, jobsFetchErr);
+    if (!pendingJobs || pendingJobs.length === 0) {
+      return { deletedJobsCount: 0, deletedOrdersCount: 0, deletedJobPaths: [] };
+    }
+
+    const pendingJobIds = pendingJobs.map(j => j.id);
+    const orderIdsToCheck = Array.from(new Set(pendingJobs.map(j => j.order_id).filter(Boolean))) as string[];
+    const deletedJobPaths = pendingJobs.map(j => j.server_file_path).filter(Boolean) as string[];
+
+    // Delete pending jobs
+    const { error: deleteJobsErr } = await supabase!.from('jobs').delete().in('id', pendingJobIds);
+    if (deleteJobsErr) throw new DatabaseError(`clearPendingApprovalJobs delete jobs failed: ${deleteJobsErr.message}`, deleteJobsErr);
+
+    // Clean up empty orders
+    let deletedOrdersCount = 0;
+    if (orderIdsToCheck.length > 0) {
+      const { data: remainingJobs, error: remJobsErr } = await supabase!.from('jobs').select('order_id').in('order_id', orderIdsToCheck);
+      if (!remJobsErr) {
+        const remainingOrderIds = new Set((remainingJobs || []).map(j => j.order_id));
+        const emptyOrderIds = orderIdsToCheck.filter(oid => !remainingOrderIds.has(oid));
+        if (emptyOrderIds.length > 0) {
+          const { error: delOrdersErr } = await supabase!.from('orders').delete().in('id', emptyOrderIds);
+          if (!delOrdersErr) {
+            deletedOrdersCount = emptyOrderIds.length;
+          }
+        }
+      }
+    }
+
+    // Sync in-memory/local cache if present
+    const db = readDb();
+    if (db.jobs) {
+      db.jobs = db.jobs.filter(j => !pendingJobIds.includes(j.id));
+    }
+    if (db.orders) {
+      db.orders = db.orders.filter(o => !orderIdsToCheck.includes(o.id) || db.jobs.some(j => j.orderId === o.id));
+    }
+    writeDb(db);
+
+    return { deletedJobsCount: pendingJobs.length, deletedOrdersCount, deletedJobPaths };
+  },
+
   async getShop(id: string): Promise<Shop | null> {
     if (!this.isSupabase()) {
       return readDb().shops.find(s => s.id === id) || null;

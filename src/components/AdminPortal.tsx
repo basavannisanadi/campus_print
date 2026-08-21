@@ -468,6 +468,9 @@ export default function AdminPortal({
   const [approvingJobId, setApprovingJobId] = useState<string | null>(null);
   const [isApprovingAll, setIsApprovingAll] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showClearPendingModal, setShowClearPendingModal] = useState(false);
+  const [isClearingPending, setIsClearingPending] = useState(false);
+  const [clearPendingError, setClearPendingError] = useState('');
   const prevPendingOrdersRef = useRef<any[]>([]);
 
   // Derive pendingOrders list grouped by order
@@ -657,6 +660,36 @@ export default function AdminPortal({
       console.error(err);
     } finally {
       setIsApprovingAll(false);
+    }
+  };
+
+  const handleClearAllPending = async () => {
+    setClearPendingError('');
+    setIsClearingPending(true);
+    try {
+      const token = sessionStorage.getItem('adminToken');
+      const res = await fetch(getApiUrl(`/api/admin/jobs/pending?shopId=${activeShopId}`), {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (res.ok) {
+        setShowClearPendingModal(false);
+        setSearchResultOrder(null);
+        setSearchTokenQuery('');
+        fetchStats();
+        onRefreshJobs();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setClearPendingError(data.error || 'Failed to clear pending approval jobs.');
+      }
+    } catch (err: any) {
+      console.error('Failed to clear pending jobs:', err);
+      setClearPendingError('Connection error while clearing pending jobs.');
+    } finally {
+      setIsClearingPending(false);
     }
   };
 
@@ -1701,14 +1734,30 @@ export default function AdminPortal({
 
           {/* Pending Approvals Card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-left font-sans space-y-6">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+            <div className="border-b border-slate-100 pb-3 flex items-center justify-between flex-wrap gap-2">
               <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <Clock className="w-5 h-5 text-orange-500 animate-pulse" />
                 <span>Pending Approvals & Release</span>
               </h3>
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-orange-50 text-orange-700 border border-orange-200 uppercase tracking-widest font-mono">
-                {jobs.filter(j => j.status === 'pending_approval' && (!j.shopId || j.shopId === activeShopId)).length} Pending
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-orange-50 text-orange-700 border border-orange-200 uppercase tracking-widest font-mono">
+                  {jobs.filter(j => j.status === 'pending_approval' && (!j.shopId || j.shopId === activeShopId)).length} Pending
+                </span>
+                {isShopAdmin && jobs.some(j => j.status === 'pending_approval' && (!j.shopId || j.shopId === activeShopId)) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClearPendingError('');
+                      setShowClearPendingModal(true);
+                    }}
+                    disabled={isClearingPending}
+                    className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 uppercase tracking-wider flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Clear All Pending
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2905,6 +2954,68 @@ export default function AdminPortal({
                 className="py-2.5 px-6 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 text-white text-xs font-black cursor-pointer border-none shadow-md shadow-rose-500/20 btn-danger-action"
               >
                 Yes, Disconnect Shop
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Two-Step Confirmation Modal: Clear All Pending Approvals */}
+      {showClearPendingModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl border border-slate-100 p-6 max-w-md w-full text-center space-y-5 shadow-2xl animate-modal-pop text-left">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center shrink-0 border border-rose-100 shadow-inner">
+                <AlertTriangle className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-800">Clear all pending approvals?</h3>
+                <p className="text-xs text-slate-400 font-medium">Permanent database removal</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed font-sans">
+              This will permanently remove all currently pending approval jobs from the queue and database. This action cannot be undone.
+            </p>
+
+            {clearPendingError && (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                {clearPendingError}
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end pt-2 font-sans">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isClearingPending) {
+                    setShowClearPendingModal(false);
+                    setClearPendingError('');
+                  }
+                }}
+                disabled={isClearingPending}
+                className="py-2.5 px-5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllPending}
+                disabled={isClearingPending}
+                className="py-2.5 px-6 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white text-xs font-black cursor-pointer border-none shadow-md shadow-rose-500/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isClearingPending ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Clearing...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Clear All Pending
+                  </>
+                )}
               </button>
             </div>
           </div>
