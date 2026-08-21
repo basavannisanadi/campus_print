@@ -340,7 +340,7 @@ export default function StudentPortal({
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const token = studentSessionToken || sessionStorage.getItem('studentSessionToken');
+      const token = studentSessionToken || localStorage.getItem('studentSessionToken') || sessionStorage.getItem('studentSessionToken');
       
       const res = await fetch(getApiUrl('/api/jobs/pre-convert'), {
         method: 'POST',
@@ -672,7 +672,7 @@ export default function StudentPortal({
         });
 
         xhr.open('POST', getApiUrl('/api/jobs'));
-        const token = studentSessionToken || sessionStorage.getItem('studentSessionToken');
+        const token = studentSessionToken || localStorage.getItem('studentSessionToken') || sessionStorage.getItem('studentSessionToken');
         if (token) {
           xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         }
@@ -3160,7 +3160,7 @@ function StudentPrintHistoryView({ onStartPrint }: StudentPrintHistoryViewProps)
     setHistoryError(null);
     try {
       const headers: HeadersInit = {};
-      const token = studentSessionToken || sessionStorage.getItem('studentSessionToken');
+      const token = studentSessionToken || localStorage.getItem('studentSessionToken') || sessionStorage.getItem('studentSessionToken');
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }

@@ -29,7 +29,7 @@ export const PdfFirstPageCanvas: React.FC<PdfFirstPageCanvasProps> = ({ url, cla
         setLoading(true);
         setError(false);
 
-        const token = sessionStorage.getItem('studentSessionToken');
+        const token = localStorage.getItem('studentSessionToken') || sessionStorage.getItem('studentSessionToken');
         const isNetworkUrl = typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/'));
 
         let pdfData: Uint8Array | null = null;

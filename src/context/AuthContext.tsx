@@ -23,7 +23,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [studentSessionToken, setStudentSessionToken] = useState<string | null>(() => {
-    return sessionStorage.getItem('studentSessionToken');
+    return localStorage.getItem('studentSessionToken') || sessionStorage.getItem('studentSessionToken');
   });
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -46,14 +46,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const initAuth = async () => {
-      const token = sessionStorage.getItem('studentSessionToken');
+      const token = localStorage.getItem('studentSessionToken') || sessionStorage.getItem('studentSessionToken');
       if (token) {
         const userProfile = await fetchProfile(token);
         if (userProfile) {
+          localStorage.setItem('studentSessionToken', token);
+          sessionStorage.removeItem('studentSessionToken');
           setStudentSessionToken(token);
           setProfile(userProfile);
         } else {
           // Token expired or invalid
+          localStorage.removeItem('studentSessionToken');
           sessionStorage.removeItem('studentSessionToken');
           setStudentSessionToken(null);
           setProfile(null);
@@ -65,13 +68,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (token: string) => {
-    sessionStorage.setItem('studentSessionToken', token);
+    localStorage.setItem('studentSessionToken', token);
+    sessionStorage.removeItem('studentSessionToken');
     setStudentSessionToken(token);
     setLoading(true);
     const userProfile = await fetchProfile(token);
     if (userProfile) {
       setProfile(userProfile);
     } else {
+      localStorage.removeItem('studentSessionToken');
       sessionStorage.removeItem('studentSessionToken');
       setStudentSessionToken(null);
       setProfile(null);
@@ -80,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    const token = studentSessionToken || sessionStorage.getItem('studentSessionToken');
+    const token = studentSessionToken || localStorage.getItem('studentSessionToken') || sessionStorage.getItem('studentSessionToken');
     if (token) {
       try {
         await fetch(getApiUrl('/api/auth/logout'), {
@@ -93,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Failed to logout from server:', err);
       }
     }
+    localStorage.removeItem('studentSessionToken');
     sessionStorage.removeItem('studentSessionToken');
     setStudentSessionToken(null);
     setProfile(null);

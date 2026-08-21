@@ -94,7 +94,7 @@ export default function App() {
   const fetchOrders = async () => {
     try {
       const headers: HeadersInit = {};
-      const token = sessionStorage.getItem('studentSessionToken');
+      const token = localStorage.getItem('studentSessionToken') || sessionStorage.getItem('studentSessionToken');
       const adminToken = sessionStorage.getItem('adminToken');
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
