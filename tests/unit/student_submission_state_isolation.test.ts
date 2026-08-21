@@ -71,7 +71,7 @@ describe('StudentPortal Submission State Isolation Contract', () => {
 
         const order = response.body.order || {
           id: response.body.orderId || 'ord-mock',
-          token: response.body.token || response.body.orderToken || 'PRNT-SUCCESS1'
+          token: response.body.token || response.body.orderToken || '482731'
         };
         const jobs = response.body.jobs || [];
 
@@ -127,14 +127,14 @@ describe('StudentPortal Submission State Isolation Contract', () => {
       body: {
         success: true,
         orderId: 'order-101',
-        token: 'PRNT-6A42D0E3',
-        order: { id: 'order-101', token: 'PRNT-6A42D0E3', status: 'pending_approval' },
+        token: '482731',
+        order: { id: 'order-101', token: '482731', status: 'pending_approval' },
         jobs: [{ id: 'job-101', fileName: 'sample_assignment.pdf', pageCount: 5, copies: 2 }]
       }
     }));
 
     expect(state.success).not.toBeNull();
-    expect(state.success?.order.token).toBe('PRNT-6A42D0E3');
+    expect(state.success?.order.token).toBe('482731');
     expect(state.submissionError).toBe('');
     expect(state.submitting).toBe(false);
     expect(state.uploadProgress).toBe(100);
@@ -149,7 +149,7 @@ describe('StudentPortal Submission State Isolation Contract', () => {
         status: 201,
         body: {
           success: true,
-          order: { id: 'order-102', token: 'PRNT-11BACA33' },
+          order: { id: 'order-102', token: '615204' },
           jobs: [{ id: 'job-102', fileName: 'sample_assignment.pdf' }]
         }
       }),
@@ -161,7 +161,7 @@ describe('StudentPortal Submission State Isolation Contract', () => {
 
     // Primary submission SUCCESS must be preserved
     expect(state.success).not.toBeNull();
-    expect(state.success?.order.token).toBe('PRNT-11BACA33');
+    expect(state.success?.order.token).toBe('615204');
 
     // Submission banner must NOT show false database error
     expect(state.submissionError).toBe('');
@@ -179,7 +179,7 @@ describe('StudentPortal Submission State Isolation Contract', () => {
         status: 201,
         body: {
           success: true,
-          order: { id: 'order-103', token: 'PRNT-99887766' },
+          order: { id: 'order-103', token: '903817' },
           jobs: [{ id: 'job-103', fileName: 'sample_assignment.pdf' }]
         }
       }),
@@ -192,7 +192,7 @@ describe('StudentPortal Submission State Isolation Contract', () => {
 
     // Primary submission SUCCESS must remain intact
     expect(state.success).not.toBeNull();
-    expect(state.success?.order.token).toBe('PRNT-99887766');
+    expect(state.success?.order.token).toBe('903817');
     expect(state.submissionError).toBe('');
 
     // Queue error must be captured in its own state
@@ -226,7 +226,7 @@ describe('StudentPortal Submission State Isolation Contract', () => {
         status: 201,
         body: {
           success: true,
-          order: { id: 'order-105', token: 'PRNT-LIFETIME5' },
+          order: { id: 'order-105', token: '763418' },
           jobs: [{ id: 'job-105', fileName: 'sample_assignment.pdf' }]
         }
       }),
@@ -235,7 +235,7 @@ describe('StudentPortal Submission State Isolation Contract', () => {
         body: [
           {
             id: 'hist-105',
-            orderToken: 'PRNT-LIFETIME5',
+            orderToken: '763418',
             fileName: 'sample_assignment.pdf',
             status: 'pending_approval',
             createdAt: new Date().toISOString()
@@ -245,11 +245,11 @@ describe('StudentPortal Submission State Isolation Contract', () => {
     );
 
     expect(state.success).not.toBeNull();
-    expect(state.success?.order.token).toBe('PRNT-LIFETIME5');
+    expect(state.success?.order.token).toBe('763418');
     expect(state.submissionError).toBe('');
     expect(state.historyError).toBeNull();
     expect(state.history.length).toBe(1);
-    expect(state.history[0].orderToken).toBe('PRNT-LIFETIME5');
+    expect(state.history[0].orderToken).toBe('763418');
   });
 
   describe('Submission Lifecycle Guard & Stale Error Prevention', () => {
@@ -360,13 +360,13 @@ describe('StudentPortal Submission State Isolation Contract', () => {
       state.submissionStatus = 'success';
       state.submitting = false;
       state.success = {
-        order: { id: 'order-999', token: 'PRNT-SUCCESS9' },
+        order: { id: 'order-999', token: '999888' },
         jobs: [{ id: 'job-999', fileName: 'final_thesis.pdf' }]
       };
 
       expect(state.submissionError).toBe('');
       expect(state.submissionStatus).toBe('success');
-      expect(state.success?.order.token).toBe('PRNT-SUCCESS9');
+      expect(state.success?.order.token).toBe('999888');
       expect(isSubmitFormErrorBannerVisible(state)).toBe(false);
     });
 

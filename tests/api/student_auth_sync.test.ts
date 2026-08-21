@@ -88,7 +88,7 @@ describe('Student Authentication & Supabase Synchronization API', () => {
     expect(jobRes.status).toBe(201);
     expect(jobRes.body).toBeInstanceOf(Array);
     expect(jobRes.body.length).toBe(1);
-    expect(jobRes.body[0].token).toMatch(/^PRNT-/);
+    expect(jobRes.body[0].token).toMatch(/^[1-9][0-9]{5}$/);
   });
 
   it('2. Repeated Google login for the same email/googleId preserves original student ID without duplicates', async () => {

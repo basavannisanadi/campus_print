@@ -1723,7 +1723,7 @@ export default function AdminPortal({
                       <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                       <input
                         type="text"
-                        placeholder="Type token to search (e.g. PRNT-A529B41C)"
+                        placeholder="Type token to search (e.g. 482731)"
                         value={searchTokenQuery}
                         onChange={(e) => handleSearchChange(e.target.value)}
                         onFocus={() => {

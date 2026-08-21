@@ -1937,39 +1937,9 @@ const upload = multer({
   }
 });
 
-// Generate print token
-function genToken(dbJobs: DbJob[]): string {
-  const existingTokens = new Set(dbJobs.map(j => j.token).filter(Boolean));
-  let attempts = 0;
-  while (attempts < 1000) {
-    const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
-    const token = `PRNT-${hex}`;
-    if (!existingTokens.has(token)) {
-      return token;
-    }
-    attempts++;
-  }
-  return `PRNT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-}
-
-// Generate unique approval token in PRNT-XXXXXXXX format
-function genApprovalToken(dbOrders: DbPrintOrder[], dbJobs?: DbJob[]): string {
-  const existingTokens = new Set([
-    ...(dbOrders || []).map(o => o.token),
-    ...(dbJobs || []).map(j => j.token),
-    ...(dbJobs || []).map(j => j.tokenId)
-  ].filter(Boolean));
-
-  let attempts = 0;
-  while (attempts < 1000) {
-    const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
-    const token = `PRNT-${hex}`;
-    if (!existingTokens.has(token)) {
-      return token;
-    }
-    attempts++;
-  }
-  return `PRNT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+// Generate a 6-digit numeric token candidate (100000-999999)
+function generateTokenCandidate(): string {
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
 // Helper function to calculate next opening time
@@ -3772,58 +3742,6 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
       finalScheduledFor = getNextOpeningTime(shop.openingTime);
     }
 
-    const createdJobs: DbJob[] = [];
-    const orderToken = genApprovalToken(db.orders || [], db.jobs || []);
-    const orderId = 'order-' + Date.now() + '-' + Math.round(Math.random() * 1e5);
-    let totalAmount = 0;
-
-    for (const parsed of parsedFiles) {
-      const { file, pageCount, copiesNum, printType, printMode, sides, pageRange, serverFilePath, originalFilePath } = parsed;
-      const chargedAmount = calculateJobPrice({ pageCount, copies: copiesNum, printType, printMode, sides, pageRange }, shop);
-      totalAmount += chargedAmount;
-
-      const jobToken = (parsedFiles.length === 1 && createdJobs.length === 0) ? orderToken : genToken(db.jobs);
-
-      const job: DbJob = {
-        id: 'job-' + Date.now() + '-' + Math.round(Math.random() * 1e5),
-        token: jobToken,
-        orderId,
-        fileName: file.originalname,
-        fileSize: file.size,
-        pageCount,
-        copies: copiesNum,
-        printMode,
-        printType,
-        sides,
-        pageRange,
-        status: 'pending_approval',
-        chargedAmount,
-        tokenId: orderToken, // canonical order approval token
-        studentName: studentName || 'Student',
-        studentEmail: studentEmail || '',
-        studentId: studentId,
-        createdAt: new Date().toISOString(),
-        progressPercent: 0,
-        serverFilePath,
-        originalFilePath,
-        scheduledFor: finalScheduledFor,
-        shopId: targetShopId,
-        timeline: [
-          {
-            stage: 'uploaded',
-            at: new Date().toISOString(),
-            printerId: formatPrinterId(db.printerSettings?.selectedPrinter || 'UNKNOWN'),
-            printerName: db.printerSettings?.selectedPrinter || 'UNKNOWN'
-          }
-        ]
-      };
-
-      db.jobs.push(job);
-      createdJobs.push(job);
-
-      console.log(`[NEW JOB] Job:${job.id} (Order:${orderToken.slice(0, 3)}***) | ${job.pageCount} pgs x ${job.copies} | Mode:${job.printMode} | Shop:${job.shopId}`);
-    }
-
     // Upload files to private Supabase storage (fails safely in production)
     for (const pf of parsedFiles) {
       const fn = path.basename(pf.serverFilePath);
@@ -3839,102 +3757,201 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
       }
     }
 
-    const newOrder: DbPrintOrder = {
-      id: orderId,
-      token: orderToken,
-      studentId: studentId,
-      studentName: studentName || 'Student',
-      studentEmail: studentEmail || '',
-      shopId: targetShopId,
-      status: 'pending_approval',
-      totalChargedAmount: totalAmount,
-      jobIds: createdJobs.map(j => j.id),
-      createdAt: new Date().toISOString()
-    };
-    
-    if (!db.orders) db.orders = [];
-    db.orders.push(newOrder);
+    const MAX_TOKEN_RETRIES = 5;
+    let persistedOrder: DbPrintOrder | null = null;
+    let persistedJobs: DbJob[] = [];
+    let persistedHistory: DbStudentPrintHistory[] = [];
 
-    // Record lifetime metadata in student_print_history
-    const historyRecords: DbStudentPrintHistory[] = createdJobs.map(job => ({
-      id: 'hist-' + job.id,
-      orderId: orderId,
-      jobId: job.id,
-      orderToken: orderToken,
-      jobToken: job.token,
-      studentId: studentId,
-      shopId: targetShopId,
-      shopName: shop.name || 'Campus Print Center',
-      fileName: job.fileName,
-      fileSize: job.fileSize,
-      pageCount: job.pageCount,
-      copies: job.copies,
-      printMode: job.printMode,
-      printType: job.printType,
-      sides: job.sides,
-      paperSize: 'A4',
-      pageRange: job.pageRange,
-      chargedAmount: job.chargedAmount || 0,
-      status: job.status,
-      createdAt: job.createdAt
-    }));
+    for (let attempt = 0; attempt < MAX_TOKEN_RETRIES; attempt++) {
+      const candidateToken = generateTokenCandidate();
+      const orderId = 'order-' + Date.now() + '-' + Math.round(Math.random() * 1e5);
 
-    if (!db.studentPrintHistory) db.studentPrintHistory = [];
-    historyRecords.forEach(h => {
-      const idx = db.studentPrintHistory!.findIndex(x => (h.jobId && x.jobId === h.jobId) || x.id === h.id);
-      if (idx >= 0) db.studentPrintHistory![idx] = h;
-      else db.studentPrintHistory!.push(h);
-    });
-
-    writeDb(db);
-
-    if (dbRepository.isSupabase()) {
-      try {
-        const studentUser = (req as any).user;
-        if (studentUser) {
-          await dbRepository.upsertStudent(studentUser).catch(() => {});
-        }
-        if (shop) {
-          await dbRepository.updateShop(shop.id, shop).catch(() => {});
-        }
-        await dbRepository.insertOrder(newOrder);
-        await dbRepository.insertJobsBatch(createdJobs);
-      } catch (err: any) {
-        console.error('[SUPABASE ORDER/JOB PERSISTENCE ERROR]', err?.message || err);
-        // Roll back in-memory & local DB state on primary persistence failure
-        db.orders = (db.orders || []).filter(o => o.id !== newOrder.id);
-        db.jobs = (db.jobs || []).filter(j => !createdJobs.some(cj => cj.id === j.id));
-        if (db.studentPrintHistory) {
-          db.studentPrintHistory = db.studentPrintHistory.filter(h => h.orderId !== newOrder.id);
-        }
-        writeDb(db);
-        await dbRepository.deleteOrder(newOrder.id).catch(() => {});
-        if (process.env.NODE_ENV === 'production') {
-          return res.status(503).json({ error: 'Database service unavailable' });
-        }
+      // Fast in-memory check to skip obvious collisions
+      const localOrderCollision = (db.orders || []).some((o: DbPrintOrder) => o.token === candidateToken);
+      const localJobCollision = (db.jobs || []).some((j: DbJob) => j.token === candidateToken || j.tokenId === candidateToken);
+      if (localOrderCollision || localJobCollision) {
+        continue;
       }
 
-      // Non-blocking secondary sync for lifetime student print history ledger
-      try {
-        const studentUser = (req as any).user;
-        if (studentUser) {
-          await dbRepository.upsertStudent(studentUser).catch(() => {});
+      const currentJobs: DbJob[] = [];
+      let totalAmount = 0;
+
+      for (const parsed of parsedFiles) {
+        const { file, pageCount, copiesNum, printType, printMode, sides, pageRange, serverFilePath, originalFilePath } = parsed;
+        const chargedAmount = calculateJobPrice({ pageCount, copies: copiesNum, printType, printMode, sides, pageRange }, shop);
+        totalAmount += chargedAmount;
+
+        const job: DbJob = {
+          id: 'job-' + Date.now() + '-' + Math.round(Math.random() * 1e5),
+          token: candidateToken,
+          orderId,
+          fileName: file.originalname,
+          fileSize: file.size,
+          pageCount,
+          copies: copiesNum,
+          printMode,
+          printType,
+          sides,
+          pageRange,
+          status: 'pending_approval',
+          chargedAmount,
+          tokenId: candidateToken, // canonical order approval token
+          studentName: studentName || 'Student',
+          studentEmail: studentEmail || '',
+          studentId: studentId,
+          createdAt: new Date().toISOString(),
+          progressPercent: 0,
+          serverFilePath,
+          originalFilePath,
+          scheduledFor: finalScheduledFor,
+          shopId: targetShopId,
+          timeline: [
+            {
+              stage: 'uploaded',
+              at: new Date().toISOString(),
+              printerId: formatPrinterId(db.printerSettings?.selectedPrinter || 'UNKNOWN'),
+              printerName: db.printerSettings?.selectedPrinter || 'UNKNOWN'
+            }
+          ]
+        };
+        currentJobs.push(job);
+      }
+
+      const currentOrder: DbPrintOrder = {
+        id: orderId,
+        token: candidateToken,
+        studentId: studentId,
+        studentName: studentName || 'Student',
+        studentEmail: studentEmail || '',
+        shopId: targetShopId,
+        status: 'pending_approval',
+        totalChargedAmount: totalAmount,
+        jobIds: currentJobs.map(j => j.id),
+        createdAt: new Date().toISOString()
+      };
+
+      const currentHistoryRecords: DbStudentPrintHistory[] = currentJobs.map(job => ({
+        id: 'hist-' + job.id,
+        orderId: orderId,
+        jobId: job.id,
+        orderToken: candidateToken,
+        jobToken: candidateToken,
+        studentId: studentId,
+        shopId: targetShopId,
+        shopName: shop.name || 'Campus Print Center',
+        fileName: job.fileName,
+        fileSize: job.fileSize,
+        pageCount: job.pageCount,
+        copies: job.copies,
+        printMode: job.printMode,
+        printType: job.printType,
+        sides: job.sides,
+        paperSize: 'A4',
+        pageRange: job.pageRange,
+        chargedAmount: job.chargedAmount || 0,
+        status: job.status,
+        createdAt: job.createdAt
+      }));
+
+      if (dbRepository.isSupabase()) {
+        try {
+          const studentUser = (req as any).user;
+          if (studentUser) {
+            await dbRepository.upsertStudent(studentUser).catch(() => {});
+          }
+          if (shop) {
+            await dbRepository.updateShop(shop.id, shop).catch(() => {});
+          }
+
+          // Authoritative DB insertion
+          await dbRepository.insertOrder(currentOrder);
+
+          try {
+            await dbRepository.insertJobsBatch(currentJobs);
+          } catch (jobErr: any) {
+            // Atomic rollback of order if job batch fails
+            await dbRepository.deleteOrder(currentOrder.id).catch(() => {});
+            throw jobErr;
+          }
+
+          // Update local DB/memory cache upon primary Supabase success
+          if (!db.orders) db.orders = [];
+          db.orders.push(currentOrder);
+          currentJobs.forEach(j => db.jobs.push(j));
+
+          if (!db.studentPrintHistory) db.studentPrintHistory = [];
+          currentHistoryRecords.forEach(h => {
+            const idx = db.studentPrintHistory!.findIndex(x => (h.jobId && x.jobId === h.jobId) || x.id === h.id);
+            if (idx >= 0) db.studentPrintHistory![idx] = h;
+            else db.studentPrintHistory!.push(h);
+          });
+          writeDb(db);
+
+          // Non-blocking secondary sync for lifetime student print history ledger
+          try {
+            await dbRepository.insertStudentHistoryBatch(currentHistoryRecords);
+          } catch (err: any) {
+            console.warn('[SUPABASE STUDENT HISTORY SYNC WARNING] Failed to persist student history records (non-fatal):', err?.message || err);
+          }
+
+          persistedOrder = currentOrder;
+          persistedJobs = currentJobs;
+          persistedHistory = currentHistoryRecords;
+          break; // Success!
+        } catch (err: any) {
+          const isUniqueViolation = err?.code === '23505' ||
+            err?.cause?.code === '23505' ||
+            (typeof err?.message === 'string' && (err.message.includes('unique') || err.message.includes('23505') || err.message.includes('duplicate key')));
+
+          if (isUniqueViolation) {
+            console.warn(`[TOKEN COLLISION] Order token ${candidateToken} collided in database. Retrying... (attempt ${attempt + 1}/${MAX_TOKEN_RETRIES})`);
+            continue; // Retry with a new candidate
+          }
+
+          console.error('[SUPABASE ORDER/JOB PERSISTENCE ERROR]', err?.message || err);
+          if (process.env.NODE_ENV === 'production') {
+            return res.status(503).json({ error: 'Database service unavailable' });
+          }
+          throw err;
         }
-        await dbRepository.insertStudentHistoryBatch(historyRecords);
-      } catch (err: any) {
-        console.warn('[SUPABASE STUDENT HISTORY SYNC WARNING] Failed to persist student history records (non-fatal):', err?.message || err);
+      } else {
+        // Local DB mode
+        if (!db.orders) db.orders = [];
+        db.orders.push(currentOrder);
+        currentJobs.forEach(j => db.jobs.push(j));
+
+        if (!db.studentPrintHistory) db.studentPrintHistory = [];
+        currentHistoryRecords.forEach(h => {
+          const idx = db.studentPrintHistory!.findIndex(x => (h.jobId && x.jobId === h.jobId) || x.id === h.id);
+          if (idx >= 0) db.studentPrintHistory![idx] = h;
+          else db.studentPrintHistory!.push(h);
+        });
+        writeDb(db);
+
+        persistedOrder = currentOrder;
+        persistedJobs = currentJobs;
+        persistedHistory = currentHistoryRecords;
+        break; // Success!
       }
     }
 
+    if (!persistedOrder || persistedJobs.length === 0) {
+      return res.status(503).json({ error: 'Unable to allocate a unique order token. Please try again.' });
+    }
+
+    persistedJobs.forEach(job => {
+      console.log(`[NEW JOB] Job:${job.id} (Order:${persistedOrder!.token}) | ${job.pageCount} pgs x ${job.copies} | Mode:${job.printMode} | Shop:${job.shopId}`);
+    });
+
     // Broadcast real-time SSE event to print client and browsers for each job
-    createdJobs.forEach(job => {
+    persistedJobs.forEach(job => {
       broadcastSse({ type: 'new_job', job });
     });
 
     if (process.env.NODE_ENV === 'test') {
-      res.status(201).json(createdJobs);
+      res.status(201).json(persistedJobs);
     } else {
-      res.status(201).json({ order: newOrder, jobs: createdJobs });
+      res.status(201).json({ order: persistedOrder, jobs: persistedJobs });
     }
   } catch (err: any) {
     console.error('Upload error:', err);

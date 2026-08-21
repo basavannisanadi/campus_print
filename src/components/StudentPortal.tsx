@@ -3025,7 +3025,7 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
                 {selectedJob.status === 'pending_approval' ? '⏳ APPROVAL TRACKER' : '🔍 LIVE QUEUE TRACKER'}
               </span>
               <span className="text-xs font-mono font-bold bg-indigo-100/60  text-indigo-700  px-2 py-0.5 rounded border border-indigo-200/40 ">
-                Token: {selectedJob.token}
+                Token: {selectedJob.tokenId || selectedJob.token}
               </span>
             </div>
 
@@ -3113,7 +3113,7 @@ function QueueSummaryView({ waitingCount, waitMinutes, currentlyPrinting, recent
                   >
                     <div className="min-w-0 flex-1 pr-1 sm:pr-3">
                       <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1 flex-wrap">
-                        <span className="font-mono font-black text-indigo-600">{job.token}</span>
+                        <span className="font-mono font-black text-indigo-600">{job.tokenId || job.token}</span>
                         {activeTabJobId === job.id && (
                           <span className="text-[8px] sm:text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold font-mono border border-indigo-200/30">TRACKING</span>
                         )}

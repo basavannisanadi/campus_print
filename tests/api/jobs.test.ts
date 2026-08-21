@@ -264,7 +264,7 @@ describe('Jobs API Supertest Coverage', () => {
       expect(uploadedFiles.length).toBe(0);
     });
 
-    test('should generate secure tokens in the format PRNT-XXXXXXXX and prevent collisions', async () => {
+    test('should generate secure tokens in canonical 6-digit numeric format and prevent collisions', async () => {
       const configs = JSON.stringify({
         'homework.pdf': { pageCount: 1, printType: 'bw', copies: 2, sides: 'single' }
       });
@@ -279,15 +279,26 @@ describe('Jobs API Supertest Coverage', () => {
       
       expect(res.status).toBe(201);
       const token = res.body[0].token;
-      expect(token).toMatch(/^PRNT-[0-9A-F]{8}$/);
+      expect(token).toMatch(/^[1-9][0-9]{5}$/);
     });
 
     test('should retry token generation on collision', async () => {
-      // 1. Setup a job in the database with a known token
+      // 1. Setup an order and job in the database with a known token
       const db = readDb();
+      db.orders.push({
+        id: 'order-collision-test',
+        token: '123456',
+        studentId: 'student-collision',
+        shopId: 'alliance_print',
+        status: 'pending_approval',
+        totalChargedAmount: 2,
+        jobIds: ['job-collision-test'],
+        createdAt: new Date().toISOString()
+      });
       db.jobs.push({
         id: 'job-collision-test',
-        token: 'PRNT-11223344',
+        token: '123456',
+        tokenId: '123456',
         fileName: 'existing.pdf',
         fileSize: 100,
         pageCount: 1,
@@ -302,18 +313,14 @@ describe('Jobs API Supertest Coverage', () => {
       });
       writeDb(db);
 
-      // 2. Spy on crypto.randomBytes to return 11223344 on first call, and 55667788 on second call
+      // 2. Spy on crypto.randomInt to return 123456 on first call, and 654321 on second call
       let callCount = 0;
-      const originalRandomBytes = crypto.randomBytes;
-      const spy = vi.spyOn(crypto, 'randomBytes').mockImplementation(((size: number) => {
-        if (size === 4) {
-          callCount++;
-          if (callCount === 1) {
-            return Buffer.from('11223344', 'hex');
-          }
-          return Buffer.from('55667788', 'hex');
+      const spy = vi.spyOn(crypto, 'randomInt').mockImplementation(((min: any, max?: any) => {
+        callCount++;
+        if (callCount === 1) {
+          return 123456;
         }
-        return originalRandomBytes(size);
+        return 654321;
       }) as any);
 
       // 3. Post a new job
@@ -331,9 +338,9 @@ describe('Jobs API Supertest Coverage', () => {
 
       expect(res.status).toBe(201);
       const token = res.body[0].token;
-      // Should have generated PRNT-55667788 because PRNT-11223344 was a collision!
-      expect(token).toBe('PRNT-55667788');
-      expect(callCount).toBe(2);
+      // Should have generated 654321 because 123456 was a collision!
+      expect(token).toBe('654321');
+      expect(callCount).toBeGreaterThanOrEqual(2);
 
       // Restore
       spy.mockRestore();
