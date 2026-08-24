@@ -24,6 +24,9 @@ print-client/config.json
 print-client/runtime.json
 *.exe
 *.zip
+!print-client/SumatraPDF.exe
+!launcher/CampusPrintInstaller.exe
+!public/CampusPrintInstaller.exe
 
 # Test artifacts
 test-results/

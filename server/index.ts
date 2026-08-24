@@ -1835,11 +1835,20 @@ app.get('/uploads/:filename', requireAdmin, async (req: express.Request, res: ex
 
 // GET /api/agent/download/installer - serve compiled Windows Print Agent setup installer
 const serveInstaller = (req: express.Request, res: express.Response) => {
-  const installerPath = path.resolve(__dirname, '../launcher/CampusPrintInstaller.exe');
-  if (fs.existsSync(installerPath)) {
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', 'attachment; filename="CampusPrintInstaller.exe"');
-    return res.sendFile(installerPath);
+  const candidatePaths = [
+    path.resolve(__dirname, '../launcher/CampusPrintInstaller.exe'),
+    path.resolve(__dirname, '../public/CampusPrintInstaller.exe'),
+    path.resolve(__dirname, '../dist/CampusPrintInstaller.exe'),
+    path.resolve(__dirname, './CampusPrintInstaller.exe'),
+    path.resolve(__dirname, '../CampusPrintInstaller.exe')
+  ];
+
+  for (const candidate of candidatePaths) {
+    if (fs.existsSync(candidate)) {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment; filename="CampusPrintInstaller.exe"');
+      return res.sendFile(candidate);
+    }
   }
   res.status(404).json({ error: 'Installer file not found' });
 };
