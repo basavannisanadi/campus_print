@@ -1845,9 +1845,15 @@ const serveInstaller = (req: express.Request, res: express.Response) => {
 
   for (const candidate of candidatePaths) {
     if (fs.existsSync(candidate)) {
-      res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('Content-Disposition', 'attachment; filename="CampusPrintInstaller.exe"');
-      return res.sendFile(candidate);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      return res.download(candidate, 'CampusPrintInstaller.exe', (err) => {
+        if (err && !res.headersSent) {
+          console.error('[Installer Download Error]', err);
+          res.status(500).json({ error: 'Download failed' });
+        }
+      });
     }
   }
   res.status(404).json({ error: 'Installer file not found' });
