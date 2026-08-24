@@ -17,7 +17,12 @@ function resolveLocalRequire(relativePath) {
   return relativePath;
 }
 
-const printerManager = require(resolveLocalRequire('./PrinterManager/index.cjs'));
+let printerManager = null;
+try {
+  printerManager = require(resolveLocalRequire('./PrinterManager/index.cjs'));
+} catch (_) {
+  // PrinterManager is optional — installed environments may not have it
+}
 
 const logFile = path.join(__dirname, 'logs', 'client.log');
 if (!fs.existsSync(path.dirname(logFile))) {
@@ -1408,17 +1413,22 @@ async function sendHeartbeat() {
 
     let printerState = null;
     try {
-      printerState = printerManager.getState();
+      if (printerManager) printerState = printerManager.getState();
     } catch (_) {}
 
     if (!printerState) {
-      const { createPrinterState } = require(resolveLocalRequire('./PrinterManager/models/PrinterState.cjs'));
-      printerState = createPrinterState({
-        printerName: resolvedPrinterName || 'System Default',
-        provider: 'none',
-        status: 'unknown',
-        reachable: false,
-      });
+      try {
+        const { createPrinterState } = require(resolveLocalRequire('./PrinterManager/models/PrinterState.cjs'));
+        printerState = createPrinterState({
+          printerName: resolvedPrinterName || 'System Default',
+          provider: 'none',
+          status: 'unknown',
+          reachable: false,
+        });
+      } catch (_) {
+        // PrinterManager not available — use minimal inline fallback
+        printerState = { printerName: resolvedPrinterName || 'System Default', status: 'unknown', reachable: false };
+      }
     }
 
     const hbPayload = {
@@ -1591,12 +1601,16 @@ async function main() {
     logToFile('[5/10] Authentication successful');
     await registerAgent();
 
-    // Initialize PrinterManager
-    logToFile('[PrinterManager] Initializing printer intelligence layer...');
-    await printerManager.init({
-      printerName: config.printerName || '',
-      mockMode: config.mockPrinter || false
-    });
+    // Initialize PrinterManager (if available)
+    if (printerManager) {
+      logToFile('[PrinterManager] Initializing printer intelligence layer...');
+      await printerManager.init({
+        printerName: config.printerName || '',
+        mockMode: config.mockPrinter || false
+      });
+    } else {
+      logToFile('[PrinterManager] Not available — using basic printer discovery.');
+    }
 
     // 6. Perform initial heartbeat connection immediately
     if (process.env.CP_TEST_DISABLE_HEARTBEAT !== 'true') {
@@ -1635,12 +1649,14 @@ async function main() {
       try { if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE); } catch {}
       
       // Dispose PrinterManager
-      try {
-        printerManager.dispose().catch((e) => {
+      if (printerManager) {
+        try {
+          printerManager.dispose().catch((e) => {
+            console.error('[PrinterManager] Dispose error:', e.message);
+          });
+        } catch (e) {
           console.error('[PrinterManager] Dispose error:', e.message);
-        });
-      } catch (e) {
-        console.error('[PrinterManager] Dispose error:', e.message);
+        }
       }
       
       process.exit(0);

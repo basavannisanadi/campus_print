@@ -57,6 +57,34 @@ class CampusPrintInstaller {
                                 "End If";
             File.WriteAllText(vbsPath, vbsContent);
 
+            // Create StartAgent.cmd for manual double-click startup
+            Console.WriteLine("-> Installing manual agent launcher (StartAgent.cmd)...");
+            string cmdPath = Path.Combine(installDir, "StartAgent.cmd");
+            string cmdContent = "@echo off\r\n" +
+                                "title Campus Print Agent\r\n" +
+                                "echo ==================================================\r\n" +
+                                "echo         CAMPUS PRINT AGENT\r\n" +
+                                "echo ==================================================\r\n" +
+                                "echo.\r\n" +
+                                "where node >nul 2>nul\r\n" +
+                                "if errorlevel 1 (\r\n" +
+                                "  echo [ERROR] Node.js is not installed or not in PATH.\r\n" +
+                                "  echo Please install Node.js v18+ from https://nodejs.org\r\n" +
+                                "  echo.\r\n" +
+                                "  pause\r\n" +
+                                "  exit /b 1\r\n" +
+                                ")\r\n" +
+                                "echo Starting agent...\r\n" +
+                                "node \"%~dp0bridge.cjs\" campusprint://start\r\n" +
+                                "if errorlevel 1 (\r\n" +
+                                "  echo.\r\n" +
+                                "  echo [ERROR] Agent failed to start. Check logs at:\r\n" +
+                                "  echo   %~dp0logs\\\r\n" +
+                                "  echo.\r\n" +
+                                "  pause\r\n" +
+                                ")\r\n";
+            File.WriteAllText(cmdPath, cmdContent);
+
             // Register campusprint:// custom protocol in Windows Registry (HKCU - no UAC/admin prompts required)
             Console.WriteLine("-> Registering 'campusprint://' Custom Protocol Handler...");
             

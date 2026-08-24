@@ -268,7 +268,14 @@ function handleStart() {
     require(clientPath);
   } catch (err) {
     log(`Fatal error starting agent daemon: ${err.message}`);
-    process.exit(1);
+    console.error('\n==================================================');
+    console.error('  [FATAL] Agent failed to start.');
+    console.error('  Error: ' + err.message);
+    console.error('  Logs:  ' + logPath);
+    console.error('==================================================');
+    console.error('Press Ctrl+C to close this window.\n');
+    // Keep process alive so the user can read the error
+    setInterval(() => {}, 60000);
   }
 }
 
