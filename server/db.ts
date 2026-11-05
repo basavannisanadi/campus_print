@@ -338,9 +338,7 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
 
 export const dbRepository = {
   isSupabase(): boolean {
-    if (process.env.NODE_ENV === 'production' && (!isSupabaseConfigured || !supabase)) {
-      throw new DatabaseError('FATAL: Supabase configuration is required in production environment.');
-    }
+    // Allow local JSON db fallback for self-hosted / tunnel deployments without Supabase
     return isSupabaseConfigured && supabase !== null;
   },
 

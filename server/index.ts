@@ -3765,7 +3765,9 @@ app.post('/api/jobs', requireAuth, uploadLimiter, (req, res, next) => {
         await uploadDocument(fn, diskPath, 'application/pdf');
       } catch (err: any) {
         console.error(`[STORAGE UPLOAD ERROR] Failed to upload "${fn}" to private storage:`, err?.message || err, err?.cause || '');
-        if (process.env.NODE_ENV === 'production') {
+        if (fs.existsSync(diskPath)) {
+          console.warn(`[STORAGE FALLBACK] File "${fn}" exists on disk; proceeding with local storage.`);
+        } else if (process.env.NODE_ENV === 'production') {
           cleanupUploadedFiles();
           return res.status(503).json({ error: 'Private storage service unavailable.' });
         }

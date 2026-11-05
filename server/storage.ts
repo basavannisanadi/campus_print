@@ -70,6 +70,9 @@ async function ensurePrivateBucketExists(): Promise<void> {
  */
 export function isRemoteStorageActive(): boolean {
   if (process.env.NODE_ENV === 'production') {
+    if (process.env.STORAGE_DRIVER === 'local') {
+      return false;
+    }
     if (!isSupabaseConfigured || !supabase || !isServiceRoleConfigured) {
       throw new StorageError('FATAL: Supabase configuration with valid service-role key (SUPABASE_SERVICE_ROLE_KEY) is required in production environment.');
     }
@@ -89,27 +92,43 @@ export async function uploadDocument(
 ): Promise<{ storagePath: string; isRemote: boolean }> {
   const cleanFilename = path.basename(filename);
 
-  if (isRemoteStorageActive()) {
-    await ensurePrivateBucketExists();
-
-    const fileBuffer = typeof content === 'string' ? fs.readFileSync(content) : content;
-
-    const { data, error } = await supabase!.storage
-      .from(STORAGE_BUCKET)
-      .upload(cleanFilename, fileBuffer, {
-        contentType,
-        upsert: true
-      });
-
-    if (error) {
-      console.error(`[STORAGE ERROR] Upload failed for ${cleanFilename}:`, error.message);
-      throw new StorageError(`Failed to upload document to private storage: ${error.message}`, error);
+  let useRemote = false;
+  try {
+    useRemote = isRemoteStorageActive();
+  } catch (err: any) {
+    // If Supabase credentials are not configured, fall back to local disk storage
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.warn('[STORAGE NOTE] Remote storage not configured (' + (err?.message || err) + '). Storing "' + cleanFilename + '" locally on disk.');
+      useRemote = false;
+    } else {
+      throw err;
     }
-
-    return { storagePath: `/uploads/${cleanFilename}`, isRemote: true };
   }
 
-  // Local fallback (Dev / Test mode only)
+  if (useRemote) {
+    try {
+      await ensurePrivateBucketExists();
+
+      const fileBuffer = typeof content === 'string' ? fs.readFileSync(content) : content;
+
+      const { data, error } = await supabase!.storage
+        .from(STORAGE_BUCKET)
+        .upload(cleanFilename, fileBuffer, {
+          contentType,
+          upsert: true
+        });
+
+      if (!error) {
+        return { storagePath: '/uploads/' + cleanFilename, isRemote: true };
+      }
+
+      console.warn('[STORAGE WARNING] Remote upload failed for ' + cleanFilename + ' (' + error.message + '). Falling back to local disk.');
+    } catch (err: any) {
+      console.warn('[STORAGE WARNING] Remote upload exception for ' + cleanFilename + ' (' + (err?.message || err) + '). Falling back to local disk.');
+    }
+  }
+
+  // Local fallback (Dev, Test, or self-hosted/local storage mode)
   const targetPath = path.join(UPLOADS_DIR, cleanFilename);
   if (typeof content === 'string' && content !== targetPath) {
     fs.copyFileSync(content, targetPath);
@@ -117,7 +136,7 @@ export async function uploadDocument(
     fs.writeFileSync(targetPath, content);
   }
 
-  return { storagePath: `/uploads/${cleanFilename}`, isRemote: false };
+  return { storagePath: '/uploads/' + cleanFilename, isRemote: false };
 }
 
 /**
