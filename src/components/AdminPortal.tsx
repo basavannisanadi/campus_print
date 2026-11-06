@@ -23,7 +23,7 @@ import {
   ChevronUp,
   Activity
 } from 'lucide-react';
-import { PrintJob, Shop } from '../types';
+import { PrintJob, Shop, DEFAULT_SHOPS } from '../types';
 import { getApiUrl } from '../config';
 
 // Converts "14:00" to "2:00 PM"
@@ -1361,10 +1361,10 @@ export default function AdminPortal({
               <select
                 value={selectedLoginShopId}
                 onChange={(e) => setSelectedLoginShopId(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all font-semibold"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all font-semibold text-slate-800"
               >
-                {shops.map((s) => (
-                  <option key={s.id} value={s.id}>
+                {(shops && shops.length > 0 ? shops : DEFAULT_SHOPS).map((s) => (
+                  <option key={s.id} value={s.id} className="text-slate-800 bg-white">
                     {s.name}
                   </option>
                 ))}
@@ -1442,8 +1442,8 @@ export default function AdminPortal({
                   onChange={(e) => onSelectShop(e.target.value)}
                   className="py-1.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
-                  {shops.map((s) => (
-                    <option key={s.id} value={s.id}>
+                  {(shops && shops.length > 0 ? shops : DEFAULT_SHOPS).map((s) => (
+                    <option key={s.id} value={s.id} className="text-slate-800 bg-white">
                       {s.name}
                     </option>
                   ))}

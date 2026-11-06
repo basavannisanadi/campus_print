@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Printer, Sun, Moon } from 'lucide-react';
-import { PrintJob } from './types';
+import { PrintJob, DEFAULT_SHOPS } from './types';
 import StudentPortal from './components/StudentPortal';
 import AdminPortal from './components/AdminPortal';
 import OwnerDashboard from './components/OwnerDashboard';
@@ -66,7 +66,7 @@ export default function App() {
   });
 
   // Multi-shop States
-  const [shops, setShops] = useState<any[]>([]);
+  const [shops, setShops] = useState<any[]>(DEFAULT_SHOPS);
   const [selectedShopId, setSelectedShopId] = useState<string>(() => localStorage.getItem('selectedShopId') || 'tjohn_print');
 
   const navigate = (path: string) => {
@@ -116,10 +116,13 @@ export default function App() {
     try {
       const res = await fetch(getApiUrl('/api/shops'));
       if (res.ok) {
-        setShops(await res.json());
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setShops(data);
+        }
       }
     } catch (err) {
-      console.error('Failed to fetch shops:', err);
+      console.warn('Could not fetch shops from server, using cached defaults:', err);
     }
   };
 

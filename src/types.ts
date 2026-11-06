@@ -86,6 +86,54 @@ export interface Shop {
   lastHeartbeat?: string;
 }
 
+export const DEFAULT_SHOPS: Shop[] = [
+  {
+    id: 'tjohn_print',
+    name: 'TJohn Print Center',
+    ownerName: 'TJohn Staff',
+    phoneNumber: '9876543210',
+    address: 'TJohn Block, Ground Floor',
+    maintenanceMode: false,
+    bwPrice: 2,
+    colorPrice: 5,
+    duplexPrice: 3,
+    printerStatus: 'offline',
+    isOpen: true,
+    expectedReturnTime: '2:00 PM',
+    lastHeartbeat: ''
+  },
+  {
+    id: 'alliance_print',
+    name: 'Alliance Print Center',
+    ownerName: 'Alliance Staff',
+    phoneNumber: '9876543211',
+    address: 'Alliance Main Block',
+    maintenanceMode: false,
+    bwPrice: 2,
+    colorPrice: 5,
+    duplexPrice: 3,
+    printerStatus: 'offline',
+    isOpen: true,
+    expectedReturnTime: '2:00 PM',
+    lastHeartbeat: ''
+  },
+  {
+    id: 'science_print',
+    name: 'Science Print Center',
+    ownerName: 'Science Staff',
+    phoneNumber: '9876543212',
+    address: 'Science Department',
+    maintenanceMode: false,
+    bwPrice: 3,
+    colorPrice: 5,
+    duplexPrice: 3,
+    printerStatus: 'offline',
+    isOpen: true,
+    expectedReturnTime: '2:00 PM',
+    lastHeartbeat: ''
+  }
+];
+
 export interface StudentPrintHistoryItem {
   id: string;
   orderId: string;
